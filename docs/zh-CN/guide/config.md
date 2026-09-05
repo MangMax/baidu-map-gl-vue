@@ -30,7 +30,7 @@ lang: zh-CN
 ```ts{7,8}
 import { createApp } from 'vue'
 import App from './App.vue'
-import baiduMap from 'vue3-baidu-map-gl'
+import baiduMap from 'baidu-map-gl-vue'
 
 const app = createApp(App)
 app.use(baiduMap, {

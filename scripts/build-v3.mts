@@ -17,7 +17,7 @@ import { resolve, dirname } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..')
-const pkgRoot = resolve(root, 'packages/vue3-baidu-map-gl')
+const pkgRoot = resolve(root, 'packages/baidu-map-gl-vue')
 
 function run(cmd: string, cwd: string) {
   console.log(`[build-v3] ${cmd}`)

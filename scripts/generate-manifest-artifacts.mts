@@ -3,8 +3,8 @@
  * M7-01: 从 manifest 生成公开人工产物
  *
  * 生成:
- * - packages/vue3-baidu-map-gl/src/components/index.ts(确保与 manifest 一致)
- * - packages/vue3-baidu-map-gl/volar.d.ts(Volar GlobalComponents)
+ * - packages/baidu-map-gl-vue/src/components/index.ts(确保与 manifest 一致)
+ * - packages/baidu-map-gl-vue/volar.d.ts(Volar GlobalComponents)
  * - docs/.vitepress/component-index.json(文档组件索引)
  *
  * 生成文件顶部带 "Generated file. Do not edit directly."
@@ -14,7 +14,7 @@ import { resolve, dirname } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..')
-const manifestSrc = resolve(root, 'packages/vue3-baidu-map-gl/src/manifest.ts')
+const manifestSrc = resolve(root, 'packages/baidu-map-gl-vue/src/manifest.ts')
 
 // 动态加载 manifest(纯数据 .ts,node --experimental-strip-types 可解析;
 // 避免正则对 oxfmt 格式化后的多行/双引号格式敏感)
@@ -29,11 +29,11 @@ const componentsIndex = [
   ...names.map((c) => `export { default as ${c.exportName} } from './${toPath(c.exportName)}'`),
   '',
 ].join('\n')
-writeFileSync(resolve(root, 'packages/vue3-baidu-map-gl/src/components/index.ts'), componentsIndex)
+writeFileSync(resolve(root, 'packages/baidu-map-gl-vue/src/components/index.ts'), componentsIndex)
 
 // 2) volar.d.ts(精确类型:Volar 通过 typeof import 解析组件真实 props/emits)
 //    vue-tsc 2(新 Volar)读 module 'vue';v2 时代读 '@vue/runtime-core';双声明兼容
-const componentsLines = names.map((c) => `    ${c.name}: typeof import('vue3-baidu-map-gl')['${c.name}']`)
+const componentsLines = names.map((c) => `    ${c.name}: typeof import('baidu-map-gl-vue')['${c.name}']`)
 const volarDts = [
   '// Generated file. Do not edit directly.',
   'declare module \'vue\' {',
@@ -49,7 +49,7 @@ const volarDts = [
   'export {}',
   '',
 ].join('\n')
-writeFileSync(resolve(root, 'packages/vue3-baidu-map-gl/volar.d.ts'), volarDts)
+writeFileSync(resolve(root, 'packages/baidu-map-gl-vue/volar.d.ts'), volarDts)
 
 // 3) component index json
 const json = { version: '3.0.0-beta.0', generatedAt: new Date().toISOString(), components: names.map((c) => c.name) }
@@ -63,13 +63,13 @@ console.log('  CHECK MODE: run with --check to verify no drift')
 
 // --check 模式
 if (process.argv.includes('--check')) {
-  const current = readFileSync(resolve(root, 'packages/vue3-baidu-map-gl/src/components/index.ts'), 'utf-8')
+  const current = readFileSync(resolve(root, 'packages/baidu-map-gl-vue/src/components/index.ts'), 'utf-8')
   if (current !== componentsIndex) {
     console.error('[generate-manifest] DRIFT in components/index.ts')
     process.exit(1)
   }
-  const currentDts = existsSync(resolve(root, 'packages/vue3-baidu-map-gl/volar.d.ts'))
-    ? readFileSync(resolve(root, 'packages/vue3-baidu-map-gl/volar.d.ts'), 'utf-8')
+  const currentDts = existsSync(resolve(root, 'packages/baidu-map-gl-vue/volar.d.ts'))
+    ? readFileSync(resolve(root, 'packages/baidu-map-gl-vue/volar.d.ts'), 'utf-8')
     : ''
   if (currentDts !== volarDts) {
     console.error('[generate-manifest] DRIFT in volar.d.ts')

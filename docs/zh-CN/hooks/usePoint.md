@@ -3,7 +3,7 @@
 通过该 hooks 可获取一个地图实例点 (BMapGL.Point)。
 
 ```ts
-import { usePoint } from 'vue3-baidu-map-gl'
+import { usePoint } from 'baidu-map-gl-vue'
 ```
 
 ## 用法
@@ -34,7 +34,7 @@ const { point, set } = usePoint()
 <Map @initd="handleInitd"></Map>
 
 <script setup lang="ts">
-  import { usePoint } from 'vue3-baidu-map-gl'
+  import { usePoint } from 'baidu-map-gl-vue'
 
   const { point, set } = usePoint()
 

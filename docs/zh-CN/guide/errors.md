@@ -1,6 +1,6 @@
 # 错误码与排障
 
-> v3 运行时通过统一的 [`BMapError`](../../packages/vue3-baidu-map-gl/src/core/errors/BMapError.ts) 报告错误。
+> v3 运行时通过统一的 [`BMapError`](../../packages/baidu-map-gl-vue/src/core/errors/BMapError.ts) 报告错误。
 > 所有错误携带 `code`(稳定标识)、`message`、可选 `cause`/`mapId`/`component`/`plugin`。
 
 ## 错误码总览
@@ -92,7 +92,7 @@ interface BMapErrorLike {
 组件通过 `@resource-error`/`@error` 事件接收错误,或经 map context 的 `events` 总线订阅 `resource:error`:
 
 ```ts
-import { useBMapContext } from 'vue3-baidu-map-gl'
+import { useBMapContext } from 'baidu-map-gl-vue'
 
 const ctx = useBMapContext()
 ctx.events.on('resource:error', (e) => {

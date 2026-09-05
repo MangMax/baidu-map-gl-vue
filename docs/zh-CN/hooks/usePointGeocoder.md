@@ -3,7 +3,7 @@
 由坐标点解析地址信息
 
 ```ts
-import { usePointGeocoder } from 'vue3-baidu-map-gl'
+import { usePointGeocoder } from 'baidu-map-gl-vue'
 ```
 
 ## 单个坐标点解析
@@ -17,7 +17,7 @@ hooks/usePointGeocoder/index
 在 Ts 中使用批量解析坐标点时，使用泛型 `PointGeocoderResult` 内部可推断 `result` 为可推断为 `PointGeocoderResult`，从而避免读取值时 ts 的报错。
 
 ```ts
-import { usePointGeocoder, PointGeocoderResult } from 'vue3-baidu-map-gl'
+import { usePointGeocoder, PointGeocoderResult } from 'baidu-map-gl-vue'
 const { result } = usePointGeocoder<PointGeocoderResult>()
 ```
 
@@ -34,7 +34,7 @@ hooks/usePointGeocoder/batch
 在 Ts 中使用批量解析坐标点时，使用泛型 `PointGeocoderResult[]` 内部可推断 `result` 为可推断为 `PointGeocoderResult[]`，从而避免遍历时 ts 的报错。
 
 ```ts
-import { usePointGeocoder, PointGeocoderResult } from 'vue3-baidu-map-gl'
+import { usePointGeocoder, PointGeocoderResult } from 'baidu-map-gl-vue'
 const { result } = usePointGeocoder<PointGeocoderResult[]>()
 ```
 
@@ -126,7 +126,7 @@ type Point = { lng: number; lat: number }
 
 ```ts
 import { Ref } from 'vue'
-import { Point } from 'vue3-baidu-map-gl'
+import { Point } from 'baidu-map-gl-vue'
 export interface PointGeocoderResult {
   /**
    * 坐标点

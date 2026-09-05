@@ -3,7 +3,7 @@
 在地图底面上叠加覆盖物，覆盖物可以是图片、自定义 Canvas、视频。
 
 ```ts
-import { BGroundOverlay } from 'vue3-baidu-map-gl'
+import { BGroundOverlay } from 'baidu-map-gl-vue'
 ```
 
 ## 组件示例

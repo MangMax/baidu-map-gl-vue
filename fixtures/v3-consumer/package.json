@@ -6,7 +6,7 @@
   "scripts": {},
   "dependencies": {
     "vue": "^3.5.0",
-    "vue3-baidu-map-gl": "file:../../.artifacts/vue3-baidu-map-gl-3.0.0-beta.0.tgz"
+    "baidu-map-gl-vue": "file:../../.artifacts/baidu-map-gl-vue-3.0.0-beta.0.tgz"
   },
   "devDependencies": {
     "typescript": "^5.6.0",

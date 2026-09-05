@@ -1,5 +1,5 @@
 /**
- * v3 公开入口(packages/vue3-baidu-map-gl)
+ * v3 公开入口(packages/baidu-map-gl-vue)
  *
  * 仅导出稳定公共 API。core 内部件按方案 §3.3 不直接暴露所有实现。
  */

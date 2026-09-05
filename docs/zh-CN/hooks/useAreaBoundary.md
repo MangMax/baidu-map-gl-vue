@@ -3,7 +3,7 @@
 通过该 hooks 可获取行政区域的边界。
 
 ```ts
-import { useAreaBoundary } from 'vue3-baidu-map-gl'
+import { useAreaBoundary } from 'baidu-map-gl-vue'
 ```
 
 ## 示例
@@ -43,7 +43,7 @@ const { isLoading, boundaries, get } = useAreaBoundary(cal)
 <Map @initd="handleInitd"></Map>
 
 <script setup lang="ts">
-  import { useAreaBoundary } from 'vue3-baidu-map-gl'
+  import { useAreaBoundary } from 'baidu-map-gl-vue'
 
   const { isLoading, boundaries, get } = useAreaBoundary()
 

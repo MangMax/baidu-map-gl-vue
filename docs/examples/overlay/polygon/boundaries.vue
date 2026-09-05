@@ -24,7 +24,7 @@
 
 <script setup lang="ts">
   import { ref, watch } from 'vue'
-  import { useAreaBoundary } from 'vue3-baidu-map-gl'
+  import { useAreaBoundary } from 'baidu-map-gl-vue'
   const zoom = ref<number>(11)
   const area = ref<string>('顺义区')
   const areaZoomMap = {

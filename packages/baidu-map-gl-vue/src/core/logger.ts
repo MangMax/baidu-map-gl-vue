@@ -26,7 +26,7 @@ type LoggerLevel = "debug" | "warn" | "error";
 function makeLogger(knowsAk?: () => string | null | undefined): Logger {
   const emit = (level: LoggerLevel, message: string, context?: Record<string, unknown>) => {
     const redacted = redactAk(message, knowsAk?.());
-    const line = `[vue3-baidu-map-gl] ${redacted}`;
+    const line = `[baidu-map-gl-vue] ${redacted}`;
     if (level === "error") console.error(line, context ?? "");
     else if (level === "warn") console.warn(line, context ?? "");
     else console.debug(line, context ?? "");

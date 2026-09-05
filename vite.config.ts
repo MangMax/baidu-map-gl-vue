@@ -10,7 +10,7 @@ import { resolve } from 'node:path'
 import VueRolldown from 'unplugin-vue/rolldown'
 import { defineConfig } from 'vite-plus'
 
-const packageRoot = resolve(import.meta.dirname, 'packages/vue3-baidu-map-gl')
+const packageRoot = resolve(import.meta.dirname, 'packages/baidu-map-gl-vue')
 
 export default defineConfig({
   pack: {

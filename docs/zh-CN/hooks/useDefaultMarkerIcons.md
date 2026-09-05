@@ -3,7 +3,7 @@
 通过该 hooks 可获取一些内置的地图图标 (BMapGL.Icon)。
 
 ```ts
-import { useDefaultMarkerIcons } from 'vue3-baidu-map-gl'
+import { useDefaultMarkerIcons } from 'baidu-map-gl-vue'
 ```
 
 > 参考：[marker 图标可选值](/zh-CN/components/overlay/marker#默认图标可选值)
@@ -36,7 +36,7 @@ const icons = useDefaultMarkerIcons()
 </template>
 
 <script setup lang="ts">
-  import { useAreaBoundary } from 'vue3-baidu-map-gl'
+  import { useAreaBoundary } from 'baidu-map-gl-vue'
 
   function handleInitd() {
     const icons = useDefaultMarkerIcons()

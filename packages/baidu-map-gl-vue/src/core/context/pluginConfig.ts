@@ -11,4 +11,4 @@ export interface BMapPluginConfig {
 }
 
 /** app 级 provider 配置注入 key */
-export const bmapConfigKey: InjectionKey<BMapPluginConfig> = Symbol("vue3-baidu-map-gl:config");
+export const bmapConfigKey: InjectionKey<BMapPluginConfig> = Symbol("baidu-map-gl-vue:config");

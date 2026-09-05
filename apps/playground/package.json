@@ -9,7 +9,7 @@
   },
   "dependencies": {
     "vue": "^3.5.0",
-    "vue3-baidu-map-gl": "workspace:*"
+    "baidu-map-gl-vue": "workspace:*"
   },
   "devDependencies": {
     "@vitejs/plugin-vue": "^5.1.2",

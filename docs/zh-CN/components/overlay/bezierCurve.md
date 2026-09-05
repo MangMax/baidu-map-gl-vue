@@ -3,7 +3,7 @@
 在地图上绘制二阶贝塞尔曲线
 
 ```ts
-import { BBezierCurve } from 'vue3-baidu-map-gl'
+import { BBezierCurve } from 'baidu-map-gl-vue'
 ```
 
 ::: tip 提示

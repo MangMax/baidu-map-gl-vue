@@ -10,7 +10,7 @@
 <p align="center">
 <img src="https://img.shields.io/github/license/MangMax/baidu-map-gl-vue?style=flat-square" alt="" />
 <img src="https://img.shields.io/github/package-json/v/MangMax/baidu-map-gl-vue?color=f90&style=flat-square" alt="GitHub package.json version (subfolder of monorepo)"/>
-<img alt="npm" src="https://img.shields.io/npm/dm/vue3-baidu-map-gl?logo=npm&style=flat-square" />
+<img alt="npm" src="https://img.shields.io/npm/dm/baidu-map-gl-vue?logo=npm&style=flat-square" />
 <img alt="GitHub Repo stars" src="https://img.shields.io/github/stars/MangMax/baidu-map-gl-vue?style=flat-square&color=%23daaa3f">
 <img alt="GitHub issues" src="https://img.shields.io/github/issues/MangMax/baidu-map-gl-vue?style=flat-square" />
 <img alt="GitHub closed issues" src="https://img.shields.io/github/issues-closed/MangMax/baidu-map-gl-vue?style=flat-square">
@@ -46,13 +46,13 @@
 
 ```bash
 # with pnpm
-pnpm add vue3-baidu-map-gl
+pnpm add baidu-map-gl-vue
 
 # or with yarn
-yarn add vue3-baidu-map-gl
+yarn add baidu-map-gl-vue
 
 # or with npm
-npm install vue3-baidu-map-gl
+npm install baidu-map-gl-vue
 ```
 
 ## <img src="https://raw.githubusercontent.com/Tarikul-Islam-Anik/Animated-Fluent-Emojis/master/Emojis/Objects/Open%20Book.png" alt="Open Book" width="25" height="25" /> 文档
@@ -69,7 +69,7 @@ npm install vue3-baidu-map-gl
 
 # clone
 git clone https://github.com/MangMax/baidu-map-gl-vue
-cd ./vue3-baidu-map-gl
+cd ./baidu-map-gl-vue
 
 # install
 pnpm install

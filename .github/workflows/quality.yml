@@ -82,20 +82,20 @@ jobs:
 
       - name: publint
         run: |
-          cd packages/vue3-baidu-map-gl
+          cd packages/baidu-map-gl-vue
           npx -y publint .
 
       - name: attw (ESM+types contract)
         run: |
-          cd packages/vue3-baidu-map-gl
+          cd packages/baidu-map-gl-vue
           npx -y @arethetypeswrong/cli --pack . --format table > /tmp/attw.txt 2>&1 || true
           grep -q 'node16 (from ESM).*🟢' /tmp/attw.txt || (cat /tmp/attw.txt; exit 1)
 
       - name: v3 tarball consumer
         run: |
           rm -rf .artifacts && mkdir -p .artifacts
-          pnpm --filter vue3-baidu-map-gl pack --pack-destination .artifacts
+          pnpm --filter baidu-map-gl-vue pack --pack-destination .artifacts
           cd fixtures/v3-consumer
           npm install --no-audit --no-fund --ignore-scripts
           npx vue-tsc --noEmit
-          node -e "import('vue3-baidu-map-gl').then(m=>{if(!m.BMap)throw new Error('missing BMap');console.log('consumer OK')})"
+          node -e "import('baidu-map-gl-vue').then(m=>{if(!m.BMap)throw new Error('missing BMap');console.log('consumer OK')})"

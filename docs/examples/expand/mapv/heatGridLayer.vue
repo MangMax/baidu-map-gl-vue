@@ -39,7 +39,7 @@
     })
     view.addLayer(grid)
 
-    fetch('/vue3-baidu-map-gl/beijing.json')
+    fetch('/baidu-map-gl-vue/beijing.json')
       .then((rs) => {
         return rs.json()
       })

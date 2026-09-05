@@ -12,7 +12,7 @@ import {
   baiduCdnProvider,
   type BMapProvider,
   type BMapProps,
-} from 'vue3-baidu-map-gl'
+} from 'baidu-map-gl-vue'
 
 const center = shallowRef({ lng: 116.4, lat: 39.9 })
 

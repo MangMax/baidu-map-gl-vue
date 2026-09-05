@@ -33,7 +33,7 @@ import {
   BDistrictLayer,
   BPanoramaCoverageLayer,
   BAutoComplete,
-} from 'vue3-baidu-map-gl'
+} from 'baidu-map-gl-vue'
 import { mockProvider } from './mock-provider'
 
 const plugin = createBMapPlugin({ provider: mockProvider() as any })
@@ -170,7 +170,7 @@ const App = defineComponent({
     const current = computed(() => scenes.find((s) => s.id === active.value)!)
     return () => [
       h('div', { style: 'font-family:system-ui;padding:12px;background:#f5f5f5;border-bottom:1px solid #ddd' }, [
-        h('h3', { style: 'margin:0 0 8px' }, 'vue3-baidu-map-gl v3 playground'),
+        h('h3', { style: 'margin:0 0 8px' }, 'baidu-map-gl-vue v3 playground'),
         h('div', { style: 'display:flex;gap:8px;flex-wrap:wrap' }, [
           ...scenes.map((s) =>
             h('button', {

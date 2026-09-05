@@ -13,7 +13,7 @@ import { resolve, dirname, relative } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..')
-const distRoot = resolve(root, 'packages/vue3-baidu-map-gl/dist')
+const distRoot = resolve(root, 'packages/baidu-map-gl-vue/dist')
 
 function walk(dir: string): string[] {
   const out: string[] = []

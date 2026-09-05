@@ -3,7 +3,7 @@
 用于将其他坐标系的坐标转换为百度坐标。
 
 ```ts
-import { usePointConvertor } from 'vue3-baidu-map-gl'
+import { usePointConvertor } from 'baidu-map-gl-vue'
 ```
 
 ## 示例
@@ -122,7 +122,7 @@ export enum CoordinatesToType {
 <Map @initd="handleInitd"></Map>
 
 <script setup lang="ts">
-  import { useAreaBoundary } from 'vue3-baidu-map-gl'
+  import { useAreaBoundary } from 'baidu-map-gl-vue'
 
   const { point, set } = usePoint()
 

@@ -1,5 +1,5 @@
 {
-  "name": "vue3-baidu-map-gl",
+  "name": "baidu-map-gl-vue",
   "description": "A Vue 3 baidu map gl Component Library (v3 modernized runtime).",
   "version": "3.0.0-beta.0",
   "type": "module",

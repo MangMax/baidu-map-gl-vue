@@ -4,8 +4,8 @@
 import { describe, it, expect, beforeEach } from 'vitest'
 import { mount, flushPromises } from '@vue/test-utils'
 import { defineComponent, h, nextTick } from 'vue'
-import BMap from '../../packages/vue3-baidu-map-gl/src/components/map/BMap.vue'
-import BPanoramaCoverageLayer from '../../packages/vue3-baidu-map-gl/src/components/layers/BPanoramaCoverageLayer.vue'
+import BMap from '../../packages/baidu-map-gl-vue/src/components/map/BMap.vue'
+import BPanoramaCoverageLayer from '../../packages/baidu-map-gl-vue/src/components/layers/BPanoramaCoverageLayer.vue'
 import { getFakeBMapGl, resetLifecycleState } from '../../packages/test-utils'
 
 const fake = getFakeBMapGl()

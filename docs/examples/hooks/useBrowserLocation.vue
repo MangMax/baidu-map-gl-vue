@@ -34,9 +34,9 @@
 
 <script lang="ts" setup>
   import { ref } from 'vue'
-  import { useBrowserLocation } from 'vue3-baidu-map-gl'
+  import { useBMapGeolocation } from 'baidu-map-gl-vue'
   const map = ref()
-  const { get, location, isLoading, isError, status } = useBrowserLocation(null, () => {
+  const { get, location, isLoading, isError, status } = useBMapGeolocation(null, () => {
     map.value.resetCenter()
   })
 </script>

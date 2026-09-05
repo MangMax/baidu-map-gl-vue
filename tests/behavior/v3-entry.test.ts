@@ -3,7 +3,7 @@
  */
 import { describe, it, expect } from 'vitest'
 import { createApp } from 'vue'
-import { createBMapPlugin, baiduCdnProvider, Vue3BaiduMapGlResolver, useBMapGeolocation } from '../../packages/vue3-baidu-map-gl/src'
+import { createBMapPlugin, baiduCdnProvider, Vue3BaiduMapGlResolver, useBMapGeolocation } from '../../packages/baidu-map-gl-vue/src'
 
 describe('v3 public entry', () => {
   it('exposes createBMapPlugin and provider factories', () => {
@@ -23,7 +23,7 @@ describe('v3 public entry', () => {
   it('resolver resolves B-prefixed components to components path', () => {
     const resolver = Vue3BaiduMapGlResolver()
     const r = resolver.resolve('BMap')
-    expect(r).toEqual({ name: 'BMap', from: 'vue3-baidu-map-gl/components' })
+    expect(r).toEqual({ name: 'BMap', from: 'baidu-map-gl-vue/components' })
     // 非组件名不解析
     expect(resolver.resolve('FooBar')).toBeUndefined()
   })

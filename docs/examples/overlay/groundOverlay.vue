@@ -83,7 +83,7 @@
       opacity: 1,
       startPoint: { lng: 117.19635, lat: 36.24093 },
       endPoint: { lng: 117.2035, lat: 36.24764 },
-      url: '/vue3-baidu-map-gl/shouhuimap.png'
+      url: '/baidu-map-gl-vue/shouhuimap.png'
     },
     video: {
       tilt: 0,
@@ -91,7 +91,7 @@
       opacity: 0.5,
       startPoint: { lng: 94.582033, lat: -7.989754 },
       endPoint: { lng: 145.358572, lat: 30.813867 },
-      url: '/vue3-baidu-map-gl/cloud.mov'
+      url: '/baidu-map-gl-vue/cloud.mov'
     }
   })
 

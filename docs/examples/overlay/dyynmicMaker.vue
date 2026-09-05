@@ -1,5 +1,5 @@
 <script lang="ts" setup>
-  import { BMap, BMarker, _Point } from 'vue3-baidu-map-gl'
+  import { BMap, BMarker, _Point } from 'baidu-map-gl-vue'
   import { ref } from 'vue'
 
   const center = { lng: 113.5213534078, lat: 27.6907991732 }

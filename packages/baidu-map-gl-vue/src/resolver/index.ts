@@ -24,7 +24,7 @@ export function Vue3BaiduMapGlResolver(): ComponentResolverLike {
       if (!componentNameSet.has(name)) return;
       return {
         name,
-        from: "vue3-baidu-map-gl/components",
+        from: "baidu-map-gl-vue/components",
       };
     },
   };

@@ -9,7 +9,7 @@ export const head: HeadConfig[] = [
       rel: 'icon',
       type: 'image/png',
       sizes: '16x16',
-      href: `/vue3-baidu-map-gl/logo.svg`
+      href: `/baidu-map-gl-vue/logo.svg`
     }
   ],
   ['meta', { name: 'msapplication-TileColor', content: '#3eaf7c' }],
@@ -26,7 +26,7 @@ export const head: HeadConfig[] = [
     {
       name: 'keywords',
       content:
-        'vue3,vue component,baidu map,baidu map gl,vue3-baidu-map-gl,vue3-bmap-gl,百度地图,组件库,vue3组件库,vue百度地图'
+        'vue3,vue component,baidu map,baidu map gl,baidu-map-gl-vue,vue3-bmap-gl,百度地图,组件库,vue3组件库,vue百度地图'
     }
   ]
 ]

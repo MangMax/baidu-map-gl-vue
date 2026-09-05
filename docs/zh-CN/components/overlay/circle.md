@@ -3,7 +3,7 @@
 在地图上绘制简单的圆形
 
 ```ts
-import { BCircle } from 'vue3-baidu-map-gl'
+import { BCircle } from 'baidu-map-gl-vue'
 ```
 
 ## 组件示例

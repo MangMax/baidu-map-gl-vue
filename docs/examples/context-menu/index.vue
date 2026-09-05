@@ -8,7 +8,7 @@
 </template>
 <script lang="ts" setup>
   import { ref } from 'vue'
-  import { ContextMenuItem, ContextMenuSeparator } from 'vue3-baidu-map-gl'
+  import { ContextMenuItem, ContextMenuSeparator } from 'baidu-map-gl-vue'
   const center = ref('北京市')
   const list = ref<(ContextMenuItem | ContextMenuSeparator)[]>([
     {

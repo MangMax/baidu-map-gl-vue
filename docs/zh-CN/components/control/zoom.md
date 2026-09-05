@@ -3,7 +3,7 @@
 缩放控件，默认位于地图右下角
 
 ```ts
-import { BZoom } from 'vue3-baidu-map-gl'
+import { BZoom } from 'baidu-map-gl-vue'
 ```
 
 ## 组件示例

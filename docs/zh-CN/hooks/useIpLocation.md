@@ -3,7 +3,7 @@
 用于获取用户所在的城市位置信息。(根据用户 IP 自动定位到城市)
 
 ```ts
-import { useIpLocation } from 'vue3-baidu-map-gl'
+import { useIpLocation } from 'baidu-map-gl-vue'
 ```
 
 ## 示例
@@ -40,7 +40,7 @@ const { get, location, isLoading } = useIpLocation(cal)
 
 ```ts
 import { Ref } from 'vue'
-import { type Point } from 'vue3-baidu-map-gl'
+import { type Point } from 'baidu-map-gl-vue'
 interface Location {
   point: Point
   code: number

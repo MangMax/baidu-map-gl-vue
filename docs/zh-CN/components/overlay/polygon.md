@@ -3,7 +3,7 @@
 在地图上绘制简单的多边形
 
 ```ts
-import { BPolygon } from 'vue3-baidu-map-gl'
+import { BPolygon } from 'baidu-map-gl-vue'
 ```
 
 ## 组件示例

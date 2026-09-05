@@ -47,7 +47,7 @@ window.BMapGL.apiLoad = function () {
 
 ```vue
 <script setup lang="ts">
-  import { BMap, BMarker } from 'vue3-baidu-map-gl'
+  import { BMap, BMarker } from 'baidu-map-gl-vue'
 </script>
 
 <template>

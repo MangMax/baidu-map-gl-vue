@@ -24,7 +24,7 @@
 
 <script setup lang="ts">
   import { ref } from 'vue'
-  import { useViewAnimation, ViewAnimationKeyFrames } from 'vue3-baidu-map-gl'
+  import { useViewAnimation, ViewAnimationKeyFrames } from 'baidu-map-gl-vue'
   const map = ref(null)
   const { setKeyFrames, start, stop, proceed, cancel, status } = useViewAnimation(map, {
     duration: 10000,

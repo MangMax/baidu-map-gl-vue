@@ -74,7 +74,7 @@
 
 <script setup lang="ts">
   import { ref } from 'vue'
-  import { MapType, MapProps } from 'vue3-baidu-map-gl'
+  import { MapType, MapProps } from 'baidu-map-gl-vue'
   const type = ref<MapType>('BMAP_NORMAL_MAP')
   const mapSetting = ref<MapProps>({
     enableDragging: true,

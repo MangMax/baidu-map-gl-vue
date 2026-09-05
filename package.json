@@ -1,5 +1,5 @@
 {
-  "name": "vue3-baidu-map-gl-workspace",
+  "name": "baidu-map-gl-vue-workspace",
   "description": "A Vue 3 baidu map gl Component Library. ",
   "version": "2.6.5",
   "scripts": {
@@ -12,8 +12,8 @@
     "generate:manifest": "node --experimental-strip-types scripts/generate-manifest-artifacts.mts",
     "generate:manifest:check": "node --experimental-strip-types scripts/generate-manifest-artifacts.mts --check",
     "build:v3": "node --experimental-strip-types scripts/build-v3.mts",
-    "typecheck:v3": "node --experimental-strip-types packages/vue3-baidu-map-gl/node_modules/.bin/vue-tsc -p packages/vue3-baidu-map-gl/tsconfig.build.json",
-    "pack:v3": "pnpm --filter vue3-baidu-map-gl pack --pack-destination .artifacts",
+    "typecheck:v3": "node --experimental-strip-types packages/baidu-map-gl-vue/node_modules/.bin/vue-tsc -p packages/baidu-map-gl-vue/tsconfig.build.json",
+    "pack:v3": "pnpm --filter baidu-map-gl-vue pack --pack-destination .artifacts",
     "playground:dev": "vp run -C apps/playground dev",
     "playground:build": "pnpm --filter playground build",
     "migrate": "node --experimental-strip-types scripts/migrate-v2-to-v3.mts",
@@ -53,5 +53,18 @@
   "repository": {
     "type": "git",
     "url": "git+https://github.com/MangMax/baidu-map-gl-vue.git"
+  },
+  "devDependencies": {
+    "vitest": "^5.0.0",
+    "happy-dom": "^20.14.0",
+    "jsdom": "^30.0.1",
+    "@vue/test-utils": "^2.5.0",
+    "@vitejs/plugin-vue": "^5.1.2",
+    "vite": "^6.4.0",
+    "typescript": "^5.9.0",
+    "vue-tsc": "^2.2.0",
+    "vite-plus": "0.3.0",
+    "unplugin-vue": "^6.0.0",
+    "@changesets/cli": "^3.0.2"
   }
 }

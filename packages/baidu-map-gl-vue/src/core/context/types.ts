@@ -36,5 +36,5 @@ export interface MapContext extends MapRuntimeShape {
   readonly plugins: unknown;
 }
 
-export const mapContextKey: InjectionKey<MapContext> = Symbol("vue3-baidu-map-gl:map-context");
-export const overlayContextKey: InjectionKey<unknown> = Symbol("vue3-baidu-map-gl:overlay-context");
+export const mapContextKey: InjectionKey<MapContext> = Symbol("baidu-map-gl-vue:map-context");
+export const overlayContextKey: InjectionKey<unknown> = Symbol("baidu-map-gl-vue:overlay-context");

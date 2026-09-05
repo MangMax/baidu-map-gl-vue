@@ -23,7 +23,7 @@
 
 <script lang="ts" setup>
   import { ref, type UnwrapRef } from 'vue'
-  import { BMap, BMarker, BInfoWindow } from 'vue3-baidu-map-gl'
+  import { BMap, BMarker, BInfoWindow } from 'baidu-map-gl-vue'
   let markers = ref([
     {
       position: { lat: 39.915185, lng: 116.400101 },

@@ -7,15 +7,15 @@
 ::: code-group
 
 ```bash [pnpm]
-pnpm add vue3-baidu-map-gl
+pnpm add baidu-map-gl-vue
 ```
 
 ```bash [yarn]
-yarn add vue3-baidu-map-gl
+yarn add baidu-map-gl-vue
 ```
 
 ```bash [npm]
-npm install vue3-baidu-map-gl
+npm install baidu-map-gl-vue
 ```
 
 :::
@@ -35,7 +35,7 @@ npm install vue3-baidu-map-gl
   <script src="https://unpkg.com/vue@3"></script>
   <!-- Import Vue3 BaiduMap GL -->
   <!-- Would use latest version, you'd better specify a version -->
-  <script src="https://unpkg.com/vue3-baidu-map-gl"></script>
+  <script src="https://unpkg.com/baidu-map-gl-vue"></script>
 </head>
 ```
 
@@ -44,7 +44,7 @@ npm install vue3-baidu-map-gl
   <!-- Import Vue 3 -->
   <script src="https//cdn.jsdelivr.net/npm/vue@3"></script>
   <!-- Import Vue3 BaiduMap GL -->
-  <script src="https://cdn.jsdelivr.net/npm/vue3-baidu-map-gl"></script>
+  <script src="https://cdn.jsdelivr.net/npm/baidu-map-gl-vue"></script>
 </head>
 ```
 

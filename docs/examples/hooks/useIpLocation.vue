@@ -18,7 +18,7 @@
 
 <script lang="ts" setup>
   import { ref } from 'vue'
-  import { useIpLocation } from 'vue3-baidu-map-gl'
+  import { useIpLocation } from 'baidu-map-gl-vue'
   const map = ref()
   const { get, location, isLoading } = useIpLocation(() => {
     map.value.resetCenter()

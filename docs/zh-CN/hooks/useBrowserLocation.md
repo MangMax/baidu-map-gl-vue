@@ -3,7 +3,7 @@
 用于获取用户所在的城市位置信息 (根据浏览器原生定位或者结合安卓定位 SDK 辅助定位)，相比 [Ip 定位](./useIpLocation)获取的信息更丰富，但稳定性并不高，有时候很精准，有时候飘半个中国。
 
 ```ts
-import { useBrowserLocation } from 'vue3-baidu-map-gl'
+import { useBrowserLocation } from 'baidu-map-gl-vue'
 ```
 
 :::warning 注意
@@ -89,7 +89,7 @@ const { get, location, isLoading, isError, status } = useBrowserLocation(options
 
 ```ts
 import { Ref } from 'vue'
-import { type Point } from 'vue3-baidu-map-gl'
+import { type Point } from 'baidu-map-gl-vue'
 
 interface UseBrowserLocationOptions {
   /**

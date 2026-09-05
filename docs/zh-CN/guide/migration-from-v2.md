@@ -1,6 +1,6 @@
 # v2 → v3 迁移指南
 
-> 面向从 `vue3-baidu-map-gl@2.x` 升级到 `3.0.0` 的使用者。
+> 面向从 `baidu-map-gl-vue@2.x` 升级到 `3.0.0` 的使用者。
 > 目标版本 `3.0.0-beta`(next) → `3.0.0`(stable)。
 
 v3 的核心变化是**运行时架构**,不是组件 API 的推倒重来。绝大多数 v2 组件用法保持不变;
@@ -12,13 +12,13 @@ v3 的核心变化是**运行时架构**,不是组件 API 的推倒重来。绝�
 
 ### v2
 ```ts
-import Vue3BaiduMapGl from 'vue3-baidu-map-gl'
+import Vue3BaiduMapGl from 'baidu-map-gl-vue'
 app.use(Vue3BaiduMapGl, { ak: 'YOUR_AK' })
 ```
 
 ### v3
 ```ts
-import { createBMapPlugin, baiduCdnProvider } from 'vue3-baidu-map-gl'
+import { createBMapPlugin, baiduCdnProvider } from 'baidu-map-gl-vue'
 app.use(createBMapPlugin({
   provider: baiduCdnProvider({
     ak: import.meta.env.VITE_BAIDU_MAP_AK,
@@ -125,7 +125,7 @@ v3 引入三档渲染模型(方案 §12.1):
 
 示例(控制台):
 ```
-[vue3-baidu-map-gl] `initd` is deprecated; use `ready`.
+[baidu-map-gl-vue] `initd` is deprecated; use `ready`.
 ```
 
 ---

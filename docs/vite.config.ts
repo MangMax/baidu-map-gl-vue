@@ -14,7 +14,7 @@ export default defineConfig(() => {
     resolve: {
       alias: {
         // docs 引用 v3 源码(dev 热更新;生产构建走 vp pack 产物)
-        'vue3-baidu-map-gl': resolve(import.meta.dirname, '../packages/vue3-baidu-map-gl/src/index.ts'),
+        'baidu-map-gl-vue': resolve(import.meta.dirname, '../packages/baidu-map-gl-vue/src/index.ts'),
       },
     },
   }

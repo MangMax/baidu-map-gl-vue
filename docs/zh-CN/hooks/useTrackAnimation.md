@@ -3,7 +3,7 @@
 通过该 hooks 可实现轨迹动画，在轨迹动态播放的同时，视角跟随移动。
 
 ```ts
-import { useTrackAnimation } from 'vue3-baidu-map-gl'
+import { useTrackAnimation } from 'baidu-map-gl-vue'
 ```
 
 ::: warning 注意

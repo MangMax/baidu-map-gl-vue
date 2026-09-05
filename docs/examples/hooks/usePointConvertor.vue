@@ -12,8 +12,8 @@
 </template>
 
 <script lang="ts" setup>
-  import { CoordinatesFromType, CoordinatesToType, usePointConvertor } from 'vue3-baidu-map-gl'
-  const { convert, result, isLoading, isError } = usePointConvertor()
+  import { CoordinatesFromType, CoordinatesToType, useBMapConvertor } from 'baidu-map-gl-vue'
+  const { convert, result, isLoading, isError } = useBMapConvertor()
   const googlePoint = { lng: 116.32715863448607, lat: 39.990912172420714 }
   function handleInitd() {
     convert([googlePoint], CoordinatesFromType['COORDINATES_GCJ02'], CoordinatesToType['COORDINATES_BD09'])

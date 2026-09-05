@@ -24,7 +24,7 @@
 
 <script setup lang="ts">
   import { ref } from 'vue'
-  import { useAreaBoundary } from 'vue3-baidu-map-gl'
+  import { useAreaBoundary } from 'baidu-map-gl-vue'
   const topFillOpacity = ref<number>(0.5)
   const area = ref<string>('北京市')
   const { boundaries: pathPoints, get } = useAreaBoundary()

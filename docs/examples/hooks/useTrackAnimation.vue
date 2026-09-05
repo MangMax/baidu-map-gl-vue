@@ -24,9 +24,9 @@
 
 <script setup lang="ts">
   import { ref } from 'vue'
-  import { useTrackAnimation } from 'vue3-baidu-map-gl'
+  import { useBMapTrackAnimation } from 'baidu-map-gl-vue'
   const map = ref(null)
-  const { setPath, start, cancel, stop, proceed, status } = useTrackAnimation(map, {
+  const { setPath, start, cancel, stop, proceed, status } = useBMapTrackAnimation(map, {
     duration: 10000,
     delay: 0
   })

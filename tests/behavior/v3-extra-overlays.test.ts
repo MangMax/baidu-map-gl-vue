@@ -4,12 +4,12 @@
 import { describe, it, expect, beforeEach } from 'vitest'
 import { mount, flushPromises } from '@vue/test-utils'
 import { defineComponent, h, nextTick, ref } from 'vue'
-import BMap from '../../packages/vue3-baidu-map-gl/src/components/map/BMap.vue'
-import BPanoramaControl from '../../packages/vue3-baidu-map-gl/src/components/controls/BPanoramaControl.vue'
-import BControl from '../../packages/vue3-baidu-map-gl/src/components/controls/BControl.vue'
-import BBezierCurve from '../../packages/vue3-baidu-map-gl/src/components/overlays/BBezierCurve.vue'
-import BMapMask from '../../packages/vue3-baidu-map-gl/src/components/overlays/BMapMask.vue'
-import BMarker3d from '../../packages/vue3-baidu-map-gl/src/components/overlays/BMarker3d.vue'
+import BMap from '../../packages/baidu-map-gl-vue/src/components/map/BMap.vue'
+import BPanoramaControl from '../../packages/baidu-map-gl-vue/src/components/controls/BPanoramaControl.vue'
+import BControl from '../../packages/baidu-map-gl-vue/src/components/controls/BControl.vue'
+import BBezierCurve from '../../packages/baidu-map-gl-vue/src/components/overlays/BBezierCurve.vue'
+import BMapMask from '../../packages/baidu-map-gl-vue/src/components/overlays/BMapMask.vue'
+import BMarker3d from '../../packages/baidu-map-gl-vue/src/components/overlays/BMarker3d.vue'
 import { getFakeBMapGl, resetLifecycleState } from '../../packages/test-utils'
 
 const fake = getFakeBMapGl()

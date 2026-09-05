@@ -13,7 +13,7 @@ import { resolve } from 'node:path'
 
 const globalPath = resolve(
   import.meta.dirname,
-  '../../packages/vue3-baidu-map-gl/dist/index.global.js',
+  '../../packages/baidu-map-gl-vue/dist/index.global.js',
 )
 
 describe('v3 global build (M7-08)', () => {

@@ -5,7 +5,7 @@
  * 处理(方案 §18.3):
  * 1. `@initd` → `@ready`(Vue 模板事件)
  * 2. `getScriptAsync` / `usePubSub` 从主入口 import → 提示改用 legacy/context
- * 3. 深路径 import `vue3-baidu-map-gl/es/...` → 根入口(明确子路径提示)
+ * 3. 深路径 import `baidu-map-gl-vue/es/...` → 根入口(明确子路径提示)
  * 4. 旧 `app.use(Vue3BaiduMapGl, { ... })` → `createBMapPlugin({ ... })`
  *
  * 用法:
@@ -39,10 +39,10 @@ function migrate(source: string): MigrationResult {
   }
 
   // 2. 深路径 import es/... → 根入口
-  const deepPathRe = /from 'vue3-baidu-map-gl\/[^']*'/g
+  const deepPathRe = /from 'baidu-map-gl-vue\/[^']*'/g
   const deepCount = (out.match(deepPathRe) || []).length
   if (deepCount > 0) {
-    out = out.replace(deepPathRe, `from 'vue3-baidu-map-gl'`)
+    out = out.replace(deepPathRe, `from 'baidu-map-gl-vue'`)
     replacements += deepCount
     warnings.push('深路径 import 已归一为根入口;请按需改用 /components 或 /composables 子路径')
   }

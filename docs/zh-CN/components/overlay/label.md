@@ -3,7 +3,7 @@
 在地图上显示文本标注
 
 ```ts
-import { BLabel } from 'vue3-baidu-map-gl'
+import { BLabel } from 'baidu-map-gl-vue'
 ```
 
 ## 组件示例

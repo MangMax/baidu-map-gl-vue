@@ -8,7 +8,7 @@
  * 3. 跑 vue-tsc 类型检查 + ESM 导入 smoke(v3 发布硬前提)。
  *
  * 用法:
- *   pnpm --filter vue3-baidu-map-gl pack --pack-destination .artifacts
+ *   pnpm --filter baidu-map-gl-vue pack --pack-destination .artifacts
  *   node scripts/verify-package.mts
  */
 import { execSync } from 'node:child_process'
@@ -64,7 +64,7 @@ function main() {
   // 5) v3-consumer:从 v3 tarball 安装,类型检查 + ESM 导入(发布 v3 的硬前提)
   const v3Consumer = setupFixture('v3-consumer')
   run(
-    `npm install --no-audit --no-fund && npx vue-tsc --noEmit && node -e "import('vue3-baidu-map-gl').then(m=>{if(!m.BMap||!m.createBMapPlugin)throw new Error('missing exports');console.log('v3-consumer ESM import OK')})"`,
+    `npm install --no-audit --no-fund && npx vue-tsc --noEmit && node -e "import('baidu-map-gl-vue').then(m=>{if(!m.BMap||!m.createBMapPlugin)throw new Error('missing exports');console.log('v3-consumer ESM import OK')})"`,
     v3Consumer,
     'v3-consumer typecheck + ESM import (v3 tarball)',
   )
