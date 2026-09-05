@@ -3,6 +3,7 @@ import { watch } from "vue";
 import { useOverlayResource, removeOverlay } from "../../core/composables/useOverlayResource";
 import type { MapReadyContext } from "../../core/context/types";
 import type { ResourceScope } from "../../core/lifecycle/ResourceScope";
+import { toSdkPoints } from "../../core/utils/geometry";
 
 /**
  * M4-08: BBezierCurve 迁移(adapter 模式)
@@ -54,11 +55,6 @@ type SdkBezierCurve = {
   disableMassClear(): void;
 };
 
-function toPoints(api: unknown, path: { lng: number; lat: number }[]): unknown[] {
-  const Point = (api as { Point: new (l: number, t: number) => unknown }).Point;
-  return path.map(({ lng, lat }) => new Point(lng, lat));
-}
-
 const { resource } = useOverlayResource<BBezierCurveProps, SdkBezierCurve>(
   props,
   {
@@ -67,8 +63,8 @@ const { resource } = useOverlayResource<BBezierCurveProps, SdkBezierCurve>(
         BezierCurve: new (pts: unknown[], cp: unknown[][], o?: Record<string, unknown>) => unknown;
       };
       return new BMapGL.BezierCurve(
-        toPoints(ctx.api, p.path),
-        p.controlPoints.map((c) => toPoints(ctx.api, c)),
+        toSdkPoints(ctx.api, p.path),
+        p.controlPoints.map((c) => toSdkPoints(ctx.api, c)),
         {
           strokeColor: p.strokeColor,
           strokeWeight: p.strokeWeight,
@@ -103,7 +99,7 @@ const { resource } = useOverlayResource<BBezierCurveProps, SdkBezierCurve>(
             const res = getResource();
             const ctx = getCtx();
             if (!res || !ctx) return;
-            if (path && path.length > 0) res.setPath(toPoints(ctx.api, path));
+            if (path && path.length > 0) res.setPath(toSdkPoints(ctx.api, path));
           },
           { flush: "sync" },
         ),
@@ -115,7 +111,7 @@ const { resource } = useOverlayResource<BBezierCurveProps, SdkBezierCurve>(
             const res = getResource();
             const ctx = getCtx();
             if (!res || !ctx) return;
-            if (cps && cps.length > 0) res.setControlPoints(cps.map((c) => toPoints(ctx.api, c)));
+            if (cps && cps.length > 0) res.setControlPoints(cps.map((c) => toSdkPoints(ctx.api, c)));
           },
           { flush: "sync" },
         ),

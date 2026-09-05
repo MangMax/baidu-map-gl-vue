@@ -4,6 +4,7 @@ import { useOverlayResource, removeOverlay } from "../../core/composables/useOve
 import type { MapReadyContext } from "../../core/context/types";
 import type { ResourceScope } from "../../core/lifecycle/ResourceScope";
 import type { BPolylineProps } from "../../types/components";
+import { toSdkPoints } from "../../core/utils/geometry";
 
 /**
  * M4-07: BPolyline 迁移(adapter 模式)
@@ -40,11 +41,6 @@ type SdkPolyline = {
   disableEditing(): void;
 };
 
-function toPoints(api: unknown, path: { lng: number; lat: number }[]): unknown[] {
-  const Point = (api as { Point: new (l: number, t: number) => unknown }).Point;
-  return path.map(({ lng, lat }) => new Point(lng, lat));
-}
-
 const { resource } = useOverlayResource<BPolylineProps, SdkPolyline>(
   props,
   {
@@ -52,7 +48,7 @@ const { resource } = useOverlayResource<BPolylineProps, SdkPolyline>(
       const BMapGL = ctx.api as {
         Polyline: new (pts: unknown[], o?: Record<string, unknown>) => unknown;
       };
-      return new BMapGL.Polyline(toPoints(ctx.api, p.path), {
+      return new BMapGL.Polyline(toSdkPoints(ctx.api, p.path), {
         strokeColor: p.strokeColor,
         strokeWeight: p.strokeWeight,
         strokeOpacity: p.strokeOpacity,
@@ -78,7 +74,7 @@ const { resource } = useOverlayResource<BPolylineProps, SdkPolyline>(
             const res = getResource();
             const ctx = getCtx();
             if (!res || !ctx) return;
-            if (path && path.length > 0) res.setPath(toPoints(ctx.api, path));
+            if (path && path.length > 0) res.setPath(toSdkPoints(ctx.api, path));
           },
           { flush: "sync" },
         ),

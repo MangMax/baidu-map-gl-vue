@@ -72,3 +72,12 @@ export type {
   PluginRegistry,
   PluginStatus,
 } from "./plugins/PluginRegistry";
+// 工具函数(方案 §13:v3 独立 utils,api 参数化,无全局 BMapGL)
+export {
+  toSdkPoints,
+  toSdkPoint,
+  toSdkSize,
+  toSdkXYSize,
+} from "./utils/geometry";
+export type { PointLike, SizeLike, XYLike } from "./utils/geometry";
+export { isDef, isObjDef, isString, isArray, isPointLike, isClient } from "./utils/guards";

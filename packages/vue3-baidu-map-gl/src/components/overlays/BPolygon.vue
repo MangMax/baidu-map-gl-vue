@@ -3,6 +3,7 @@ import { watch } from "vue";
 import { useOverlayResource, removeOverlay } from "../../core/composables/useOverlayResource";
 import type { MapReadyContext } from "../../core/context/types";
 import type { ResourceScope } from "../../core/lifecycle/ResourceScope";
+import { toSdkPoints } from "../../core/utils/geometry";
 
 export interface BPolygonProps {
   path: { lng: number; lat: number }[];
@@ -49,11 +50,6 @@ type SdkPolygon = {
   disableEditing(): void;
 };
 
-function toPoints(api: unknown, path: { lng: number; lat: number }[]): unknown[] {
-  const Point = (api as { Point: new (l: number, t: number) => unknown }).Point;
-  return path.map(({ lng, lat }) => new Point(lng, lat));
-}
-
 const { resource } = useOverlayResource<BPolygonProps, SdkPolygon>(
   props,
   {
@@ -61,7 +57,7 @@ const { resource } = useOverlayResource<BPolygonProps, SdkPolygon>(
       const BMapGL = ctx.api as {
         Polygon: new (pts: unknown[], o?: Record<string, unknown>) => unknown;
       };
-      return new BMapGL.Polygon(toPoints(ctx.api, p.path), {
+      return new BMapGL.Polygon(toSdkPoints(ctx.api, p.path), {
         strokeColor: p.strokeColor,
         strokeWeight: p.strokeWeight,
         strokeOpacity: p.strokeOpacity,
@@ -89,7 +85,7 @@ const { resource } = useOverlayResource<BPolygonProps, SdkPolygon>(
             const res = getResource();
             const ctx = getCtx();
             if (!res || !ctx) return;
-            if (path && path.length > 0) res.setPath(toPoints(ctx.api, path));
+            if (path && path.length > 0) res.setPath(toSdkPoints(ctx.api, path));
           },
           { flush: "sync" },
         ),

@@ -3,6 +3,7 @@ import { watch } from "vue";
 import { useOverlayResource, removeOverlay } from "../../core/composables/useOverlayResource";
 import type { MapReadyContext } from "../../core/context/types";
 import type { ResourceScope } from "../../core/lifecycle/ResourceScope";
+import { toSdkPoints } from "../../core/utils/geometry";
 
 /**
  * M4-08: BMapMask 迁移(adapter 模式)
@@ -41,11 +42,6 @@ type SdkMapMask = {
   setPath(p: unknown[]): void;
 };
 
-function toPoints(api: unknown, path: { lng: number; lat: number }[]): unknown[] {
-  const Point = (api as { Point: new (l: number, t: number) => unknown }).Point;
-  return path.map(({ lng, lat }) => new Point(lng, lat));
-}
-
 const { resource } = useOverlayResource<BMapMaskProps, SdkMapMask>(
   props,
   {
@@ -53,7 +49,7 @@ const { resource } = useOverlayResource<BMapMaskProps, SdkMapMask>(
       const BMapGL = ctx.api as {
         MapMask: new (pts: unknown[], o?: Record<string, unknown>) => unknown;
       };
-      return new BMapGL.MapMask(toPoints(ctx.api, p.path), {
+      return new BMapGL.MapMask(toSdkPoints(ctx.api, p.path), {
         showRegion: p.showRegion,
         isBuildingMask: p.isBuildingMask,
         isMapMask: p.isMapMask,
@@ -84,7 +80,7 @@ const { resource } = useOverlayResource<BMapMaskProps, SdkMapMask>(
             const res = getResource();
             const ctx = getCtx();
             if (!res || !ctx) return;
-            if (path && path.length > 0) res.setPath(toPoints(ctx.api, path));
+            if (path && path.length > 0) res.setPath(toSdkPoints(ctx.api, path));
           },
           { flush: "sync" },
         ),

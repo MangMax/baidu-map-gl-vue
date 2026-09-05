@@ -3,6 +3,7 @@ import { watch } from "vue";
 import { useOverlayResource, removeOverlay } from "../../core/composables/useOverlayResource";
 import type { MapReadyContext } from "../../core/context/types";
 import type { ResourceScope } from "../../core/lifecycle/ResourceScope";
+import { toSdkPoints } from "../../core/utils/geometry";
 
 export interface BPrismProps {
   path: { lng: number; lat: number }[];
@@ -40,11 +41,6 @@ type SdkPrism = {
   disableMassClear(): void;
 };
 
-function toPoints(api: unknown, path: { lng: number; lat: number }[]): unknown[] {
-  const Point = (api as { Point: new (l: number, t: number) => unknown }).Point;
-  return path.map(({ lng, lat }) => new Point(lng, lat));
-}
-
 const { resource } = useOverlayResource<BPrismProps, SdkPrism>(
   props,
   {
@@ -53,7 +49,7 @@ const { resource } = useOverlayResource<BPrismProps, SdkPrism>(
         Prism: new (pts: unknown[], a: number, o?: Record<string, unknown>) => unknown;
       };
       if (!p.path?.length) throw new Error("BPrism path is required");
-      return new BMapGL.Prism(toPoints(ctx.api, p.path), p.altitude, {
+      return new BMapGL.Prism(toSdkPoints(ctx.api, p.path), p.altitude, {
         topFillColor: p.topFillColor,
         topFillOpacity: p.topFillOpacity,
         sideFillColor: p.sideFillColor,
@@ -80,7 +76,7 @@ const { resource } = useOverlayResource<BPrismProps, SdkPrism>(
             const res = getResource();
             const ctx = getCtx();
             if (!res || !ctx) return;
-            if (p.path?.length) res.setPath(toPoints(ctx.api, p.path));
+            if (p.path?.length) res.setPath(toSdkPoints(ctx.api, p.path));
           },
           { flush: "sync" },
         ),

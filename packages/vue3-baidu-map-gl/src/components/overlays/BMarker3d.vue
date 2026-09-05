@@ -3,6 +3,7 @@ import { watch } from "vue";
 import { useOverlayResource, removeOverlay } from "../../core/composables/useOverlayResource";
 import type { MapReadyContext } from "../../core/context/types";
 import type { ResourceScope } from "../../core/lifecycle/ResourceScope";
+import { toSdkPoint, toSdkSize, toSdkXYSize } from "../../core/utils/geometry";
 
 /**
  * M4-08: BMarker3d 迁移(adapter 模式)
@@ -60,35 +61,20 @@ type SdkMarker3D = {
   disableMassClear(): void;
 };
 
-function toPoint(api: unknown, p: { lng: number; lat: number }): unknown {
-  const Point = (api as { Point: new (l: number, t: number) => unknown }).Point;
-  return new Point(p.lng, p.lat);
-}
-
-function toSize(api: unknown, size: { width: number; height: number }): unknown {
-  const Size = (api as { Size: new (w: number, h: number) => unknown }).Size;
-  return new Size(size.width, size.height);
-}
-
 function buildIcon(api: unknown, icon: Marker3dCustomIcon): unknown {
   const Icon = (
     api as { Icon: new (url: string, size: unknown, opts?: Record<string, unknown>) => unknown }
   ).Icon;
   const options: Record<string, unknown> = {
-    imageSize: toSize(api, icon.imageSize),
+    imageSize: toSdkSize(api, icon.imageSize),
   };
-  if (icon.anchor) options.anchor = toXYSize(api, icon.anchor);
-  if (icon.imageOffset) options.imageOffset = toXYSize(api, icon.imageOffset);
+  if (icon.anchor) options.anchor = toSdkXYSize(api, icon.anchor);
+  if (icon.imageOffset) options.imageOffset = toSdkXYSize(api, icon.imageOffset);
   if (icon.printImageUrl) options.printImageUrl = icon.printImageUrl;
-  return new Icon(icon.imageUrl, toSize(api, icon.imageSize), options);
+  return new Icon(icon.imageUrl, toSdkSize(api, icon.imageSize), options);
 }
 
 /** 生成 {x,y} 形式的 Size(anchor/imageOffset 用) */
-function toXYSize(api: unknown, xy: { x: number; y: number }): unknown {
-  const Size = (api as { Size: new (w: number, h: number) => unknown }).Size;
-  return new Size(xy.x, xy.y);
-}
-
 const { resource } = useOverlayResource<BMarker3dProps, SdkMarker3D>(
   props,
   {
@@ -107,7 +93,7 @@ const { resource } = useOverlayResource<BMarker3dProps, SdkMarker3D>(
       };
       if (p.icon) options.icon = buildIcon(ctx.api, p.icon);
       return new BMapGL.Marker3D(
-        toPoint(ctx.api, p.position),
+        toSdkPoint(ctx.api, p.position),
         p.height,
         options,
       ) as unknown as SdkMarker3D;
@@ -137,7 +123,7 @@ const { resource } = useOverlayResource<BMarker3dProps, SdkMarker3D>(
             const res = getResource();
             const ctx = getCtx();
             if (!res || !ctx) return;
-            if (pos && typeof pos.lng === "number") res.setPosition(toPoint(ctx.api, pos));
+            if (pos && typeof pos.lng === "number") res.setPosition(toSdkPoint(ctx.api, pos));
           },
           { flush: "sync" },
         ),
