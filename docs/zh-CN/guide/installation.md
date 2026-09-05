@@ -56,7 +56,7 @@ npm install vue3-baidu-map-gl
 
 ## Hello World
 
-[在线演示](https://codepen.io/yue1123/pen/oNyQWeP)
+[原库在线演示（作者 yue1123）](https://codepen.io/yue1123/pen/oNyQWeP)
 
 <iframe allow="accelerometer; camera; encrypted-media; display-capture; geolocation; gyroscope; microphone; midi; clipboard-read; clipboard-write;" allowfullscreen="true" allowpaymentrequest="true" height="500" style="width: 100%;" scrolling="no" title="Vue3 BaiduMap GL" src="https://codepen.io/yue1123/embed/oNyQWeP?default-tab=html%2Cresult&theme-id=light" frameborder="no" loading="lazy">
 </iframe>

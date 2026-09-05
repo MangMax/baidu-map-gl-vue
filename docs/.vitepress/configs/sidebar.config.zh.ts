@@ -31,6 +31,10 @@ export const sidebarConfigZh: DefaultTheme.Sidebar = {
           link: 'breaking-changes'
         },
         {
+          text: '从 v2 迁移',
+          link: 'migration-from-v2'
+        },
+        {
           text: 'FAQ',
           link: 'faq'
         }

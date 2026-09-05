@@ -41,10 +41,10 @@ export default withPwa(
         message: 'Released under the MIT License.',
         copyright: 'Copyright © 2022-present dh and all contributors'
       },
-      socialLinks: [{ icon: 'github', link: 'https://github.com/yue1123/vue3-baidu-map-gl' }],
+      socialLinks: [{ icon: 'github', link: 'https://github.com/MangMax/baidu-map-gl-vue' }],
       sidebar: sidebarConfigZh,
       editLink: {
-        pattern: 'https://github.com/yue1123/vue3-baidu-map-gl/edit/main/docs/:path',
+        pattern: 'https://github.com/MangMax/baidu-map-gl-vue/edit/main/docs/:path',
         text: 'Edit this page on GitHub'
       }
     }
