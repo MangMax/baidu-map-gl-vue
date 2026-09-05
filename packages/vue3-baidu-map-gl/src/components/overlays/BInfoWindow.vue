@@ -17,8 +17,7 @@ const props = withDefaults(defineProps<BInfoWindowProps>(), {
 
 const emit = defineEmits<{
   "update:open": [v: boolean];
-  "update:modelValue": [v: boolean];
-  open: [];
+    open: [];
   close: [];
 }>();
 
@@ -55,8 +54,7 @@ onMounted(async () => {
   // SDK close/open 事件 → 仅状态真实变化时回写一次(§11.3)
   scope.add(
     bindSdkEvent(iw as any, "close", () => {
-      if (props.open || props.modelValue) emit("update:open", false);
-      if (props.modelValue) emit("update:modelValue", false);
+      if (props.open) emit("update:open", false);
       emit("close");
     }),
   );
@@ -69,9 +67,9 @@ onMounted(async () => {
   // open state → SDK(状态机:prop 驱动)
   scope.add(
     watch(
-      [() => props.open, () => props.modelValue],
-      ([open, model]) => {
-        const shouldOpen = open ?? model;
+      () => props.open,
+      (open) => {
+        const shouldOpen = open;
         if (!iw) return;
         if (shouldOpen) {
           if (props.position) {

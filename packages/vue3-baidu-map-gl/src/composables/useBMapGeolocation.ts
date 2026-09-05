@@ -84,8 +84,4 @@ export function useBMapGeolocation(options: BMapGeolocationOptions = {}) {
   };
 }
 
-/** deprecated alias:兼容 v2 命名 */
-export function useBrowserLocation(options?: BMapGeolocationOptions, cal?: (v: unknown) => void) {
-  const result = useBMapGeolocation(options);
-  return result;
-}
+

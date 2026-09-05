@@ -43,8 +43,6 @@ export interface BInfoWindowProps {
   height?: number;
   offset?: { x: number; y: number };
   open?: boolean;
-  /** v2 兼容:modelValue 等价于 open */
-  modelValue?: boolean;
 }
 
 export interface BCircleProps {
