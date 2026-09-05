@@ -1,6 +1,6 @@
 <template>
   <div>
-    <BMap v-bind="$attrs" :zoom="13" center="合肥市" @initd="handleInitd">
+    <BMap v-bind="$attrs" :zoom="13" center="合肥市" @ready="handleInitd">
       <BControl class="address-list" :offset="{ x: 10, y: 10 }">
         <ul>
           <li v-for="item in addressList" :key="item">{{ item }}</li>

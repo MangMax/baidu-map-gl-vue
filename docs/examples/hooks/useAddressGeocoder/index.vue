@@ -12,7 +12,7 @@
     <div class="state" v-else-if="isEmpty">没有解析到结果 ！</div>
     <div class="state" v-else>解析中...</div>
     <br />
-    <BMap v-bind="$attrs" ref="map" :center="point" @initd="handleInitd">
+    <BMap v-bind="$attrs" ref="map" :center="point" @ready="handleInitd">
       <template v-if="!isLoading && !isEmpty">
         <BMarker :position="point"></BMarker>
       </template>

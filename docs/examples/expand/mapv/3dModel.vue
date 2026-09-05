@@ -12,7 +12,7 @@
     enableInertialDragging
     enableContinuousZoom
     enableScrollWheelZoom
-    @initd="handleInitd"
+    @ready="handleInitd"
   />
 </template>
 

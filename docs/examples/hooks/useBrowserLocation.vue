@@ -15,7 +15,7 @@
     <div class="state" v-else-if="isError">出错了，{{ status }}</div>
     <div class="state" v-else>定位中...</div>
     <button v-if="!isLoading" class="myButton" @click="get">重新获取</button>
-    <BMap v-bind="$attrs" enableScrollWheelZoom ref="map" @initd="get" :center="location.point || undefined">
+    <BMap v-bind="$attrs" enableScrollWheelZoom ref="map" @ready="get" :center="location.point || undefined">
       <template v-if="!isLoading">
         <BMarker :position="location.point"></BMarker>
         <BCircle

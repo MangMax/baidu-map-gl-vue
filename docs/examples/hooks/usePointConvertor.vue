@@ -1,5 +1,5 @@
 <template>
-  <BMap v-bind="$attrs" @initd="handleInitd" :center="googlePoint">
+  <BMap v-bind="$attrs" @ready="handleInitd" :center="googlePoint">
     <template v-if="!isLoading && !isError">
       <template v-for="(point) in result">
         <BMarker :position="point"></BMarker>

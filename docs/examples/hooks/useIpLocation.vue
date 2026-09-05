@@ -8,7 +8,7 @@
     </div>
     <div class="state" v-else>定位中...</div>
     <button v-if="!isLoading" class="myButton" @click="get">重新获取</button>
-    <BMap v-bind="$attrs" enableScrollWheelZoom ref="map" :center="location.point || undefined" @initd="get">
+    <BMap v-bind="$attrs" enableScrollWheelZoom ref="map" :center="location.point || undefined" @ready="get">
       <template v-if="!isLoading">
         <BMarker :position="location.point"></BMarker>
       </template>
@@ -18,9 +18,9 @@
 
 <script lang="ts" setup>
   import { ref } from 'vue'
-  import { useIpLocation } from 'baidu-map-gl-vue'
+  import { useBMapIpLocation } from 'baidu-map-gl-vue'
   const map = ref()
-  const { get, location, isLoading } = useIpLocation(() => {
+  const { get, location, isLoading } = useBMapIpLocation(() => {
     map.value.resetCenter()
   })
 </script>

@@ -9,7 +9,7 @@
       :center="{ lng: 116.385243, lat: 39.913063 }"
       :zoom="13.5"
       enable-scroll-wheel-zoom
-      @initd="handleInitd"
+      @ready="handleInitd"
     />
   </div>
 </template>

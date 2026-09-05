@@ -9,7 +9,7 @@
       :zoom="16"
       :plugins="['TrackAnimation']"
       ref="map"
-      @initd="handleInitd"
+      @ready="handleInitd"
     />
     <div class="state">
       <span>动画状态: {{ status !== 'INITIAL' ? '已开始' : '未开始' }}</span>
@@ -24,9 +24,9 @@
 
 <script setup lang="ts">
   import { ref } from 'vue'
-  import { useViewAnimation, ViewAnimationKeyFrames } from 'baidu-map-gl-vue'
+  import { useBMapViewAnimation, ViewAnimationKeyFrames } from 'baidu-map-gl-vue'
   const map = ref(null)
-  const { setKeyFrames, start, stop, proceed, cancel, status } = useViewAnimation(map, {
+  const { setKeyFrames, start, stop, proceed, cancel, status } = useBMapViewAnimation(map, {
     duration: 10000,
     delay: 0,
     loop: 'INFINITE'

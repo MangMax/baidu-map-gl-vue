@@ -26,6 +26,26 @@ export interface BMapProps {
   loadingBgColor?: string;
 }
 
+/** BMarker 图标:内置名称或自定义图标描述 */
+export type MarkerIconName =
+  | "simple_red" | "simple_blue" | "loc_red" | "loc_blue"
+  | "start" | "end" | "location"
+  | "red1" | "red2" | "red3" | "red4" | "red5"
+  | "red6" | "red7" | "red8" | "red9" | "red10"
+  | "blue1" | "blue2" | "blue3" | "blue4" | "blue5"
+  | "blue6" | "blue7" | "blue8" | "blue9" | "blue10";
+
+export interface MarkerCustomIcon {
+  imageUrl: string;
+  size: { width: number; height: number };
+  anchor?: { x: number; y: number };
+  imageOffset?: { x: number; y: number };
+  imageSize?: { width: number; height: number };
+  printImageUrl?: string;
+}
+
+export type MarkerIcon = MarkerIconName | MarkerCustomIcon
+
 export interface BMarkerProps {
   position: { lng: number; lat: number };
   offset?: { x: number; y: number };
@@ -34,6 +54,8 @@ export interface BMarkerProps {
   title?: string;
   enableDragging?: boolean;
   rotation?: number;
+  /** 图标:内置名称或自定义 Icon 描述 */
+  icon?: MarkerIcon;
 }
 
 export interface BInfoWindowProps {

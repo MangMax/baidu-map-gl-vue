@@ -5,7 +5,7 @@
       enableScrollWheelZoom
       :zoom="13"
       :center="{ lng: 116.328749, lat: 40.026922 }"
-      @initd="handleInitd"
+      @ready="handleInitd"
     >
       <BControl class="point-list" :offset="{ x: 10, y: 10 }">
         <ul>

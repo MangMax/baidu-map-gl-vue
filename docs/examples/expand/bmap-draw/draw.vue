@@ -16,7 +16,7 @@
       :center="{ lng: 116.385243, lat: 39.913063 }"
       :zoom="16"
       enable-scroll-wheel-zoom
-      @initd="handleInitd"
+      @ready="handleInitd"
       mapStyleId="980161f3645989feac25a0da15da4178"
     />
   </div>
@@ -24,7 +24,7 @@
 
 <script lang="ts" setup>
   import { ref } from 'vue'
-  import { useDefaultMarkerIcons } from 'baidu-map-gl-vue'
+  import { useBMapMarkerIcons } from 'baidu-map-gl-vue'
   let marker = ref({
     instance: null,
     isDrawing: false,
@@ -76,7 +76,7 @@
       const scene = new DrawScene(map)
       clearFn.value = () => scene.clearData()
       // 点绘制
-      const defaultIcons = useDefaultMarkerIcons()
+      const defaultIcons = useBMapMarkerIcons()
       marker.value.instance = new MarkerDraw(scene, {
         isOpen: false,
         isSeries: true,

@@ -1,6 +1,6 @@
 <template>
   <div>
-    <BMap v-bind="$attrs" enableScrollWheelZoom ref="map" :center="point" @initd="handleInitd" @click="handleClick">
+    <BMap v-bind="$attrs" enableScrollWheelZoom ref="map" :center="point" @ready="handleInitd" @click="handleClick">
       <template v-if="!isLoading && !isEmpty">
         <BMarker :position="point"></BMarker>
         <BLabel

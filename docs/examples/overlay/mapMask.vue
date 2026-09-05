@@ -8,7 +8,7 @@
     v-bind="$attrs"
     :center="center"
     :zoom="16"
-    @initd="handleInitd"
+    @ready="handleInitd"
     enable-scroll-wheel-zoom
     :backgroundColor="[192, 214, 213, 100]"
   >

@@ -4,7 +4,7 @@ import { useOverlayResource, removeOverlay } from "../../core/composables/useOve
 import { overlayContextKey } from "../../core/context/types";
 import type { MapReadyContext } from "../../core/context/types";
 import type { ResourceScope } from "../../core/lifecycle/ResourceScope";
-import type { BMarkerProps } from "../../types/components";
+import type { BMarkerProps, MarkerIcon, MarkerCustomIcon } from "../../types/components";
 
 export type { BMarkerProps };
 
@@ -30,16 +30,57 @@ type SdkMarker = {
   setTitle(t: string): void;
 };
 
+// 内置图标雪碧图(loc_red 等)
+const DEFAULT_ICON_URL = "//mapopen.bj.bcebos.com/cms/react-bmap/markers_new2x_fbb9e99.png";
+const ICON_OFFSETS: Record<string, [number, number, number, number]> = {
+  simple_red: [454, 378, 42, 66],
+  simple_blue: [454, 450, 42, 66],
+  loc_red: [400, 378, 46, 70],
+  loc_blue: [400, 450, 46, 70],
+  start: [298, 450, 46, 70],
+  end: [298, 378, 46, 70],
+  location: [400, 378, 46, 70],
+};
+
+function buildIcon(api: unknown, icon: MarkerIcon | undefined): unknown | undefined {
+  if (!icon) return undefined;
+  const BMapGL = api as {
+    Icon: new (url: string, size: unknown, opts?: Record<string, unknown>) => unknown;
+    Size: new (w: number, h: number) => unknown;
+  };
+  // 字符串内置名
+  if (typeof icon === "string") {
+    const [ox, oy, w, h] = ICON_OFFSETS[icon] ?? [454, 378, 42, 66];
+    return new BMapGL.Icon(DEFAULT_ICON_URL, new BMapGL.Size(w / 2, h / 2), {
+      imageOffset: new BMapGL.Size(ox / 2, oy / 2),
+      imageSize: new BMapGL.Size(600 / 2, 600 / 2),
+    });
+  }
+  // 自定义对象
+  const c = icon as MarkerCustomIcon;
+  const opts: Record<string, unknown> = {
+    size: new BMapGL.Size(c.size.width, c.size.height),
+  };
+  if (c.imageSize) opts.imageSize = new BMapGL.Size(c.imageSize.width, c.imageSize.height);
+  if (c.anchor) opts.anchor = new BMapGL.Size(c.anchor.x, c.anchor.y);
+  if (c.imageOffset) opts.imageOffset = new BMapGL.Size(c.imageOffset.x, c.imageOffset.y);
+  if (c.printImageUrl) opts.printImageUrl = c.printImageUrl;
+  return new BMapGL.Icon(c.imageUrl, new BMapGL.Size(c.size.width, c.size.height), opts);
+}
+
 const make = (api: unknown, position: { lng: number; lat: number }, p: BMarkerProps) => {
   const BMapGL = api as {
     Point: new (lng: number, lat: number) => unknown;
     Marker: new (point: unknown, opts?: Record<string, unknown>) => unknown;
     Size: new (w: number, h: number) => unknown;
   };
-  return new BMapGL.Marker(new BMapGL.Point(position.lng, position.lat), {
+  const opts: Record<string, unknown> = {
     offset: new BMapGL.Size((p.offset ?? { x: 0, y: 0 }).x, (p.offset ?? { x: 0, y: 0 }).y),
     title: p.title,
-  }) as unknown as SdkMarker;
+  };
+  const icon = buildIcon(api, p.icon);
+  if (icon) opts.icon = icon;
+  return new BMapGL.Marker(new BMapGL.Point(position.lng, position.lat), opts) as unknown as SdkMarker;
 };
 
 const { resource } = useOverlayResource<BMarkerProps, SdkMarker>(
