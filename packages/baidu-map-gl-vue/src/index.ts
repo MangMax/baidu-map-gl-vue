@@ -39,3 +39,8 @@ export type {
 // core 领域类型(供业务使用)
 export type { MapContext, MapReadyContext, MapRuntimeStatus } from "./core/context/types";
 export { useBMapContext, useMapReady, useBMap } from "./composables/useBMap";
+
+// 组件公开类型(与 SFC 内 export 对齐,供类型使用)
+export type { ContextMenuItem, ContextMenuSeparator } from "./components/overlays/BContextMenu.vue";
+export type { DistrictType } from "./components/layers/BDistrictLayer.vue";
+export type { MarkerIcon, MarkerIconName, MarkerCustomIcon } from "./types/components";
