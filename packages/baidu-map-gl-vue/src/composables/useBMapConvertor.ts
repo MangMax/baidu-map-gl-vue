@@ -4,6 +4,7 @@
  * 复用 useBMapAsyncTask 统一异步状态(§13.3)。
  * 支持从/到坐标类型枚举(v2 CoordinatesFromType/ToType 断点兼容)。
  */
+import { computed } from "vue";
 import { useRequiredMapContext } from "../core/context/inject";
 import { useBMapAsyncTask } from "./useBMapAsyncTask";
 import { BMapError } from "../core/errors/BMapError";
@@ -72,10 +73,16 @@ export function useBMapConvertor() {
 
   return {
     data: task.data,
+    /** 结果别名(v2 习惯) */
+    result: task.data,
     error: task.error,
+    isError: computed(() => task.status.value === "error"),
+    isEmpty: computed(() => !task.data.value?.length),
     status: task.status,
     isLoading: task.isLoading,
     convert: task.execute,
+    /** v2 习惯别名 */
+    get: task.execute,
     cancel: task.cancel,
     reset: task.reset,
   };

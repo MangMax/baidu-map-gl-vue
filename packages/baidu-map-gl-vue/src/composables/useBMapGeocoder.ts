@@ -7,6 +7,7 @@
  *
  * 需要 BMap child context(经 ctx.whenReady 获取 api)。
  */
+import { computed } from "vue";
 import { useRequiredMapContext } from "../core/context/inject";
 import { useBMapAsyncTask } from "./useBMapAsyncTask";
 import { BMapError } from "../core/errors/BMapError";
@@ -65,7 +66,12 @@ export function useBMapGeocoder() {
 
   return {
     data: task.data,
+    /** 定位结果别名(v2 习惯) */
+    location: task.data,
+    result: task.data,
     error: task.error,
+    isError: computed(() => task.status.value === "error"),
+    isEmpty: computed(() => task.data.value === null),
     status: task.status,
     isLoading: task.isLoading,
     get: task.execute,

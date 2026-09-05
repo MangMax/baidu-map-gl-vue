@@ -75,10 +75,14 @@ export function useBMapGeolocation(options: BMapGeolocationOptions = {}) {
 
   return {
     data: task.data,
+    /** 定位结果别名(v2 习惯) */
+    location: task.data,
     error: task.error,
     status: task.status,
     isLoading: task.isLoading,
     locate: task.execute,
+    /** v2 习惯别名 */
+    get: task.execute,
     cancel: task.cancel,
     reset: task.reset,
   };
