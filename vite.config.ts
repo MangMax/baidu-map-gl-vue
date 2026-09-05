@@ -29,18 +29,6 @@ export default defineConfig({
     format: ['esm'],
     sourcemap: true,
     clean: true,
-    // 手动 code splitting:所有共享模块并入单一 chunk,保证每个入口 dts 自洽
-    // (tsdown 的 dts 不追踪共享 chunk,组件 chunk 无对应声明会导致 props 类型丢失)
-    outputOptions: {
-      codeSplitting: {
-        groups: [
-          {
-            name: 'shared',
-            test: /src\//,
-          },
-        ],
-      },
-    },
     dts: {
       vue: true,
     },
