@@ -76,6 +76,7 @@ const createMap = (sdkApi: unknown, container: HTMLElement, opts?: Record<string
   return new BMapGL.Map(container, {
     minZoom: props.minZoom,
     maxZoom: props.maxZoom,
+    backgroundColor: props.backgroundColor,
     ...opts,
   });
 };

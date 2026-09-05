@@ -10,7 +10,8 @@ import { useBMapAsyncTask } from "./useBMapAsyncTask";
 export interface BMapIpLocationResult {
   code: number;
   name: string;
-  center: { lng: number; lat: number };
+  /** 定位点(与 v2 习惯一致:point) */
+  point: { lng: number; lat: number };
 }
 
 export function useBMapIpLocation() {
@@ -25,7 +26,7 @@ export function useBMapIpLocation() {
           const r = res as { code?: number; name?: string; center?: { lng: number; lat: number } };
           resolve(
             r.center && r.name
-              ? { code: r.code ?? 0, name: r.name, center: r.center }
+              ? { code: r.code ?? 0, name: r.name, point: r.center }
               : null,
           );
         });

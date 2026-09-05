@@ -50,7 +50,7 @@
           let item = rs[i]
           data.push({
             geometry: {
-              type: 'Point',
+              type: 'PointLike',
               coordinates: [item[0], item[1]]
             },
             properties: {

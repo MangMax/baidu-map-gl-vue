@@ -13,7 +13,7 @@ import { toSdkPoints } from "../../core/utils/geometry";
 export interface BMapMaskProps {
   path: { lng: number; lat: number }[];
   pathVersion?: string | number;
-  showRegion?: "inside" | "outside";
+  showRegion?: MapMaskShowRegion;
   isBuildingMask?: boolean;
   isMapMask?: boolean;
   isPoiMask?: boolean;

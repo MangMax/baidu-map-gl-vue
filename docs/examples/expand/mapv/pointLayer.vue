@@ -59,7 +59,7 @@
       let cityCenter = mapv.utilCityCenter.getCenterByCityName(citys[Math.floor(Math.random() * citys.length)])
       data.push({
         geometry: {
-          type: 'Point',
+          type: 'PointLike',
           coordinates: [cityCenter.lng - 2 + Math.random() * 4, cityCenter.lat - 2 + Math.random() * 4]
         },
         properties: {

@@ -22,7 +22,7 @@
 
 <script lang="ts" setup>
   import { ref, watch } from 'vue'
-  import { useBMapGeocoder, Point } from 'baidu-map-gl-vue'
+  import { useBMapGeocoder, PointLike } from 'baidu-map-gl-vue'
   const map = ref()
   const addressList = ref([
     {
@@ -49,7 +49,7 @@
       deep: true
     }
   )
-  const { get, point, isLoading, isEmpty } = useBMapGeocoder<Point>(() => {
+  const { get, point, isLoading, isEmpty } = useBMapGeocoder<PointLike>(() => {
     map.value.resetCenter()
   })
 

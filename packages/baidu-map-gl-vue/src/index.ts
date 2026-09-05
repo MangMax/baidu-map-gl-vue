@@ -44,3 +44,6 @@ export { useBMapContext, useMapReady, useBMap } from "./composables/useBMap";
 export type { ContextMenuItem, ContextMenuSeparator } from "./components/overlays/BContextMenu.vue";
 export type { DistrictType } from "./components/layers/BDistrictLayer.vue";
 export type { MarkerIcon, MarkerIconName, MarkerCustomIcon } from "./types/components";
+
+export type { PointLike, SizeLike, XYLike } from "./core/utils/geometry";
+export type { MapMaskShowRegion } from "./components/overlays/BMapMask.vue";

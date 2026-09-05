@@ -1,9 +1,9 @@
 <script lang="ts" setup>
-  import { BMap, BMarker, _Point } from 'baidu-map-gl-vue'
+  import { BMap, BMarker, PointLike } from 'baidu-map-gl-vue'
   import { ref } from 'vue'
 
   const center = { lng: 113.5213534078, lat: 27.6907991732 }
-  const data = ref<_Point[]>([center])
+  const data = ref<PointLike[]>([center])
 
   const handleUpdate = () => {
     data.value = Array.from({ length: 10 }).map(() => {

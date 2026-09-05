@@ -24,6 +24,8 @@ export interface BMapProps {
   enableDragging?: boolean;
   enableScrollWheelZoom?: boolean;
   loadingBgColor?: string;
+  /** 背景色(透明度数组,如 [r,g,b,a]) */
+  backgroundColor?: number[];
 }
 
 /** BMarker 图标:内置名称或自定义图标描述 */

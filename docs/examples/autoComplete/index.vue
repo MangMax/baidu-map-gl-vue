@@ -6,8 +6,8 @@
 </template>
 
 <script setup lang="ts">
-  import { BMap, BAutoComplete, BMarker, type Point, useBMapGeocoder } from 'baidu-map-gl-vue'
-  const { get, point } = useBMapGeocoder<Point>()
+  import { BMap, BAutoComplete, BMarker, type PointLike, useBMapGeocoder } from 'baidu-map-gl-vue'
+  const { get, point } = useBMapGeocoder<PointLike>()
 
   function handleConfirm(e) {
     const value = e.item.value
