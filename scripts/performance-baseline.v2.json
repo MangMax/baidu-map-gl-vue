@@ -1,0 +1,16 @@
+{
+  "version": "2.6.5",
+  "collectedAt": "2026-09-05T06:06:19.792Z",
+  "tests": [
+    {
+      "name": "100 map mount/unmount cycles",
+      "ms": 5341,
+      "status": "passed"
+    },
+    {
+      "name": "100 markers create and destroy",
+      "ms": 77,
+      "status": "passed"
+    }
+  ]
+}

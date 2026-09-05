@@ -1,0 +1,282 @@
+{
+  "version": "2.6.5",
+  "collectedAt": "2026-09-05T05:31:14.673Z",
+  "entries": [
+    {
+      "file": "packages/components/map/index.vue",
+      "exports": [
+        "MapDisplayOptions",
+        "MapProps"
+      ],
+      "kind": "component"
+    },
+    {
+      "file": "packages/components/overlay/infowindow/index.vue",
+      "exports": [
+        "InfoWindowProps"
+      ],
+      "kind": "component"
+    },
+    {
+      "file": "packages/components/overlay/marker/index.vue",
+      "exports": [
+        "MarkerCustomIcon",
+        "MarkerOffset",
+        "MarkerProps"
+      ],
+      "kind": "component"
+    },
+    {
+      "file": "packages/hooks/useAddressGeocoder.ts",
+      "exports": [
+        "AddressGeocoderResult",
+        "useAddressGeocoder"
+      ],
+      "kind": "hook"
+    },
+    {
+      "file": "packages/hooks/useAreaBoundary.ts",
+      "exports": [
+        "AreaBoundary",
+        "useAreaBoundary"
+      ],
+      "kind": "hook"
+    },
+    {
+      "file": "packages/hooks/useBrowserLocation.ts",
+      "exports": [
+        "BrowserLocationStatus",
+        "UseBrowserLocationOptions",
+        "useBrowserLocation"
+      ],
+      "kind": "hook"
+    },
+    {
+      "file": "packages/hooks/useDefaultMarkerIcons.ts",
+      "exports": [
+        "MarkerIcons",
+        "useDefaultMarkerIcons"
+      ],
+      "kind": "hook"
+    },
+    {
+      "file": "packages/hooks/useInstanceId.ts",
+      "exports": [
+        "useInstanceId"
+      ],
+      "kind": "hook"
+    },
+    {
+      "file": "packages/hooks/useIpLocation.ts",
+      "exports": [
+        "useIpLocation"
+      ],
+      "kind": "hook"
+    },
+    {
+      "file": "packages/hooks/useParentComponentEffect.ts",
+      "exports": [
+        "default:useParentComponentEffect"
+      ],
+      "kind": "hook"
+    },
+    {
+      "file": "packages/hooks/usePoint.ts",
+      "exports": [
+        "usePoint"
+      ],
+      "kind": "hook"
+    },
+    {
+      "file": "packages/hooks/usePointConvertor.ts",
+      "exports": [
+        "CoordinatesFromType",
+        "CoordinatesToType",
+        "UsePointConvertorStatus",
+        "usePointConvertor"
+      ],
+      "kind": "hook"
+    },
+    {
+      "file": "packages/hooks/usePointGeocoder.ts",
+      "exports": [
+        "PointGeocoderResult",
+        "usePointGeocoder"
+      ],
+      "kind": "hook"
+    },
+    {
+      "file": "packages/hooks/usePubSub.ts",
+      "exports": [
+        "default:usePubSub"
+      ],
+      "kind": "hook"
+    },
+    {
+      "file": "packages/hooks/useTrackAnimation.ts",
+      "exports": [
+        "UseTrackAnimationOptions",
+        "useTrackAnimation"
+      ],
+      "kind": "hook"
+    },
+    {
+      "file": "packages/hooks/useViewAnimation.ts",
+      "exports": [
+        "UseViewAnimationOptions",
+        "ViewAnimationKeyFrames",
+        "useViewAnimation"
+      ],
+      "kind": "hook"
+    },
+    {
+      "file": "packages/index.ts",
+      "exports": [
+        "Vue3BaiduMapGlOptions",
+        "default",
+        "default:vue3BaiduMapGl",
+        "install",
+        "version"
+      ],
+      "kind": "entry"
+    },
+    {
+      "file": "packages/utils/bindEvents.ts",
+      "exports": [
+        "Callback",
+        "bindEvents"
+      ],
+      "kind": "util"
+    },
+    {
+      "file": "packages/utils/callWhenDifferentValue.ts",
+      "exports": [
+        "callWhenDifferentValue"
+      ],
+      "kind": "util"
+    },
+    {
+      "file": "packages/utils/conditionalCall.ts",
+      "exports": [
+        "conditionalCall"
+      ],
+      "kind": "util"
+    },
+    {
+      "file": "packages/utils/getScriptAsync.ts",
+      "exports": [
+        "BMapScriptLoaderWrapper",
+        "Options",
+        "default:getScriptAsync"
+      ],
+      "kind": "util"
+    },
+    {
+      "file": "packages/utils/getUid.ts",
+      "exports": [
+        "getUid"
+      ],
+      "kind": "util"
+    },
+    {
+      "file": "packages/utils/helper.ts",
+      "exports": [
+        "assert",
+        "clamp",
+        "hasOwn",
+        "isObject",
+        "noop",
+        "notNullish",
+        "now",
+        "rand",
+        "timestamp"
+      ],
+      "kind": "util"
+    },
+    {
+      "file": "packages/utils/is.ts",
+      "exports": [
+        "isArray",
+        "isClient",
+        "isDef",
+        "isString"
+      ],
+      "kind": "util"
+    },
+    {
+      "file": "packages/utils/log.ts",
+      "exports": [
+        "error",
+        "warn",
+        "warnOnce"
+      ],
+      "kind": "util"
+    },
+    {
+      "file": "packages/utils/pathPointsToMapPoints.ts",
+      "exports": [
+        "getPoint",
+        "pathPointsToMapPoints"
+      ],
+      "kind": "util"
+    },
+    {
+      "file": "packages/utils/pluginLoader.ts",
+      "exports": [
+        "DEFAULT_PLUGINS_SOURCE_LINK",
+        "PluginsList",
+        "PluginsLoader",
+        "PluginsSourceLink",
+        "PluginsUnion",
+        "UserPlugins",
+        "initPlugins",
+        "pluginLoaderMap"
+      ],
+      "kind": "util"
+    },
+    {
+      "file": "packages/utils/proxyValue.ts",
+      "exports": [
+        "proxyValue"
+      ],
+      "kind": "util"
+    },
+    {
+      "file": "packages/utils/types.ts",
+      "exports": [
+        "AnyFn",
+        "ArgumentsType",
+        "Arrayable",
+        "Awaitable",
+        "ConfigurableFlush",
+        "ConfigurableFlushSync",
+        "ControlAnchor",
+        "DeepMaybeRef",
+        "DistrictType",
+        "DrivingPolicy",
+        "ElementOf",
+        "Fn",
+        "LengthUnit",
+        "MapMaskShowRegion",
+        "MapOldSources",
+        "MapSources",
+        "MapType",
+        "MaybeRef",
+        "MaybeRefOrGetter",
+        "MultiWatchSources",
+        "Mutable",
+        "Pausable",
+        "Point",
+        "PromisifyFn",
+        "ReadonlyRefOrGetter",
+        "RemovableRef",
+        "ShallowUnwrapRef",
+        "Stoppable",
+        "StrokeStyle",
+        "TransitPolicy",
+        "_Point"
+      ],
+      "kind": "util"
+    }
+  ]
+}
