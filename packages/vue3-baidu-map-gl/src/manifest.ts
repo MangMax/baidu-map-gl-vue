@@ -1,0 +1,161 @@
+/**
+ * M7-01: 组件 manifest(单一事实源)
+ *
+ * 由 scripts/generate-manifest-artifacts.mts 读取此清单,生成
+ * - components/index.ts(可选)
+ * - Volar GlobalComponents
+ * - resolver 合法组件列表
+ */
+export const componentManifest = [
+  { name: "BMap", exportName: "BMap", category: "core", source: "./components/map/BMap.vue" },
+  {
+    name: "BMarker",
+    exportName: "BMarker",
+    category: "overlay",
+    source: "./components/overlays/BMarker.vue",
+  },
+  {
+    name: "BInfoWindow",
+    exportName: "BInfoWindow",
+    category: "overlay",
+    source: "./components/overlays/BInfoWindow.vue",
+  },
+  {
+    name: "BCircle",
+    exportName: "BCircle",
+    category: "overlay",
+    source: "./components/overlays/BCircle.vue",
+  },
+  {
+    name: "BPolyline",
+    exportName: "BPolyline",
+    category: "overlay",
+    source: "./components/overlays/BPolyline.vue",
+  },
+  {
+    name: "BPolygon",
+    exportName: "BPolygon",
+    category: "overlay",
+    source: "./components/overlays/BPolygon.vue",
+  },
+  {
+    name: "BLabel",
+    exportName: "BLabel",
+    category: "overlay",
+    source: "./components/overlays/BLabel.vue",
+  },
+  {
+    name: "BContextMenu",
+    exportName: "BContextMenu",
+    category: "overlay",
+    source: "./components/overlays/BContextMenu.vue",
+  },
+  {
+    name: "BPrism",
+    exportName: "BPrism",
+    category: "overlay",
+    source: "./components/overlays/BPrism.vue",
+  },
+  {
+    name: "BGroundOverlay",
+    exportName: "BGroundOverlay",
+    category: "overlay",
+    source: "./components/overlays/BGroundOverlay.vue",
+  },
+  {
+    name: "BBezierCurve",
+    exportName: "BBezierCurve",
+    category: "overlay",
+    source: "./components/overlays/BBezierCurve.vue",
+  },
+  {
+    name: "BMapMask",
+    exportName: "BMapMask",
+    category: "overlay",
+    source: "./components/overlays/BMapMask.vue",
+  },
+  {
+    name: "BMarker3d",
+    exportName: "BMarker3d",
+    category: "overlay",
+    source: "./components/overlays/BMarker3d.vue",
+  },
+  {
+    name: "BAutoComplete",
+    exportName: "BAutoComplete",
+    category: "overlay",
+    source: "./components/autocomplete/BAutoComplete.vue",
+  },
+  {
+    name: "BPanoramaControl",
+    exportName: "BPanoramaControl",
+    category: "control",
+    source: "./components/controls/BPanoramaControl.vue",
+  },
+  {
+    name: "BControl",
+    exportName: "BControl",
+    category: "control",
+    source: "./components/controls/BControl.vue",
+  },
+  {
+    name: "BPointLayer",
+    exportName: "BPointLayer",
+    category: "data",
+    source: "./components/data/BPointLayer.vue",
+  },
+  {
+    name: "BMarkerCluster",
+    exportName: "BMarkerCluster",
+    category: "data",
+    source: "./components/data/BMarkerCluster.vue",
+  },
+  {
+    name: "BZoom",
+    exportName: "BZoom",
+    category: "control",
+    source: "./components/controls/BZoom.vue",
+  },
+  {
+    name: "BScale",
+    exportName: "BScale",
+    category: "control",
+    source: "./components/controls/BScale.vue",
+  },
+  {
+    name: "BCityList",
+    exportName: "BCityList",
+    category: "control",
+    source: "./components/controls/BCityList.vue",
+  },
+  {
+    name: "BLocation",
+    exportName: "BLocation",
+    category: "control",
+    source: "./components/controls/BLocation.vue",
+  },
+  {
+    name: "BNavigation3d",
+    exportName: "BNavigation3d",
+    category: "control",
+    source: "./components/controls/BNavigation3d.vue",
+  },
+  {
+    name: "BCopyright",
+    exportName: "BCopyright",
+    category: "control",
+    source: "./components/controls/BCopyright.vue",
+  },
+  {
+    name: "BDistrictLayer",
+    exportName: "BDistrictLayer",
+    category: "layer",
+    source: "./components/layers/BDistrictLayer.vue",
+  },
+  {
+    name: "BPanoramaCoverageLayer",
+    exportName: "BPanoramaCoverageLayer",
+    category: "layer",
+    source: "./components/layers/BPanoramaCoverageLayer.vue",
+  },
+] as const;

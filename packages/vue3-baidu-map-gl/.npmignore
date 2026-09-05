@@ -1,0 +1,7 @@
+src/
+vite.config.build.ts
+tsconfig.build.json
+tsconfig.dts.json
+volar.d.ts
+*.test.ts
+__tests__/
