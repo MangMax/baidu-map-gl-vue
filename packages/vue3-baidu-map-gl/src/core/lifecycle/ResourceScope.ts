@@ -76,13 +76,13 @@ export class ResourceScope {
   }
 
   /** 注册一个定时器 */
-  setTimeout(handler: () => void, timeout?: number): number {
+  setTimeout(handler: () => void, timeout?: number): ReturnType<typeof setTimeout> {
     const id = setTimeout(handler, timeout);
     this.add(() => clearTimeout(id));
     return id;
   }
 
-  setInterval(handler: () => void, timeout?: number): number {
+  setInterval(handler: () => void, timeout?: number): ReturnType<typeof setInterval> {
     const id = setInterval(handler, timeout);
     this.add(() => clearInterval(id));
     return id;
