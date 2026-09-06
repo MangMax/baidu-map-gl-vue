@@ -51,7 +51,9 @@ const appConfig = inject(bmapConfigKey, undefined) as BMapPluginConfig | undefin
 // 在 setup 阶段同步创建 runtime,使子组件在父 onMounted 之前也能 whenReady
 const loadFn =
   props.provider?.load ??
-  appConfig?.provider?.load ??
+  (appConfig?.provider?.load
+    ? (opts: BMapLoadOptions = {}, signal?: AbortSignal) => appConfig!.provider!.load(opts, signal)
+    : undefined) ??
   ((opts?: unknown, signal?: AbortSignal) => {
     const existing = (window as any).BMapGL;
     if (!existing) {
