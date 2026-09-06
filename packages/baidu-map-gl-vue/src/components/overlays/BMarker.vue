@@ -96,14 +96,18 @@ const { resource } = useOverlayResource<BMarkerProps, SdkMarker>(
     // 响应式 prop watcher:setup 阶段同步注册(保证响应式)
     createWatchers(getCtx, getResource, p, addDisposer) {
       addDisposer(
-        watch([() => p.position.lng, () => p.position.lat], ([lng, lat], [oldLng, oldLat]) => {
-          if (lng === oldLng && lat === oldLat) return;
-          const res = getResource();
-          const ctx = getCtx();
-          if (!res || !ctx) return;
-          const Point = (ctx.api as { Point: new (l: number, t: number) => unknown }).Point;
-          res.setPosition(new Point(lng, lat));
-        }),
+        watch(
+          [() => p.position?.lng, () => p.position?.lat],
+          ([lng, lat], [oldLng, oldLat]) => {
+            if (lng === undefined || lat === undefined) return;
+            if (lng === oldLng && lat === oldLat) return;
+            const res = getResource();
+            const ctx = getCtx();
+            if (!res || !ctx) return;
+            const Point = (ctx.api as { Point: new (l: number, t: number) => unknown }).Point;
+            res.setPosition(new Point(lng, lat));
+          },
+        ),
       );
       addDisposer(
         watch(
