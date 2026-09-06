@@ -12,7 +12,7 @@
     "baidu-map-gl-vue": "workspace:*"
   },
   "devDependencies": {
-    "@vitejs/plugin-vue": "^5.1.2",
-    "vite": "^6.4.0"
+    "@vitejs/plugin-vue": "^6.0.8",
+    "vite": "^8.2.2"
   }
 }

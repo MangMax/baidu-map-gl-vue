@@ -1,5 +1,6 @@
 {
   "private": true,
+  "type": "module",
   "scripts": {
     "dev": "vitepress dev .",
     "build": "prettier -w ./zh-CN/* && vitepress build .",
@@ -24,14 +25,14 @@
     "workbox-window": "^7.4.1"
   },
   "engines": {
-    "node": ">=18.0.0"
+    "node": ">=22.0.0"
   },
   "dependencies": {
     "bmap-draw": "^1.0.19",
     "mapv-three": "^1.0.12",
     "prism-theme-vars": "^0.2.5",
     "three": "^0.147.0",
-    "vitepress": "^1.6.4",
+    "vitepress": "2.0.0-alpha.20",
     "@vueuse/core": "^14.4.0"
   },
   "name": "docs-site"

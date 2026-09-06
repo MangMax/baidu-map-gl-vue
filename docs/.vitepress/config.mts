@@ -1,5 +1,5 @@
 import { defineConfig } from 'vitepress'
-import { head, nav, sidebarConfigZh, mdPlugin, pwa } from './configs'
+import { head, nav, sidebarConfigZh, mdPlugin, pwa } from './configs/index.ts'
 import { withPwa } from '@vite-pwa/vitepress'
 
 export default withPwa(

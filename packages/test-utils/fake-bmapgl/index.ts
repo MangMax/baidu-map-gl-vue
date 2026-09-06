@@ -18,6 +18,8 @@
  */
 import { FakeEventTarget } from './FakeEventTarget.ts'
 
+export { FakeEventTarget }
+
 export interface FakeStats {
   mapsCreated: number
   mapsDestroyed: number

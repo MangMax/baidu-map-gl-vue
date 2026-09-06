@@ -1,5 +1,5 @@
 import type { DefaultTheme } from 'vitepress'
-import { version } from '../../../package.json'
+import { version } from '../../../package.json' with { type: 'json' }
 
 export const nav: DefaultTheme.Config['nav'] = [
   {
