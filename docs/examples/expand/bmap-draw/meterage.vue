@@ -17,36 +17,40 @@
 <script lang="ts" setup>
   import { ref } from 'vue'
   let distance = ref({
-    instance: null,
+    instance: null as { open(): void; close(): void; addEventListener?(type: string, cb: (e: unknown) => void): void } | null,
     isMeasuring: true,
     toggle() {
       let _distance = distance.value
-      _distance.isMeasuring ? _distance.instance.close() : _distance.instance.open()
-      _distance.isMeasuring = !_distance.isMeasuring
+      if (_distance.instance) {
+        _distance.isMeasuring ? _distance.instance.close() : _distance.instance.open()
+        _distance.isMeasuring = !_distance.isMeasuring
+      }
     }
   })
   let measure = ref({
-    instance: null,
+    instance: null as { open(): void; close(): void; addEventListener?(type: string, cb: (e: unknown) => void): void } | null,
     isMeasuring: true,
     toggle() {
       let _measure = measure.value
-      _measure.isMeasuring ? _measure.instance.close() : _measure.instance.open()
-      _measure.isMeasuring = !_measure.isMeasuring
+      if (_measure.instance) {
+        _measure.isMeasuring ? _measure.instance.close() : _measure.instance.open()
+        _measure.isMeasuring = !_measure.isMeasuring
+      }
     }
   })
-  function handleInitd({ map }) {
+  function handleInitd({ map }: { map: unknown }) {
     import('bmap-draw').then(({ DrawScene, DistanceMeasure, AreaMeasure }) => {
       const scene = new DrawScene(map)
       // 测量距离
       distance.value.instance = new DistanceMeasure(scene)
       distance.value.toggle()
-      distance.value.instance.addEventListener('measure-length-end', (e) => {
+      distance.value.instance?.addEventListener?.('measure-length-end', (e) => {
         console.log('measure-end', e)
       })
       // 测量面积
       measure.value.instance = new AreaMeasure(scene)
       measure.value.toggle()
-      measure.value.instance.addEventListener('measure-area-end', (e) => {
+      measure.value.instance?.addEventListener?.('measure-area-end', (e) => {
         console.log('measure-end', e)
       })
     })

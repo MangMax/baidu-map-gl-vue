@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, shallowRef, computed, onMounted, onUnmounted, provide, inject } from "vue";
+import { ref, shallowRef, computed, watch, onMounted, onUnmounted, provide, inject } from "vue";
 import { mapContextKey, type MapContext, type MapRuntimeStatus } from "../../core/context/types";
 import { MapRuntime } from "../../core/runtime/MapRuntime";
 import { BMapError } from "../../core/errors/BMapError";
@@ -86,6 +86,55 @@ const destroyMap = (map: unknown) => {
   m?.destroy?.();
 };
 
+// enableXxx 布尔开关 → SDK enableXxx/disableXxx 方法名映射
+function mapMethods(m: unknown) {
+  return m as
+    | {
+        enableDragging?: () => void;
+        disableDragging?: () => void;
+        enableScrollWheelZoom?: () => void;
+        disableScrollWheelZoom?: () => void;
+        enableInertialDragging?: () => void;
+        disableInertialDragging?: () => void;
+        enablePinchToZoom?: () => void;
+        disablePinchToZoom?: () => void;
+        enableKeyboard?: () => void;
+        disableKeyboard?: () => void;
+        enableDoubleClickZoom?: () => void;
+        disableDoubleClickZoom?: () => void;
+        enableContinuousZoom?: () => void;
+        disableContinuousZoom?: () => void;
+        enableResizeOnCenter?: () => void;
+        disableResizeOnCenter?: () => void;
+        setTrafficOn?: () => void;
+        setTrafficOff?: () => void;
+      }
+    | null;
+}
+
+/** 将 props 上的 enableXxx 布尔值同步到 SDK map 实例 */
+function syncEnableProps(target: unknown) {
+  if (!target) return;
+  const m = mapMethods(target);
+  const set = (
+    on: boolean | undefined,
+    enable?: () => void,
+    disable?: () => void,
+  ) => {
+    if (on === undefined || !enable || !disable) return;
+    on ? enable() : disable();
+  };
+  set(props.enableDragging, m?.enableDragging, m?.disableDragging);
+  set(props.enableScrollWheelZoom, m?.enableScrollWheelZoom, m?.disableScrollWheelZoom);
+  set(props.enableInertialDragging, m?.enableInertialDragging, m?.disableInertialDragging);
+  set(props.enablePinchToZoom, m?.enablePinchToZoom, m?.disablePinchToZoom);
+  set(props.enableKeyboard, m?.enableKeyboard, m?.disableKeyboard);
+  set(props.enableDoubleClickZoom, m?.enableDoubleClickZoom, m?.disableDoubleClickZoom);
+  set(props.enableContinuousZoom, m?.enableContinuousZoom, m?.disableContinuousZoom);
+  set(props.enableResizeOnCenter, m?.enableResizeOnCenter, m?.disableResizeOnCenter);
+  set(props.enableTraffic, m?.setTrafficOn, m?.setTrafficOff);
+}
+
 // runtime 立即创建(container 在模板 ref,挂载后才有;mount 时使用)
 runtime = new MapRuntime({
   provider: { load: loadFn },
@@ -117,6 +166,7 @@ async function boot() {
     map.value = ctx.map;
     api.value = ctx.api;
     status.value = "ready";
+    syncEnableProps(map.value);
     const payload = { map: ctx.map, api: ctx.api };
     emit("ready", payload);
     emit("initd", payload);
@@ -138,6 +188,23 @@ onUnmounted(() => {
   runtime = null;
   emit("unload");
 });
+
+// props.enableXxx 变化时同步 SDK
+watch(
+  () => [
+    props.enableDragging,
+    props.enableScrollWheelZoom,
+    props.enableInertialDragging,
+    props.enablePinchToZoom,
+    props.enableKeyboard,
+    props.enableDoubleClickZoom,
+    props.enableContinuousZoom,
+    props.enableResizeOnCenter,
+    props.enableTraffic,
+  ],
+  () => syncEnableProps(map.value),
+  { flush: "post" },
+);
 
 const context: MapContext = {
   id: runtime.id,

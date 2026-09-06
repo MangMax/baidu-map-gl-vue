@@ -3,7 +3,8 @@ import { watch, onMounted, onUnmounted } from "vue";
 import { useRequiredMapContext } from "../../core/context/inject";
 import { ResourceScope } from "../../core/lifecycle/ResourceScope";
 import { DataLayerManager } from "../../core/data/DataLayerManager";
-import { gridCluster, type PointLike, type Cluster } from "../../core/data/gridCluster";
+import { gridCluster, type Cluster } from "../../core/data/gridCluster";
+import type { PointLike } from "../../core/utils/geometry";
 import type { MapReadyContext } from "../../core/context/types";
 
 /**

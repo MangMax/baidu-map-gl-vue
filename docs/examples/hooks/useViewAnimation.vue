@@ -26,7 +26,7 @@
   import { ref } from 'vue'
   import { useBMapViewAnimation, ViewAnimationKeyFrames } from 'baidu-map-gl-vue'
   const map = ref(null)
-  const { setKeyFrames, start, stop, proceed, cancel, status } = useBMapViewAnimation(map, {
+  const { setKeyFrames, start, stop, proceed, cancel, status } = useBMapViewAnimation({
     duration: 10000,
     delay: 0,
     loop: 'INFINITE'

@@ -68,6 +68,8 @@ export function useBMapGeocoder() {
     data: task.data,
     /** 定位结果别名(v2 习惯) */
     location: task.data,
+    /** 点结果别名(模板 point?.lat 习惯) */
+    point: task.data,
     result: task.data,
     error: task.error,
     isError: computed(() => task.status.value === "error"),

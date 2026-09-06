@@ -7,6 +7,21 @@
  * - 精确的组件实例类型仍由 Volar 从 SFC 解析。
  */
 
+/** BMapMask 掩膜显示区域 */
+export type MapMaskShowRegion = "inside" | "outside";
+
+/**
+ * 行政区类型(与 SDK DistrictLayer kind 对齐,运行时可用)
+ * PROVINCE=0 / CITY=1 / AREA=2
+ */
+export const DistrictType = {
+  PROVINCE: 0,
+  CITY: 1,
+  AREA: 2,
+} as const;
+
+export type DistrictTypeValue = (typeof DistrictType)[keyof typeof DistrictType];
+
 export interface BMapProps {
   ak?: string;
   apiUrl?: string;
@@ -23,6 +38,17 @@ export interface BMapProps {
   noAnimation?: boolean;
   enableDragging?: boolean;
   enableScrollWheelZoom?: boolean;
+  enableInertialDragging?: boolean;
+  enablePinchToZoom?: boolean;
+  enableKeyboard?: boolean;
+  enableDoubleClickZoom?: boolean;
+  enableContinuousZoom?: boolean;
+  /** 是否启用交通路况图层(v2 兼容) */
+  enableTraffic?: boolean;
+  /** 开启图区 resize 中心点不变(v2 兼容) */
+  enableResizeOnCenter?: boolean;
+  /** 容器尺寸变化时自动重设尺寸(v2 兼容) */
+  enableAutoResize?: boolean;
   loadingBgColor?: string;
   /** 背景色(透明度数组,如 [r,g,b,a]) */
   backgroundColor?: number[];

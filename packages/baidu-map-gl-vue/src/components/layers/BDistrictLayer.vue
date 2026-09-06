@@ -5,8 +5,9 @@ import { useRequiredMapContext } from "../../core/context/inject";
 import { bindSdkEvent } from "../../core/events/EventBridge";
 import type { MapReadyContext } from "../../core/context/types";
 import type { ResourceScope } from "../../core/lifecycle/ResourceScope";
+import type { DistrictTypeValue } from "../../types/components";
 
-export type DistrictType = 0 | 1 | 2;
+export type DistrictType = DistrictTypeValue;
 
 export interface BDistrictLayerProps {
   visible?: boolean;

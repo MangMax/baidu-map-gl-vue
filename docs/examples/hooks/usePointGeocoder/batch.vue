@@ -20,14 +20,16 @@
       </BControl>
       <template v-if="!isLoading">
         <template v-for="(item, index) in result">
-          <BMarker :position="item.point"></BMarker>
+          <template v-if="item.detail">
+          <BMarker :position="item.detail.point"></BMarker>
           <BLabel
             style="color: #333; font-size: 9px"
-            :position="item.point"
-            :content="`${index}. 地址: ${item.address} 所属商圈:${item.business} 最匹配地点: ${
-              item?.surroundingPois[0]?.title || '无'
+            :position="item.detail.point"
+            :content="`${index}. 地址: ${item.detail.address} 所属商圈:${item.detail.business} 最匹配地点: ${
+              item.detail.surroundingPois[0]?.title || '无'
             }`"
           ></BLabel>
+          </template>
         </template>
       </template>
     </BMap>
@@ -35,7 +37,7 @@
 </template>
 
 <script lang="ts" setup>
-  import { useBMapGeocoder, GeoPoint } from 'baidu-map-gl-vue'
+  import { useBMapGeocodeDetail, GeocodeDetailResult } from 'baidu-map-gl-vue'
   const points = [
     { lng: 116.307852, lat: 40.057031 },
     { lng: 116.313082, lat: 40.047674 },
@@ -46,9 +48,14 @@
     { lng: 116.403472, lat: 39.999411 },
     { lng: 116.307901, lat: 40.05901 }
   ]
-  const { get, result, isLoading } = useBMapGeocoder<GeoPoint[]>()
+  import { ref } from 'vue'
+  const { getBatch, isLoading } = useBMapGeocodeDetail()
+  type BatchItem = { point: { lng: number; lat: number }; detail: GeocodeDetailResult | null }
+  const result = ref<Array<{ point: { lng: number; lat: number }; detail: GeocodeDetailResult }>>([])
   function handleInitd() {
-    get(points)
+    getBatch(points).then((r) => {
+      result.value = (r as BatchItem[]).filter((x): x is NonNullable<typeof x> => x.detail !== null) as any
+    })
   }
 </script>
 

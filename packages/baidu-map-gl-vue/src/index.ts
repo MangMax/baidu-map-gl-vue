@@ -42,8 +42,11 @@ export { useBMapContext, useMapReady, useBMap } from "./composables/useBMap";
 
 // 组件公开类型(与 SFC 内 export 对齐,供类型使用)
 export type { ContextMenuItem, ContextMenuSeparator } from "./components/overlays/BContextMenu.vue";
-export type { DistrictType } from "./components/layers/BDistrictLayer.vue";
 export type { MarkerIcon, MarkerIconName, MarkerCustomIcon } from "./types/components";
 
+// 运行时枚举(供模板/脚本使用)
+export { DistrictType } from "./types/components";
+export type { DistrictTypeValue } from "./types/components";
+
 export type { PointLike, SizeLike, XYLike } from "./core/utils/geometry";
-export type { MapMaskShowRegion } from "./components/overlays/BMapMask.vue";
+export type { MapMaskShowRegion } from "./types/components";

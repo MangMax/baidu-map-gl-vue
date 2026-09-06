@@ -2,15 +2,15 @@
   <div>
     <div class="state" v-if="!isLoading">
       <h5>定位结果:</h5>
-      <span>城市 - {{ location.name }}</span>
-      <span>纬度 - {{ location.point?.lat }}</span>
-      <span>经度 - {{ location.point?.lng }}</span>
+      <span>城市 - {{ location?.name }}</span>
+      <span>纬度 - {{ location?.point?.lat }}</span>
+      <span>经度 - {{ location?.point?.lng }}</span>
     </div>
     <div class="state" v-else>定位中...</div>
     <button v-if="!isLoading" class="myButton" @click="get">重新获取</button>
-    <BMap v-bind="$attrs" enableScrollWheelZoom ref="map" :center="location.point || undefined" @ready="get">
+    <BMap v-bind="$attrs" enableScrollWheelZoom ref="map" :center="location?.point || undefined" @ready="get">
       <template v-if="!isLoading">
-        <BMarker :position="location.point"></BMarker>
+        <BMarker :position="location?.point"></BMarker>
       </template>
     </BMap>
   </div>
@@ -20,9 +20,7 @@
   import { ref } from 'vue'
   import { useBMapIpLocation } from 'baidu-map-gl-vue'
   const map = ref()
-  const { get, location, isLoading } = useBMapIpLocation(() => {
-    map.value.resetCenter()
-  })
+  const { get, location, isLoading } = useBMapIpLocation()
 </script>
 
 <style>

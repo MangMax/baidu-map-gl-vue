@@ -4,10 +4,7 @@
  * 依据给定 zoom 对点集做网格聚合:同一网格内的点合并为一个簇。
  * 供 BMarkerCluster 内置实现使用,不依赖任何第三方插件。
  */
-export interface PointLike {
-  lng: number;
-  lat: number;
-}
+import type { PointLike } from "../utils/geometry";
 
 export interface Cluster<Item> {
   id: string;

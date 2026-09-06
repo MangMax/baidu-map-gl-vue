@@ -26,57 +26,67 @@
   import { ref } from 'vue'
   import { useBMapMarkerIcons } from 'baidu-map-gl-vue'
   let marker = ref({
-    instance: null,
+    instance: null as { open(): void; closeAll(): void } | null,
     isDrawing: false,
     toggle() {
       let _marker = marker.value
-      _marker.isDrawing ? _marker.instance.closeAll() : _marker.instance.open()
-      _marker.isDrawing = !_marker.isDrawing
+      if (_marker.instance) {
+        _marker.isDrawing ? _marker.instance.closeAll() : _marker.instance.open()
+        _marker.isDrawing = !_marker.isDrawing
+      }
     }
   })
   let circle = ref({
-    instance: null,
+    instance: null as { open(): void; closeAll(): void } | null,
     isDrawing: false,
     toggle() {
       let _circle = circle.value
-      _circle.isDrawing ? _circle.instance.closeAll() : _circle.instance.open()
-      _circle.isDrawing = !_circle.isDrawing
+      if (_circle.instance) {
+        _circle.isDrawing ? _circle.instance.closeAll() : _circle.instance.open()
+        _circle.isDrawing = !_circle.isDrawing
+      }
     }
   })
   let polyline = ref({
-    instance: null,
+    instance: null as { open(): void; closeAll(): void } | null,
     isDrawing: false,
     toggle() {
       let _polyline = polyline.value
-      _polyline.isDrawing ? _polyline.instance.closeAll() : _polyline.instance.open()
-      _polyline.isDrawing = !_polyline.isDrawing
+      if (_polyline.instance) {
+        _polyline.isDrawing ? _polyline.instance.closeAll() : _polyline.instance.open()
+        _polyline.isDrawing = !_polyline.isDrawing
+      }
     }
   })
   let polygon = ref({
-    instance: null,
+    instance: null as { open(): void; closeAll(): void } | null,
     isDrawing: false,
     toggle() {
       let _polygon = polygon.value
-      _polygon.isDrawing ? _polygon.instance.closeAll() : _polygon.instance.open()
-      _polygon.isDrawing = !_polygon.isDrawing
+      if (_polygon.instance) {
+        _polygon.isDrawing ? _polygon.instance.closeAll() : _polygon.instance.open()
+        _polygon.isDrawing = !_polygon.isDrawing
+      }
     }
   })
   let rectangle = ref({
-    instance: null,
+    instance: null as { open(): void; closeAll(): void } | null,
     isDrawing: false,
     toggle() {
       let _rectangle = rectangle.value
-      _rectangle.isDrawing ? _rectangle.instance.closeAll() : _rectangle.instance.open()
-      _rectangle.isDrawing = !_rectangle.isDrawing
+      if (_rectangle.instance) {
+        _rectangle.isDrawing ? _rectangle.instance.closeAll() : _rectangle.instance.open()
+        _rectangle.isDrawing = !_rectangle.isDrawing
+      }
     }
   })
   let clearFn = ref()
-  function handleInitd({ map, BMapGL }) {
+  function handleInitd({ map, BMapGL, api }: { map: unknown; BMapGL: { Icon: new (url: string, size: unknown, opts?: Record<string, unknown>) => unknown; Size: new (w: number, h: number) => unknown }; api: unknown }) {
     import('bmap-draw').then(({ DrawScene, MarkerDraw, PolylineDraw, CircleDraw, PolygonDraw, RectDraw }) => {
       const scene = new DrawScene(map)
       clearFn.value = () => scene.clearData()
       // 点绘制
-      const defaultIcons = useBMapMarkerIcons()
+      const defaultIcons = useBMapMarkerIcons(api)
       marker.value.instance = new MarkerDraw(scene, {
         isOpen: false,
         isSeries: true,

@@ -7,18 +7,17 @@
         lat: 40.050566
       }"
       :zoom="16"
-      :plugins="['TrackAnimation']"
-      ref="map"
+            ref="map"
       @pluginReady="handleInitd"
     />
     <div class="state">
-      <span>动画状态: {{ status !== 'INITIAL' ? '已开始' : '未开始' }}</span>
-      <span>播放状态: {{ status === 'INITIAL' || status === 'STOPPING' ? '未播放' : '播放中' }}</span>
+      <span>动画状态: {{ status !== 'idle' ? '已开始' : '未开始' }}</span>
+      <span>播放状态: {{ status === 'idle' || status === 'stopped' ? '未播放' : '播放中' }}</span>
     </div>
     <button class="myButton no-m-b" type="button" @click="start">开始</button>
     <button class="myButton no-m-b" type="button" @click="stop">暂停</button>
-    <button class="myButton no-m-b" type="button" @click="proceed">继续</button>
-    <button class="myButton no-m-b" type="button" @click="cancel">取消</button>
+    <button class="myButton no-m-b" type="button" @click="proceed()">继续</button>
+    <button class="myButton no-m-b" type="button" @click="cancel()">取消</button>
   </div>
 </template>
 
@@ -26,7 +25,7 @@
   import { ref } from 'vue'
   import { useBMapTrackAnimation } from 'baidu-map-gl-vue'
   const map = ref(null)
-  const { setPath, start, cancel, stop, proceed, status } = useBMapTrackAnimation(map, {
+  const { setPath, start, cancel, stop, proceed, status } = useBMapTrackAnimation({
     duration: 10000,
     delay: 0
   })

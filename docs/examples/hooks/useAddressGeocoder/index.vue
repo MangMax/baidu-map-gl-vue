@@ -49,9 +49,7 @@
       deep: true
     }
   )
-  const { get, point, isLoading, isEmpty } = useBMapGeocoder<PointLike>(() => {
-    map.value.resetCenter()
-  })
+  const { get, point, isLoading, isEmpty } = useBMapGeocoder()
 
   function handleInitd() {
     get(currentAddress.value.address, currentAddress.value.city)

@@ -6,7 +6,7 @@
           <li v-for="item in addressList" :key="item">{{ item }}</li>
         </ul>
       </BControl>
-      <template v-if="!isLoading && !isEmpty">
+      <template v-if="points.length">
         <template v-for="(item, index) in points">
           <BMarker :position="item"></BMarker>
           <BLabel style="color: #333; font-size: 9px" :position="item" :content="addressList[index]"></BLabel>
@@ -16,7 +16,8 @@
   </div>
 </template>
 <script lang="ts" setup>
-  import { useBMapGeocoder, PointLike } from 'baidu-map-gl-vue'
+  import { ref } from 'vue'
+  import { useBMapGeocoder } from 'baidu-map-gl-vue'
   const addressList = [
     '包河区金寨路1号（金寨路与望江西路交叉口）',
     '庐阳区凤台路209号（凤台路与蒙城北路交叉口）',
@@ -27,10 +28,15 @@
     '庐阳区长江中路177号',
     
   ]
-  const { get, point: points, isLoading, isEmpty } = useBMapGeocoder<PointLike[]>()
+  const { getBatch, isLoading } = useBMapGeocoder()
+  const points = ref<Array<{ lng: number; lat: number }>>([])
 
   function handleInitd() {
-    get(addressList, '合肥市')
+    getBatch(addressList, '合肥市').then((r) => {
+      points.value = r
+        .filter((x) => x.point !== null)
+        .map((x) => x.point as { lng: number; lat: number })
+    })
   }
 </script>
 <style>

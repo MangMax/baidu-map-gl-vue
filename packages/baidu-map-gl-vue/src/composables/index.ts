@@ -6,5 +6,6 @@ export * from "./useBMapMarkerIcons";
 export * from "./useBMapAreaBoundary";
 export * from "./useBMapIpLocation";
 export * from "./useBMapGeocoder";
+export * from "./useBMapGeocodeDetail";
 export * from "./useBMapConvertor";
 export * from "./useBMapTrackAnimation";

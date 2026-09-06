@@ -10,15 +10,15 @@
 <script setup lang="ts">
   import { ref } from 'vue'
   const zoom = ref(10)
-  let _map
-  function handleInitd({ map }) {
+  let _map: { getZoom(): number } | null = null
+  function handleInitd({ map }: { map: { getZoom(): number } }) {
     _map = map
   }
   function handleZoomOut() {
-    zoom.value = _map.getZoom() - 1
+    if (_map) zoom.value = _map.getZoom() - 1
   }
   function handleZoomIn() {
-    zoom.value = _map.getZoom() + 1
+    if (_map) zoom.value = _map.getZoom() + 1
   }
 </script>
 

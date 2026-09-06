@@ -7,6 +7,7 @@
  *
  * 需要地图已 ready(经 ctx.whenReady 获取 api),否则重试或报错。
  */
+import { computed } from "vue";
 import { useRequiredMapContext } from "../core/context/inject";
 import { useBMapAsyncTask } from "./useBMapAsyncTask";
 import { BMapError } from "../core/errors/BMapError";
@@ -78,6 +79,7 @@ export function useBMapGeolocation(options: BMapGeolocationOptions = {}) {
     /** 定位结果别名(v2 习惯) */
     location: task.data,
     error: task.error,
+    isError: computed(() => task.status.value === "error"),
     status: task.status,
     isLoading: task.isLoading,
     locate: task.execute,

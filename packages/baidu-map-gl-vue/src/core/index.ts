@@ -52,7 +52,7 @@ export { useOptionalMapContext, useRequiredMapContext } from "./context/inject";
 export { diffData, getItemKey, shouldFullReplace } from "./data/diffData";
 export type { DataDiff, ItemKeyFn } from "./data/diffData";
 export { gridCluster } from "./data/gridCluster";
-export type { Cluster, ClusterOptions, PointLike } from "./data/gridCluster";
+export type { Cluster, ClusterOptions } from "./data/gridCluster";
 export { normalizeIconDescriptor, iconCacheKey, createLruIconCache } from "./icons/iconCache";
 export type { IconCache, IconDescriptor } from "./icons/iconCache";
 export { createAnimationStateMachine } from "./animation/animationState";

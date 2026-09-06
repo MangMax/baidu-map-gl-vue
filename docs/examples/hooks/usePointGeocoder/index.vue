@@ -5,7 +5,7 @@
         <BMarker :position="point"></BMarker>
         <BLabel
           style="color: #333; font-size: 9px"
-          :position="result.point"
+          :position="result?.point"
           :content="`地址: ${result?.address} 所属商圈:${result?.business} 最匹配地点: ${
             result?.surroundingPois[0]?.title || '无'
           }`"
@@ -17,16 +17,16 @@
 
 <script lang="ts" setup>
   import { ref } from 'vue'
-  import { useBMapGeocoder, GeoPoint } from 'baidu-map-gl-vue'
+  import { useBMapGeocodeDetail, GeocodeDetailResult } from 'baidu-map-gl-vue'
   const map = ref()
-  const { get, result, isLoading, isEmpty } = useBMapGeocoder<GeoPoint>()
+  const { get, result, isLoading, isEmpty } = useBMapGeocodeDetail()
   const point = ref({ lng: 116.30793520652882, lat: 40.05861561613348 })
   const markerPoint = point
 
   function handleInitd() {
     get(point.value)
   }
-  function handleClick(e) {
+  function handleClick(e: { latlng: { lng: number; lat: number } }) {
     markerPoint.value = e.latlng
     get(e.latlng)
   }

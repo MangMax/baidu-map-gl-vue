@@ -27,19 +27,23 @@
   import { useBMapAreaBoundary } from 'baidu-map-gl-vue'
   const zoom = ref<number>(11)
   const area = ref<string>('顺义区')
-  const areaZoomMap = {
+  const areaZoomMap: Record<string, number> = {
     北京市: 9,
     顺义区: 11,
     四川: 7,
     成都: 9
   }
 
-  const { boundaries: pathPoints, get } = useBMapAreaBoundary(() => {
-    zoom.value = areaZoomMap[area.value]
-  })
+  const { boundaries: pathPoints, get } = useBMapAreaBoundary()
 
   function handleInitd() {
     get(area.value)
   }
-  watch(() => area.value, get)
+  watch(
+    () => area.value,
+    (val) => {
+      zoom.value = areaZoomMap[val]
+      get(val)
+    }
+  )
 </script>

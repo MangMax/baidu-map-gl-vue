@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { watch } from "vue";
+import type { MapMaskShowRegion } from "../../types/components";
 import { useOverlayResource, removeOverlay } from "../../core/composables/useOverlayResource";
 import type { MapReadyContext } from "../../core/context/types";
 import type { ResourceScope } from "../../core/lifecycle/ResourceScope";

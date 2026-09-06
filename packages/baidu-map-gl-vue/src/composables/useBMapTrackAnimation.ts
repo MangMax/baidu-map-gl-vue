@@ -26,6 +26,10 @@ export interface TrackAnimationHandle {
   pause(reason?: PauseReason): void;
   resume(reason?: PauseReason): void;
   stop(): void;
+  /** v2 别名:继续(resume) */
+  proceed: (reason?: PauseReason) => void;
+  /** v2 别名:取消(stop) */
+  cancel: () => void;
 }
 
 export function useBMapTrackAnimation(
@@ -99,5 +103,16 @@ export function useBMapTrackAnimation(
     scope.dispose();
   });
 
-  return { status, setPath, start, pause, resume, stop };
+  return {
+    status,
+    setPath,
+    start,
+    pause,
+    resume,
+    stop,
+    /** v2 别名:继续(resume) */
+    proceed: resume,
+    /** v2 别名:取消(stop) */
+    cancel: stop,
+  };
 }
