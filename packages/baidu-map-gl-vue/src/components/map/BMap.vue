@@ -95,6 +95,24 @@ function applyCenterZoom(target: unknown) {
   m.centerAndZoom(props.center, props.zoom);
 }
 
+/** v2 风格地图类型字符串 → SDK MapTypeId 枚举值 */
+function toSdkMapType(value: string | undefined): unknown {
+  const map: Record<string, string> = {
+    BMAP_NORMAL_MAP: "NORMAL",
+    BMAP_EARTH_MAP: "EARTH",
+    BMAP_SATELLITE_MAP: "SATELLITE",
+  };
+  return map[value ?? "BMAP_NORMAL_MAP"] ?? "NORMAL";
+}
+
+/** 将 mapType prop 同步为 SDK setMapType(需要 api.MapTypeId 枚举) */
+function applyMapType(target: unknown, sdkApi: unknown) {
+  const m = target as { setMapType?: (t: unknown) => void } | null;
+  const typeId = (sdkApi as { MapTypeId?: Record<string, unknown> })?.MapTypeId;
+  if (!m?.setMapType || !typeId) return;
+  m.setMapType(typeId[toSdkMapType(props.mapType) as string]);
+}
+
 // enableXxx 布尔开关 → SDK enableXxx/disableXxx 方法名映射
 function mapMethods(m: unknown) {
   return m as
@@ -131,7 +149,7 @@ function syncEnableProps(target: unknown) {
     disable?: () => void,
   ) => {
     if (on === undefined || !enable || !disable) return;
-    on ? enable() : disable();
+    on ? enable.call(m) : disable.call(m);
   };
   set(props.enableDragging, m?.enableDragging, m?.disableDragging);
   set(props.enableScrollWheelZoom, m?.enableScrollWheelZoom, m?.disableScrollWheelZoom);
@@ -176,6 +194,7 @@ async function boot() {
     api.value = ctx.api;
     status.value = "ready";
     applyCenterZoom(map.value);
+    applyMapType(map.value, api.value);
     syncEnableProps(map.value);
     const payload = { map: ctx.map, api: ctx.api };
     emit("ready", payload);
@@ -212,7 +231,16 @@ watch(
     props.enableResizeOnCenter,
     props.enableTraffic,
   ],
-  () => syncEnableProps(map.value),
+  () => {
+    syncEnableProps(map.value);
+  },
+  { flush: "post" },
+);
+
+// props.mapType 变化时同步 SDK
+watch(
+  () => props.mapType,
+  () => applyMapType(map.value, api.value),
   { flush: "post" },
 );
 
