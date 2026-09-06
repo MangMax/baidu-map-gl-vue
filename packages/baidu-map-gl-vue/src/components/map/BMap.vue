@@ -95,22 +95,22 @@ function applyCenterZoom(target: unknown) {
   m.centerAndZoom(props.center, props.zoom);
 }
 
-/** v2 风格地图类型字符串 → SDK MapTypeId 枚举值 */
-function toSdkMapType(value: string | undefined): unknown {
+/** v2 风格地图类型字符串 → SDK 顶层常量字符串(如 BMapGL.BMAP_SATELLITE_MAP) */
+function toSdkMapType(value: string | undefined): string {
   const map: Record<string, string> = {
-    BMAP_NORMAL_MAP: "NORMAL",
-    BMAP_EARTH_MAP: "EARTH",
-    BMAP_SATELLITE_MAP: "SATELLITE",
+    BMAP_NORMAL_MAP: "B_NORMAL_MAP",
+    BMAP_EARTH_MAP: "B_EARTH_MAP",
+    BMAP_SATELLITE_MAP: "B_SATELLITE_MAP",
   };
-  return map[value ?? "BMAP_NORMAL_MAP"] ?? "NORMAL";
+  return map[value ?? "BMAP_NORMAL_MAP"] ?? "B_NORMAL_MAP";
 }
 
-/** 将 mapType prop 同步为 SDK setMapType(需要 api.MapTypeId 枚举) */
+/** 将 mapType prop 同步为 SDK setMapType(SDK 接受顶层字符串常量,MapTypeId.SATELLITE 是错的) */
 function applyMapType(target: unknown, sdkApi: unknown) {
   const m = target as { setMapType?: (t: unknown) => void } | null;
-  const typeId = (sdkApi as { MapTypeId?: Record<string, unknown> })?.MapTypeId;
-  if (!m?.setMapType || !typeId) return;
-  m.setMapType(typeId[toSdkMapType(props.mapType) as string]);
+  if (!m?.setMapType) return;
+  const sdkKey = toSdkMapType(props.mapType);
+  m.setMapType(sdkKey);
 }
 
 // enableXxx 布尔开关 → SDK enableXxx/disableXxx 方法名映射
