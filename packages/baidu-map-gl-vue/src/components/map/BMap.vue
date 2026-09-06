@@ -88,6 +88,13 @@ const destroyMap = (map: unknown) => {
   m?.destroy?.();
 };
 
+/** 将 center/zoom props 应用为 SDK centerAndZoom(百度 Map 构造器不接受 center/zoom) */
+function applyCenterZoom(target: unknown) {
+  const m = target as { centerAndZoom?: (center: unknown, zoom: number) => void } | null;
+  if (!m?.centerAndZoom) return;
+  m.centerAndZoom(props.center, props.zoom);
+}
+
 // enableXxx 布尔开关 → SDK enableXxx/disableXxx 方法名映射
 function mapMethods(m: unknown) {
   return m as
@@ -168,6 +175,7 @@ async function boot() {
     map.value = ctx.map;
     api.value = ctx.api;
     status.value = "ready";
+    applyCenterZoom(map.value);
     syncEnableProps(map.value);
     const payload = { map: ctx.map, api: ctx.api };
     emit("ready", payload);
