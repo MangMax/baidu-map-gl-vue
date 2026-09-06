@@ -19,7 +19,7 @@
   import { ref } from 'vue'
   import { useBMapGeocodeDetail, GeocodeDetailResult } from 'baidu-map-gl-vue'
   const map = ref()
-  const { get, result, isLoading, isEmpty } = useBMapGeocodeDetail()
+  const { get, result, isLoading, isEmpty } = useBMapGeocodeDetail(map)
   const point = ref({ lng: 116.30793520652882, lat: 40.05861561613348 })
   const markerPoint = point
 

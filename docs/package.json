@@ -28,10 +28,10 @@
     "node": ">=22.0.0"
   },
   "dependencies": {
+    "@baidumap/mapv-three": "^1.7.1",
     "bmap-draw": "^1.0.19",
-    "mapv-three": "^1.0.12",
     "prism-theme-vars": "^0.2.5",
-    "three": "^0.147.0",
+    "three": "^0.180.0",
     "vitepress": "2.0.0-alpha.20",
     "@vueuse/core": "^14.4.0"
   },

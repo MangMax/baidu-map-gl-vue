@@ -46,6 +46,8 @@ export interface OverlayLifecycle<Props, Resource> {
 export interface UseOverlayResourceResult<Resource> {
   resource: ShallowRef<Resource | null>;
   ready: Promise<MapReadyContext>;
+  /** 用当前 props 重建覆盖物(适合 SDK 不可变对象,如 MapMask path 更新) */
+  rebuild: () => Promise<void>;
 }
 
 export function useOverlayResource<Props, Resource>(
@@ -106,9 +108,32 @@ export function useOverlayResource<Props, Resource>(
     scope.dispose();
   });
 
+  /** 用当前 props 重建覆盖物(remove 旧 + create 新 + add) */
+  const rebuild = async () => {
+    if (!readyCtx || disposed) return;
+    const old = resource.value;
+    if (old) {
+      try {
+        lifecycle.remove(old, readyCtx);
+      } catch {
+        /* 忽略移除错误 */
+      }
+      resource.value = null;
+    }
+    const token = ++createToken;
+    const created = await lifecycle.create(readyCtx, props, scope);
+    if (scope.isDisposed || disposed || token !== createToken) {
+      lifecycle.remove(created, readyCtx);
+      return;
+    }
+    resource.value = markRaw(created as object) as Resource;
+    lifecycle.addToMap(created, readyCtx, props, scope);
+  };
+
   return {
     resource,
     ready: ctx.whenReady(scope.signal),
+    rebuild,
   };
 }
 

@@ -5,7 +5,7 @@
  * 统一异步状态;SDK 实例经 map context ready 后创建,卸载不残留。
  */
 import { ref, onUnmounted, type Ref } from "vue";
-import { useRequiredMapContext } from "../core/context/inject";
+import { resolveMapContext } from "./resolveMapContext";
 
 export type AreaBoundary = string[];
 
@@ -15,8 +15,8 @@ export interface UseBMapAreaBoundaryResult {
   get: (area: string) => Promise<void>;
 }
 
-export function useBMapAreaBoundary(): UseBMapAreaBoundaryResult {
-  const ctx = useRequiredMapContext();
+export function useBMapAreaBoundary(map?: unknown): UseBMapAreaBoundaryResult {
+  const ctx = resolveMapContext(map);
   const isLoading = ref(false);
   const boundaries = ref<AreaBoundary>([]);
 

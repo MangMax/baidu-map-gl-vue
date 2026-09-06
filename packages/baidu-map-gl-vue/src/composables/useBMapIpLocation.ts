@@ -4,7 +4,7 @@
  * 通过 SDK BMapGL.LocalCity 获取 IP 所在城市。
  * 统一异步状态(useBMapAsyncTask),不再由用户担保全局 BMapGL。
  */
-import { useRequiredMapContext } from "../core/context/inject";
+import { resolveMapContext } from "./resolveMapContext";
 import { useBMapAsyncTask } from "./useBMapAsyncTask";
 
 export interface BMapIpLocationResult {
@@ -14,8 +14,8 @@ export interface BMapIpLocationResult {
   point: { lng: number; lat: number };
 }
 
-export function useBMapIpLocation() {
-  const ctx = useRequiredMapContext();
+export function useBMapIpLocation(map?: unknown) {
+  const ctx = resolveMapContext(map);
   const task = useBMapAsyncTask<BMapIpLocationResult | null, []>({
     runner: async () => {
       const ready = await ctx.whenReady();

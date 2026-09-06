@@ -20,7 +20,7 @@
   import { ref } from 'vue'
   import { useBMapIpLocation } from 'baidu-map-gl-vue'
   const map = ref()
-  const { get, location, isLoading } = useBMapIpLocation()
+  const { get, location, isLoading } = useBMapIpLocation(map)
 </script>
 
 <style>

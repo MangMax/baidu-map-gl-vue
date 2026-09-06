@@ -5,6 +5,7 @@
     :tilt="50"
     enableScrollWheelZoom
     mapStyleId="980161f3645989feac25a0da15da4178"
+    ref="map"
     @ready="handleInitd"
   >
     <BPrism
@@ -27,7 +28,8 @@
   import { useBMapAreaBoundary } from 'baidu-map-gl-vue'
   const topFillOpacity = ref<number>(0.5)
   const area = ref<string>('北京市')
-  const { boundaries: pathPoints, get } = useBMapAreaBoundary()
+  const map = ref()
+  const { boundaries: pathPoints, get } = useBMapAreaBoundary(map)
 
   function handleInitd() {
     get(area.value)

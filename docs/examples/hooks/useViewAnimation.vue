@@ -30,7 +30,7 @@
     duration: 10000,
     delay: 0,
     loop: 'INFINITE'
-  })
+  }, map)
   function handleInitd() {
     const keyFrames: ViewAnimationKeyFrames[] = [
       {

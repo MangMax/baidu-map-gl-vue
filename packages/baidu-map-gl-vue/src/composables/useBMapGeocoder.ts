@@ -8,7 +8,7 @@
  * 需要 BMap child context(经 ctx.whenReady 获取 api)。
  */
 import { computed } from "vue";
-import { useRequiredMapContext } from "../core/context/inject";
+import { resolveMapContext } from "./resolveMapContext";
 import { useBMapAsyncTask } from "./useBMapAsyncTask";
 import { BMapError } from "../core/errors/BMapError";
 
@@ -23,8 +23,8 @@ export interface GeocodeItemResult {
   error?: unknown;
 }
 
-export function useBMapGeocoder() {
-  const ctx = useRequiredMapContext();
+export function useBMapGeocoder(map?: unknown) {
+  const ctx = resolveMapContext(map);
 
   const task = useBMapAsyncTask<GeoPoint | null, [string, string]>({
     runner: async (address: string, city: string) => {

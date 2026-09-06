@@ -279,11 +279,11 @@ defineOptions({ name: "BMap" });
 
 <template>
   <div
-    ref="containerRef"
     class="bmap-container"
     :style="{ width, height, background: loadingBgColor }"
     style="position: relative; overflow: hidden"
   >
+    <div ref="containerRef" class="bmap-canvas-host" style="position: absolute; inset: 0" />
     <slot name="loading" :status="status" :error="error">
       <div
         v-if="status !== 'ready'"

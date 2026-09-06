@@ -77,8 +77,11 @@ const ICON_MAP: Record<MarkerIconName, [number, number, number, number]> = {
  * @param api SDK namespace(经 map context ready 获取)
  * @returns 名称 → Icon 实例
  */
-export function useBMapMarkerIcons(api: unknown): Record<string, unknown> {
-  const { Icon, Size } = api as IconCtor;
+export function useBMapMarkerIcons(api?: unknown): Record<string, unknown> {
+  const sdkApi =
+    api ??
+    (typeof window !== "undefined" ? (window as unknown as Record<string, unknown>).BMapGL : undefined);
+  const { Icon, Size } = sdkApi as IconCtor;
   const icons: Record<string, unknown> = {};
   for (const [name, [ox, oy, w, h]] of Object.entries(ICON_MAP)) {
     icons[name] = new Icon(DEFAULT_ICON_URL, new Size(w / 2, h / 2), {

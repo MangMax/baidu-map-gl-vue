@@ -9,3 +9,4 @@ export * from "./useBMapGeocoder";
 export * from "./useBMapGeocodeDetail";
 export * from "./useBMapConvertor";
 export * from "./useBMapTrackAnimation";
+export * from "./resolveMapContext";

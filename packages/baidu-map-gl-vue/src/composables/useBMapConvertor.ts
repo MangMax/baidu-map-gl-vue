@@ -5,7 +5,7 @@
  * 支持从/到坐标类型枚举(v2 CoordinatesFromType/ToType 断点兼容)。
  */
 import { computed } from "vue";
-import { useRequiredMapContext } from "../core/context/inject";
+import { resolveMapContext } from "./resolveMapContext";
 import { useBMapAsyncTask } from "./useBMapAsyncTask";
 import { BMapError } from "../core/errors/BMapError";
 import type { GeoPoint } from "./useBMapGeocoder";
@@ -29,8 +29,8 @@ export enum CoordinatesToType {
 
 export type { GeoPoint };
 
-export function useBMapConvertor() {
-  const ctx = useRequiredMapContext();
+export function useBMapConvertor(map?: unknown) {
+  const ctx = resolveMapContext(map);
 
   const task = useBMapAsyncTask<GeoPoint[], [GeoPoint[], CoordinatesFromType, CoordinatesToType]>({
     runner: async (points, from, to) => {

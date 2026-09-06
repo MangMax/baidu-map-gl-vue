@@ -28,7 +28,7 @@
   const { setPath, start, cancel, stop, proceed, status } = useBMapTrackAnimation({
     duration: 10000,
     delay: 0
-  })
+  }, map)
   const path = [
     {
       lng: 116.297611,

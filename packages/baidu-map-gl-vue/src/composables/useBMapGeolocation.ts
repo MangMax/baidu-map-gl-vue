@@ -8,7 +8,7 @@
  * 需要地图已 ready(经 ctx.whenReady 获取 api),否则重试或报错。
  */
 import { computed } from "vue";
-import { useRequiredMapContext } from "../core/context/inject";
+import { resolveMapContext } from "./resolveMapContext";
 import { useBMapAsyncTask } from "./useBMapAsyncTask";
 import { BMapError } from "../core/errors/BMapError";
 
@@ -28,8 +28,8 @@ export interface BMapGeoResult {
   timestamp: number;
 }
 
-export function useBMapGeolocation(options: BMapGeolocationOptions = {}) {
-  const ctx = useRequiredMapContext();
+export function useBMapGeolocation(options: BMapGeolocationOptions = {}, map?: unknown) {
+  const ctx = resolveMapContext(map);
 
   const task = useBMapAsyncTask<BMapGeoResult, []>({
     runner: async () => {

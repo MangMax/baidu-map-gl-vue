@@ -7,7 +7,7 @@
  * - timer/RAF/Polyline 全部由 scope 回收
  */
 import { onScopeDispose, shallowRef, watch, type ShallowRef } from "vue";
-import { useRequiredMapContext } from "../core/context/inject";
+import { resolveMapContext } from "./resolveMapContext";
 import { ResourceScope } from "../core/lifecycle/ResourceScope";
 import { createAnimationStateMachine, type PauseReason } from "../core/animation/animationState";
 
@@ -34,8 +34,9 @@ export interface TrackAnimationHandle {
 
 export function useBMapTrackAnimation(
   options: UseTrackAnimationOptions = {},
+  map?: unknown,
 ): TrackAnimationHandle {
-  const ctx = useRequiredMapContext();
+  const ctx = resolveMapContext(map);
   const scope = new ResourceScope();
   const status = shallowRef<"idle" | "playing" | "paused" | "stopped" | "disposed">("idle");
   let plugin: any = null;

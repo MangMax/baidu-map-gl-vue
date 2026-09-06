@@ -36,7 +36,7 @@
   import { ref } from 'vue'
   import { useBMapGeolocation } from 'baidu-map-gl-vue'
   const map = ref()
-  const { get, location, isLoading, isError, status } = useBMapGeolocation()
+  const { get, location, isLoading, isError, status } = useBMapGeolocation({}, map)
 </script>
 
 <style>

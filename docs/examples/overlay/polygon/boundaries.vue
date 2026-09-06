@@ -1,5 +1,5 @@
 <template>
-  <BMap v-bind="$attrs" :minZoom="3" :zoom="zoom" enableScrollWheelZoom @ready="handleInitd">
+  <BMap v-bind="$attrs" :minZoom="3" :zoom="zoom" enableScrollWheelZoom ref="map" @ready="handleInitd">
     <BControl
       style="
         border-radius: 4px;
@@ -27,6 +27,7 @@
   import { useBMapAreaBoundary } from 'baidu-map-gl-vue'
   const zoom = ref<number>(11)
   const area = ref<string>('顺义区')
+  const map = ref()
   const areaZoomMap: Record<string, number> = {
     北京市: 9,
     顺义区: 11,
@@ -34,7 +35,7 @@
     成都: 9
   }
 
-  const { boundaries: pathPoints, get } = useBMapAreaBoundary()
+  const { boundaries: pathPoints, get } = useBMapAreaBoundary(map)
 
   function handleInitd() {
     get(area.value)

@@ -21,7 +21,7 @@
   import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js'
   const center = { lat: 40.05298, lng: 116.25241 }
   function handleInitd({ map }) {
-    import('mapv-three').then((mapvThree) => {
+    import('@baidumap/mapv-three').then((mapvThree) => {
       const { Engine, EmptySky } = mapvThree
       const engine = new Engine(map, {})
       // engine.map.setCenter(center)

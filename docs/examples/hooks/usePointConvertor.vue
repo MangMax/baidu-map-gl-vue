@@ -1,5 +1,5 @@
 <template>
-  <BMap v-bind="$attrs" @ready="handleInitd" :center="googlePoint">
+  <BMap v-bind="$attrs" ref="map" @ready="handleInitd" :center="googlePoint">
     <template v-if="!isLoading && !isError">
       <template v-for="(point) in result">
         <BMarker :position="point"></BMarker>
@@ -12,8 +12,10 @@
 </template>
 
 <script lang="ts" setup>
+  import { ref } from 'vue'
   import { CoordinatesFromType, CoordinatesToType, useBMapConvertor } from 'baidu-map-gl-vue'
-  const { convert, result, isLoading, isError } = useBMapConvertor()
+  const map = ref()
+  const { convert, result, isLoading, isError } = useBMapConvertor(map)
   const googlePoint = { lng: 116.32715863448607, lat: 39.990912172420714 }
   function handleInitd() {
     convert([googlePoint], CoordinatesFromType['COORDINATES_GCJ02'], CoordinatesToType['COORDINATES_BD09'])

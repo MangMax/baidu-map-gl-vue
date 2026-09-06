@@ -6,7 +6,7 @@
  * 统一异步状态;SDK 经 map context ready。
  */
 import { computed } from "vue";
-import { useRequiredMapContext } from "../core/context/inject";
+import { resolveMapContext } from "./resolveMapContext";
 import { useBMapAsyncTask } from "./useBMapAsyncTask";
 import { BMapError } from "../core/errors/BMapError";
 
@@ -28,8 +28,8 @@ function toPlainPoint(p: { lng: number; lat: number }): { lng: number; lat: numb
   return { lng: p.lng, lat: p.lat };
 }
 
-export function useBMapGeocodeDetail() {
-  const ctx = useRequiredMapContext();
+export function useBMapGeocodeDetail(map?: unknown) {
+  const ctx = resolveMapContext(map);
   const task = useBMapAsyncTask<GeocodeDetailResult | null, [{ lng: number; lat: number }]>({
     runner: async (point) => {
       if (!point || typeof point.lng !== "number")

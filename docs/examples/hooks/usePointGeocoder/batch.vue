@@ -5,6 +5,7 @@
       enableScrollWheelZoom
       :zoom="13"
       :center="{ lng: 116.328749, lat: 40.026922 }"
+      ref="map"
       @ready="handleInitd"
     >
       <BControl class="point-list" :offset="{ x: 10, y: 10 }">
@@ -49,7 +50,8 @@
     { lng: 116.307901, lat: 40.05901 }
   ]
   import { ref } from 'vue'
-  const { getBatch, isLoading } = useBMapGeocodeDetail()
+  const map = ref()
+  const { getBatch, isLoading } = useBMapGeocodeDetail(map)
   type BatchItem = { point: { lng: number; lat: number }; detail: GeocodeDetailResult | null }
   const result = ref<Array<{ point: { lng: number; lat: number }; detail: GeocodeDetailResult }>>([])
   function handleInitd() {

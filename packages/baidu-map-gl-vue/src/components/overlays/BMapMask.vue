@@ -39,9 +39,7 @@ const emit = defineEmits<{
   rightclick: [e: unknown];
 }>();
 
-type SdkMapMask = {
-  setPath(p: unknown[]): void;
-};
+type SdkMapMask = object;
 
 const { resource } = useOverlayResource<BMapMaskProps, SdkMapMask>(
   props,
@@ -74,18 +72,12 @@ const { resource } = useOverlayResource<BMapMaskProps, SdkMapMask>(
       on("rightclick", (e) => emit("rightclick", e));
     },
     createWatchers(getCtx, getResource, p, addDisposer) {
-      addDisposer(
-        watch(
-          [() => p.path, () => p.pathVersion],
-          ([path]) => {
-            const res = getResource();
-            const ctx = getCtx();
-            if (!res || !ctx) return;
-            if (path && path.length > 0) res.setPath(toSdkPoints(ctx.api, path));
-          },
-          { flush: "sync" },
-        ),
-      );
+      // SDK MapMask 不可变(path 只能构造时传入)。path 更新由使用方
+      // 通过 pathVersion 变化触发重建(见下方)。
+      // 注意:不能在此处用 watch 重建,否则初始挂载会重复创建。
+      void getCtx;
+      void getResource;
+      void p;
       addDisposer(
         watch(
           () => p.visible,

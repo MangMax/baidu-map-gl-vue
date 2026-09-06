@@ -1,6 +1,6 @@
 <template>
   <div>
-    <BMap v-bind="$attrs" :zoom="13" center="合肥市" @ready="handleInitd">
+    <BMap v-bind="$attrs" ref="map" :zoom="13" center="合肥市" @ready="handleInitd">
       <BControl class="address-list" :offset="{ x: 10, y: 10 }">
         <ul>
           <li v-for="item in addressList" :key="item">{{ item }}</li>
@@ -18,6 +18,7 @@
 <script lang="ts" setup>
   import { ref } from 'vue'
   import { useBMapGeocoder } from 'baidu-map-gl-vue'
+  const map = ref()
   const addressList = [
     '包河区金寨路1号（金寨路与望江西路交叉口）',
     '庐阳区凤台路209号（凤台路与蒙城北路交叉口）',
@@ -28,7 +29,7 @@
     '庐阳区长江中路177号',
     
   ]
-  const { getBatch, isLoading } = useBMapGeocoder()
+  const { getBatch, isLoading } = useBMapGeocoder(map)
   const points = ref<Array<{ lng: number; lat: number }>>([])
 
   function handleInitd() {

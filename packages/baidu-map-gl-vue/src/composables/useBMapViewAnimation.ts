@@ -2,12 +2,12 @@
  * useBMapViewAnimation —— 视角动画(方案 §13.4)
  *
  * 用 SDK BMapGL.ViewAnimation 实现视角关键帧动画(center/zoom/tilt/heading)。
- * - 通过 map context(useRequiredMapContext)在 ready 后获取 map 实例
+ * - 通过 map context(resolveMapContext)在 ready 后获取 map 实例
  * - 状态机 INITIAL/PLAYING/STOPPING(不读 SDK 私有 _status)
  * - 卸载时取消动画,不残留
  */
 import { ref, shallowRef, onUnmounted, type Ref } from "vue";
-import { useRequiredMapContext } from "../core/context/inject";
+import { resolveMapContext } from "./resolveMapContext";
 import type { MapReadyContext } from "../core/context/types";
 
 /** 视角动画关键帧 */
@@ -40,6 +40,7 @@ function toSdkPoint(api: unknown, p: { lng: number; lat: number }): unknown {
 
 export function useBMapViewAnimation(
   options: UseBMapViewAnimationOptions = {},
+  map?: unknown,
 ): {
   viewAnimation: Ref<unknown>;
   start: () => void;
@@ -50,7 +51,7 @@ export function useBMapViewAnimation(
   setKeyFrames: (keyFrames: ViewAnimationKeyFrames[]) => void;
   ready: Promise<MapReadyContext>;
 } {
-  const ctx = useRequiredMapContext();
+  const ctx = resolveMapContext(map);
   const status = ref<ViewAnimationStatus>("INITIAL");
   const viewAnimation = shallowRef<unknown>(null);
   const ready = ctx.whenReady();
