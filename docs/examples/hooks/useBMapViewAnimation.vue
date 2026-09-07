@@ -7,7 +7,6 @@
         lat: 40.050566
       }"
       :zoom="16"
-      :plugins="['TrackAnimation']"
       ref="map"
       @ready="handleInitd"
     />

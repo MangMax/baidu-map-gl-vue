@@ -52,6 +52,7 @@ export interface BMapProps {
   loadingBgColor?: string;
   /** 背景色(透明度数组,如 [r,g,b,a]) */
   backgroundColor?: number[];
+  plugins?: string[];
 }
 
 /** BMarker 图标:内置名称或自定义图标描述 */
@@ -81,6 +82,7 @@ export interface BMarkerProps {
   visible?: boolean;
   title?: string;
   enableDragging?: boolean;
+  enableClicking?: boolean;
   rotation?: number;
   /** 图标:内置名称或自定义 Icon 描述 */
   icon?: MarkerIcon;
@@ -93,6 +95,10 @@ export interface BInfoWindowProps {
   height?: number;
   offset?: { x: number; y: number };
   open?: boolean;
+  show?: boolean;
+  enableMaximize?: boolean;
+  enableAutoPan?: boolean;
+  enableCloseOnClick?: boolean;
 }
 
 export interface BCircleProps {

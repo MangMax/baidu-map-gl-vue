@@ -1,15 +1,6 @@
-/**
- * M6-07: useBMapTrackAnimation —— 轨迹动画
- *
- * 方案 §13.4:处理原则:
- * - 优先使用官方公开事件/方法(start/pause/cancel)
- * - 不读取插件私有 `_status`,由库自身状态机维护
- * - timer/RAF/Polyline 全部由 scope 回收
- */
-import { onScopeDispose, shallowRef, watch, type ShallowRef } from "vue";
+import { onScopeDispose, shallowRef, toRaw, type ShallowRef } from "vue";
 import { resolveMapContext } from "./resolveMapContext";
 import { ResourceScope } from "../core/lifecycle/ResourceScope";
-import { createAnimationStateMachine, type PauseReason } from "../core/animation/animationState";
 
 export interface UseTrackAnimationOptions {
   duration?: number;
@@ -21,99 +12,111 @@ export interface UseTrackAnimationOptions {
 
 export interface TrackAnimationHandle {
   status: ShallowRef<"idle" | "playing" | "paused" | "stopped" | "disposed">;
-  setPath(path: { lng: number; lat: number }[]): void;
-  start(): void;
-  pause(reason?: PauseReason): void;
-  resume(reason?: PauseReason): void;
+  setPath(path: { lng: number; lat: number }[]): Promise<void>;
+  start(): Promise<void>;
+  pause(): void;
+  resume(): void;
   stop(): void;
-  /** v2 别名:继续(resume) */
-  proceed: (reason?: PauseReason) => void;
-  /** v2 别名:取消(stop) */
+  proceed: () => void;
   cancel: () => void;
 }
 
+/** Thin wrapper around the official BMapGLLib.TrackAnimation plugin. */
 export function useBMapTrackAnimation(
-  options: UseTrackAnimationOptions = {},
-  map?: unknown,
+  optionsOrMap: UseTrackAnimationOptions | unknown = {},
+  mapOrOptions?: unknown,
 ): TrackAnimationHandle {
+  const isMapRef = optionsOrMap && typeof optionsOrMap === "object" && "value" in (optionsOrMap as any);
+  const map = (isMapRef ? optionsOrMap : mapOrOptions) as unknown;
+  const options = (isMapRef ? mapOrOptions : optionsOrMap) as UseTrackAnimationOptions;
   const ctx = resolveMapContext(map);
   const scope = new ResourceScope();
-  const status = shallowRef<"idle" | "playing" | "paused" | "stopped" | "disposed">("idle");
+  const status = shallowRef<TrackAnimationHandle["status"]["value"]>("idle");
   let plugin: any = null;
-  let mapInstance: any = null;
-  let polyline: any = null;
-  let path: { lng: number; lat: number }[] | null = null;
+  let path: { lng: number; lat: number }[] = [];
 
-  const stateMachine = createAnimationStateMachine(false);
-
-  async function ensureInstance() {
+  async function createInstance() {
     if (plugin) return plugin;
     const ready = await ctx.whenReady(scope.signal);
     if (scope.isDisposed) return null;
-    mapInstance = ready.map;
     const api = ready.api as {
       Point: new (lng: number, lat: number) => unknown;
-      TrackAnimation: new (map: unknown, path: unknown, opts?: Record<string, unknown>) => unknown;
+      Polyline: new (path: unknown[], options?: Record<string, unknown>) => unknown;
+      TrackAnimation?: new (map: unknown, line: unknown, opts?: unknown) => unknown;
     };
-    // 用官方公开方法构造,不读写私有 _status
-    const TrackAnimationCls = (api as any).TrackAnimation;
-    if (typeof TrackAnimationCls !== "function") {
-      // 无插件:退回空实现(库自身状态机仍工作)
-      return { start: () => {}, pause: () => {}, cancel: () => {} };
+    const registry = ctx.plugins as {
+      getStatus?: (name: string) => string | undefined;
+      whenPlugin?: (name: string, signal?: AbortSignal) => Promise<unknown>;
+    } | null;
+    const globalTrackAnimation = (globalThis as any).BMapGLLib?.TrackAnimation;
+    if (!registry?.getStatus?.("TrackAnimation") && !api.TrackAnimation && !globalTrackAnimation) {
+      throw new Error("TrackAnimation plugin is not ready. Add plugins=['TrackAnimation'] to BMap.");
     }
-    const pathPoints = (path ?? []).map((p) => new api.Point(p.lng, p.lat));
-    polyline = pathPoints;
-    plugin = new TrackAnimationCls(mapInstance, pathPoints, options);
+    const TrackAnimation =
+      api.TrackAnimation ??
+      globalTrackAnimation ??
+      (registry?.whenPlugin ? await registry.whenPlugin("TrackAnimation", scope.signal) : undefined);
+    if (typeof TrackAnimation !== "function") {
+      throw new Error("TrackAnimation plugin did not expose a constructor.");
+    }
+    if (path.length < 2) throw new Error("TrackAnimation requires at least two path points.");
+    const points = path.map((point) => new api.Point(point.lng, point.lat));
+    const polyline = new api.Polyline(points, {
+      strokeColor: "#1677ff",
+      strokeWeight: 5,
+      strokeOpacity: 0.9,
+    });
+    const mapComponent = (map as { value?: { getMapInstance?: () => unknown } } | undefined)?.value;
+    const animationMap = toRaw(mapComponent?.getMapInstance?.() ?? ready.map) as any;
+    plugin = new (TrackAnimation as new (map: unknown, line: unknown, opts: unknown) => unknown)(
+      animationMap,
+      polyline,
+      options,
+    );
     return plugin;
   }
 
   async function setPath(nextPath: { lng: number; lat: number }[]) {
-    path = nextPath;
+    plugin?.cancel?.();
     plugin = null;
-    await ensureInstance();
+    path = nextPath;
+    await createInstance();
   }
 
   async function start() {
-    await ensureInstance();
-    stateMachine.start();
-    status.value = stateMachine.phase;
-    plugin?.start?.();
+    const animation = await createInstance();
+    if (!animation) return;
+    animation.start();
+    status.value = "playing";
   }
 
-  function pause(reason: PauseReason = "user") {
-    stateMachine.pause(reason);
-    status.value = stateMachine.phase;
+  function pause() {
     plugin?.pause?.();
+    status.value = "paused";
   }
 
-  function resume(reason: PauseReason = "user") {
-    stateMachine.resume(reason);
-    status.value = stateMachine.phase;
-    if (stateMachine.shouldRun()) plugin?.start?.();
+  function resume() {
+    plugin?.continue?.();
+    status.value = "playing";
   }
 
   function stop() {
-    stateMachine.stop();
-    status.value = stateMachine.phase;
+    status.value = "idle";
     plugin?.cancel?.();
   }
 
+  function cancel() {
+    plugin?.cancel?.();
+    plugin = null;
+    status.value = "idle";
+  }
+
   onScopeDispose(() => {
-    stateMachine.dispose();
+    plugin?.cancel?.();
+    plugin = null;
     status.value = "disposed";
     scope.dispose();
   });
 
-  return {
-    status,
-    setPath,
-    start,
-    pause,
-    resume,
-    stop,
-    /** v2 别名:继续(resume) */
-    proceed: resume,
-    /** v2 别名:取消(stop) */
-    cancel: stop,
-  };
+  return { status, setPath, start, pause, resume, stop, proceed: resume, cancel };
 }

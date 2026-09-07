@@ -12,11 +12,13 @@ export interface BGroundOverlayProps {
   startPoint: { lng: number; lat: number };
   endPoint: { lng: number; lat: number };
   opacity?: number;
+  autoCenter?: boolean;
   visible?: boolean;
 }
 
 const props = withDefaults(defineProps<BGroundOverlayProps>(), {
   opacity: 1,
+  autoCenter: true,
   visible: true,
 });
 
@@ -52,7 +54,7 @@ function makeBounds(
   );
 }
 
-const { resource } = useOverlayResource<BGroundOverlayProps, SdkGroundOverlay>(
+const { resource, rebuild } = useOverlayResource<BGroundOverlayProps, SdkGroundOverlay>(
   props,
   {
     create: (ctx, p) => {
@@ -64,8 +66,9 @@ const { resource } = useOverlayResource<BGroundOverlayProps, SdkGroundOverlay>(
       if (!url) throw new Error("GroundOverlay url is required");
       return new BMapGL.GroundOverlay(bounds, {
         opacity: p.opacity,
-        type: p.type,
-        url,
+         type: p.type,
+         url,
+         autoCenter: p.autoCenter,
       }) as unknown as SdkGroundOverlay;
     },
     addToMap: (res, ctx, p, scope: ResourceScope) => {
@@ -104,6 +107,14 @@ const { resource } = useOverlayResource<BGroundOverlayProps, SdkGroundOverlay>(
           (o) => {
             const _v = o;
             if (_v !== undefined) getResource()?.setOpacity(_v);
+          },
+        ),
+      );
+      addDisposer(
+        watch(
+          () => p.type,
+          () => {
+            void rebuild();
           },
         ),
       );

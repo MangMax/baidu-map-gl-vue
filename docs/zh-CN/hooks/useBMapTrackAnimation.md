@@ -1,9 +1,9 @@
-# useTrackAnimation
+# useBMapTrackAnimation
 
 通过该 hooks 可实现轨迹动画，在轨迹动态播放的同时，视角跟随移动。
 
 ```ts
-import { useTrackAnimation } from 'baidu-map-gl-vue'
+import { useBMapTrackAnimation } from 'baidu-map-gl-vue'
 ```
 
 ::: warning 注意
@@ -16,13 +16,13 @@ import { useTrackAnimation } from 'baidu-map-gl-vue'
 ## 示例
 
 :::demo class="p-bottom"
-hooks/useTrackAnimation
+hooks/useBMapTrackAnimation
 :::
 
 ## 用法
 
 ```ts
-const { setPath, start, cancel, stop, proceed, status } = useTrackAnimation(map, options)
+const { setPath, start, cancel, stop, proceed, status } = useBMapTrackAnimation(options, map)
 ```
 
 :::tip
@@ -114,7 +114,7 @@ declare type AnimationStatus = 'PLAYING' | 'STOPPING' | 'INITIAL'
  * @param {TrackAnimationOptions} options 轨迹动画配置
  * @returns { setPath, start, stop}
  */
-export declare function useTrackAnimation(
+export declare function useBMapTrackAnimation(
   map: any,
   options: UseTrackAnimationOptions
 ): {

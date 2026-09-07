@@ -1,21 +1,21 @@
-# useAreaBoundary
+# useBMapAreaBoundary
 
 通过该 hooks 可获取行政区域的边界。
 
 ```ts
-import { useAreaBoundary } from 'baidu-map-gl-vue'
+import { useBMapAreaBoundary } from 'baidu-map-gl-vue'
 ```
 
 ## 示例
 
-:::demo 结合 [`Polygon`](../components/overlay/polygon) 组件, 并通过指定 `props.isBoundary` 为 `true` 实现行政区域显示效果
+:::demo 结合 [`BPolygon`](../components/overlay/polygon) 组件获取行政区域边界
 overlay/polygon/boundaries
 :::
 
 ## 用法
 
 ```ts
-const { isLoading, boundaries, get } = useAreaBoundary(cal)
+const { isLoading, boundaries, get } = useBMapAreaBoundary(map)
 ```
 
 :::tip
@@ -26,7 +26,7 @@ const { isLoading, boundaries, get } = useAreaBoundary(cal)
 
 | 参数 | 描述                         | 类型                             | 默认值 |
 | ---- | ---------------------------- | -------------------------------- | ------ |
-| cal  | 获取行政区域成功后的回调函数 | `(boundaries: string[]) => void` | -      |
+| map  | 地图组件 ref，用于等待地图 SDK 初始化 | `unknown` | - |
 
 ### 返回值
 
@@ -34,18 +34,20 @@ const { isLoading, boundaries, get } = useAreaBoundary(cal)
 | ---------- | ------------------------------------------------- | -------------------- |
 | isLoading  | 是否加载中                                        | `boolean`            |
 | boundaries | 区域边界数据，默认为空数组，`get`方法调用后才可用 | `Ref<string[]>`      |
-| get        | 获取指定区域边界方法                              | `({string}) => void` |
+| get        | 获取指定区域边界方法                              | `(area: string) => Promise<void>` |
 
 ## 代码示例
 
 <!-- prettier-ignore -->
 ```html
-<Map @initd="handleInitd"></Map>
+<BMap ref="map" @ready="handleInitd"></BMap>
 
 <script setup lang="ts">
-  import { useAreaBoundary } from 'baidu-map-gl-vue'
+  import { ref } from 'vue'
+  import { useBMapAreaBoundary } from 'baidu-map-gl-vue'
 
-  const { isLoading, boundaries, get } = useAreaBoundary()
+  const map = ref()
+  const { isLoading, boundaries, get } = useBMapAreaBoundary(map)
 
   function handleInitd() {
     get('北京市')
@@ -60,10 +62,10 @@ import { Ref } from 'vue'
 export declare type AreaBoundary = string[]
 /**
  * 获取地图区域边界
- * @param cal 获取成功后的回调函数
+ * @param map 地图组件 ref
  * @returns { isLoading, boundaries, get }
  */
-export declare function useAreaBoundary(cal?: (boundaries: Ref<AreaBoundary>) => void): {
+export declare function useBMapAreaBoundary(map?: unknown): {
   /**
    * 是否加载中
    */

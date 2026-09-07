@@ -81,6 +81,7 @@ export function useBMapMarkerIcons(api?: unknown): Record<string, unknown> {
   const sdkApi =
     api ??
     (typeof window !== "undefined" ? (window as unknown as Record<string, unknown>).BMapGL : undefined);
+  if (!sdkApi) throw new Error("BMapGL is not ready. Call useBMapMarkerIcons after map ready.");
   const { Icon, Size } = sdkApi as IconCtor;
   const icons: Record<string, unknown> = {};
   for (const [name, [ox, oy, w, h]] of Object.entries(ICON_MAP)) {
@@ -91,4 +92,3 @@ export function useBMapMarkerIcons(api?: unknown): Record<string, unknown> {
   }
   return icons;
 }
-

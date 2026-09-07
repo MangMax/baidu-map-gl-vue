@@ -54,7 +54,8 @@ export function useBMapViewAnimation(
   const ctx = resolveMapContext(map);
   const status = ref<ViewAnimationStatus>("INITIAL");
   const viewAnimation = shallowRef<unknown>(null);
-  const ready = ctx.whenReady();
+  let readyPromise: Promise<MapReadyContext> | null = null;
+  const getReady = () => (readyPromise ??= ctx.whenReady());
 
   let sdkAnimation: { addEventListener?: (n: string, c: () => void) => void } | null = null;
   let keyFramesData: ViewAnimationKeyFrames[] = [];
@@ -65,7 +66,7 @@ export function useBMapViewAnimation(
   }
 
   function createAnimation(readyCtx: MapReadyContext) {
-    const { api, map } = readyCtx;
+    const { api } = readyCtx;
     const BMapGL = api as {
       ViewAnimation: new (
         kf: unknown[],
@@ -95,12 +96,17 @@ export function useBMapViewAnimation(
 
   async function start() {
     if (status.value === "PLAYING") return;
-    const readyCtx = await ready;
+    const readyCtx = await getReady();
     if (!sdkAnimation) createAnimation(readyCtx);
-    const map = readyCtx.map as {
+    const mapComponent = (map as { value?: { getMapInstance?: () => unknown } } | undefined)?.value;
+    const mapInstance = (mapComponent?.getMapInstance?.() ?? readyCtx.map) as {
       startViewAnimation: (a: unknown) => void;
+      getCenter?: () => unknown;
+      getZoom?: () => number;
+      getTilt?: () => number;
+      getHeading?: () => number;
     };
-    map.startViewAnimation(viewAnimation.value);
+    mapInstance.startViewAnimation(viewAnimation.value);
     status.value = "PLAYING";
   }
 
@@ -118,8 +124,10 @@ export function useBMapViewAnimation(
 
   function cancel() {
     if (status.value === "INITIAL") return;
-    const map = (ctx.map.value ?? {}) as { stopViewAnimation?: () => void };
-    map.stopViewAnimation?.();
+    const mapComponent = (map as { value?: { getMapInstance?: () => unknown } } | undefined)?.value;
+    const mapInstance = (mapComponent?.getMapInstance?.() ?? ctx.map.value) as any;
+    (sdkAnimation as unknown as { _cancel?: (m: unknown) => void })?._cancel?.(mapInstance);
+    (mapInstance as { stopViewAnimation?: () => void } | null)?.stopViewAnimation?.();
     status.value = "INITIAL";
   }
 
@@ -131,5 +139,16 @@ export function useBMapViewAnimation(
     status.value = "INITIAL";
   });
 
-  return { viewAnimation, start, cancel, stop, proceed, status, setKeyFrames, ready };
+  return {
+    viewAnimation,
+    start,
+    cancel,
+    stop,
+    proceed,
+    status,
+    setKeyFrames,
+    get ready() {
+      return getReady();
+    },
+  };
 }

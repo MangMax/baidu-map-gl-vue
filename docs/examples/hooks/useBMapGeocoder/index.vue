@@ -12,7 +12,7 @@
     <div class="state" v-else-if="isEmpty">没有解析到结果 ！</div>
     <div class="state" v-else>解析中...</div>
     <br />
-    <BMap v-bind="$attrs" ref="map" :center="point" @ready="handleInitd">
+    <BMap v-bind="$attrs" ref="map" :center="point || defaultCenter" @ready="handleInitd">
       <template v-if="!isLoading && !isEmpty">
         <BMarker :position="point"></BMarker>
       </template>
@@ -22,8 +22,9 @@
 
 <script lang="ts" setup>
   import { ref, watch } from 'vue'
-  import { useBMapGeocoder, PointLike } from 'baidu-map-gl-vue'
+  import { useBMapGeocoder } from 'baidu-map-gl-vue'
   const map = ref()
+  const defaultCenter = { lng: 116.404, lat: 39.915 }
   const addressList = ref([
     {
       address: '北京市海淀区上地10街',

@@ -41,13 +41,14 @@ const emit = defineEmits<{
 
 type SdkMapMask = object;
 
-const { resource } = useOverlayResource<BMapMaskProps, SdkMapMask>(
+const { resource, rebuild } = useOverlayResource<BMapMaskProps, SdkMapMask>(
   props,
   {
     create: (ctx, p) => {
       const BMapGL = ctx.api as {
         MapMask: new (pts: unknown[], o?: Record<string, unknown>) => unknown;
       };
+      if (!p.path?.length) throw new Error("BMapMask path is required");
       return new BMapGL.MapMask(toSdkPoints(ctx.api, p.path), {
         showRegion: p.showRegion,
         isBuildingMask: p.isBuildingMask,
@@ -75,9 +76,15 @@ const { resource } = useOverlayResource<BMapMaskProps, SdkMapMask>(
       // SDK MapMask 不可变(path 只能构造时传入)。path 更新由使用方
       // 通过 pathVersion 变化触发重建(见下方)。
       // 注意:不能在此处用 watch 重建,否则初始挂载会重复创建。
-      void getCtx;
-      void getResource;
-      void p;
+      addDisposer(
+        watch(
+          [() => p.path, () => p.pathVersion],
+          ([path]) => {
+            if (path?.length && !getResource()) void rebuild();
+          },
+          { flush: "sync" },
+        ),
+      );
       addDisposer(
         watch(
           () => p.visible,

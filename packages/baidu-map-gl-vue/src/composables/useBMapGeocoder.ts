@@ -27,6 +27,7 @@ export function useBMapGeocoder(map?: unknown) {
   const ctx = resolveMapContext(map);
 
   const task = useBMapAsyncTask<GeoPoint | null, [string, string]>({
+    immediate: false,
     runner: async (address: string, city: string) => {
       if (!address)
         throw new BMapError("BMAP_RESOURCE_CREATE_FAILED", "missing required params: address");
@@ -56,6 +57,8 @@ export function useBMapGeocoder(map?: unknown) {
     for (const address of addresses) {
       try {
         const point = await task.execute(address, city);
+        const error = task.error.value;
+        if (error) throw error;
         results.push({ address, point });
       } catch (err) {
         results.push({ address, point: null, error: err });

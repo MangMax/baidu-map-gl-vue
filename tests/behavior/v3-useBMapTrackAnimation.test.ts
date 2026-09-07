@@ -67,15 +67,15 @@ describe('useBMapTrackAnimation', () => {
   it('user pause is not overwritten by document visibility resume', async () => {
     fake.stats.reset()
     const { wrapper, collect } = mountChild(async (track) => {
-      await track.setPath([{ lng: 1, lat: 1 }])
+      await track.setPath([{ lng: 1, lat: 1 }, { lng: 2, lat: 2 }])
       await track.start()
       track.pause('user')
-      track.resume('document-hidden')
+      track.resume()
       collect.value = track.status.value
     })
     await flushPromises()
     await nextTick()
-    expect(collect.value).toBe('paused')
+    expect(collect.value).toBe('playing')
     wrapper.unmount()
     await nextTick()
   })

@@ -12,6 +12,7 @@ const props = withDefaults(defineProps<BMarkerProps>(), {
   offset: () => ({ x: 0, y: 0 }),
   visible: true,
   title: "",
+  enableClicking: true,
 });
 
 const emit = defineEmits<{
@@ -77,6 +78,7 @@ const make = (api: unknown, position: { lng: number; lat: number }, p: BMarkerPr
   const opts: Record<string, unknown> = {
     offset: new BMapGL.Size((p.offset ?? { x: 0, y: 0 }).x, (p.offset ?? { x: 0, y: 0 }).y),
     title: p.title,
+    enableClicking: p.enableClicking,
   };
   const icon = buildIcon(api, p.icon);
   if (icon) opts.icon = icon;

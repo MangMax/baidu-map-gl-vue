@@ -15,17 +15,17 @@
     <div class="state" v-else-if="isError">出错了，{{ status }}</div>
     <div class="state" v-else>定位中...</div>
     <button v-if="!isLoading" class="myButton" @click="get">重新获取</button>
-    <BMap v-bind="$attrs" enableScrollWheelZoom ref="map" @ready="get" :center="location?.point || undefined">
-      <template v-if="!isLoading">
-        <BMarker :position="location?.point"></BMarker>
+    <BMap v-bind="$attrs" enableScrollWheelZoom ref="map" @ready="get" :center="location?.point || defaultCenter">
+      <template v-if="location?.point && location?.accuracy != null">
+        <BMarker :position="location.point"></BMarker>
         <BCircle
           strokeStyle="solid"
           strokeColor="#0099ff"
           :strokeOpacity="0.8"
           fillColor="#0099ff"
           :fillOpacity="0.5"
-          :center="location?.point"
-          :radius="location?.accuracy"
+          :center="location.point"
+          :radius="location.accuracy"
         />
       </template>
     </BMap>
@@ -36,6 +36,7 @@
   import { ref } from 'vue'
   import { useBMapGeolocation } from 'baidu-map-gl-vue'
   const map = ref()
+  const defaultCenter = { lng: 116.404, lat: 39.915 }
   const { get, location, isLoading, isError, status } = useBMapGeolocation({}, map)
 </script>
 

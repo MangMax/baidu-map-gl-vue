@@ -55,12 +55,6 @@ export { gridCluster } from "./data/gridCluster";
 export type { Cluster, ClusterOptions } from "./data/gridCluster";
 export { normalizeIconDescriptor, iconCacheKey, createLruIconCache } from "./icons/iconCache";
 export type { IconCache, IconDescriptor } from "./icons/iconCache";
-export { createAnimationStateMachine } from "./animation/animationState";
-export type {
-  AnimationPhase,
-  AnimationStateMachine,
-  PauseReason,
-} from "./animation/animationState";
 export { DataLayerManager } from "./data/DataLayerManager";
 export type { DataLayerHost, DataLayerOptions } from "./data/DataLayerManager";
 export { createOverlayRegistry } from "./overlays/OverlayRegistry";

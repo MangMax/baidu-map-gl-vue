@@ -31,6 +31,7 @@ function toPlainPoint(p: { lng: number; lat: number }): { lng: number; lat: numb
 export function useBMapGeocodeDetail(map?: unknown) {
   const ctx = resolveMapContext(map);
   const task = useBMapAsyncTask<GeocodeDetailResult | null, [{ lng: number; lat: number }]>({
+    immediate: false,
     runner: async (point) => {
       if (!point || typeof point.lng !== "number")
         throw new BMapError("BMAP_INVALID_POINT", "missing required params: point");
@@ -83,6 +84,8 @@ export function useBMapGeocodeDetail(map?: unknown) {
     for (const point of points) {
       try {
         const detail = await task.execute(point);
+        const error = task.error.value;
+        if (error) throw error;
         results.push({ point, detail });
       } catch (err) {
         results.push({ point, detail: null, error: err });

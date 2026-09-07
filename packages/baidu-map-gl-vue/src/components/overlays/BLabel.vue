@@ -66,7 +66,8 @@ const { resource } = useOverlayResource<BLabelProps, SdkLabel>(
     },
     createWatchers(getCtx, getResource, p, addDisposer) {
       addDisposer(
-        watch([() => p.position.lng, () => p.position.lat], ([lng, lat], [ol, oa]) => {
+        watch([() => p.position?.lng, () => p.position?.lat], ([lng, lat], [ol, oa]) => {
+          if (lng === undefined || lat === undefined) return;
           if (lng === ol && lat === oa) return;
           const res = getResource();
           const ctx = getCtx();

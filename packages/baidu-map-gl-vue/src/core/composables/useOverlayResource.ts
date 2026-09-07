@@ -102,7 +102,11 @@ export function useOverlayResource<Props, Resource>(
     disposed = true;
     const current = resource.value;
     if (current && readyCtx) {
-      lifecycle.remove(current, readyCtx);
+      try {
+        lifecycle.remove(current, readyCtx);
+      } catch {
+        // SDK teardown can fail after the map has already been disposed.
+      }
     }
     resource.value = null;
     scope.dispose();

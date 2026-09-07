@@ -1,24 +1,24 @@
-# usePointGeocoder <Badge type="tip" text="^0.0.39" />
+# useBMapGeocodeDetail <Badge type="tip" text="^0.0.39" />
 
 由坐标点解析地址信息
 
 ```ts
-import { usePointGeocoder } from 'baidu-map-gl-vue'
+import { useBMapGeocodeDetail } from 'baidu-map-gl-vue'
 ```
 
 ## 单个坐标点解析
 
 使用坐标点对象作为 `get` 方法参数解析单个坐标点
 :::demo 鼠标点击地图选择坐标点解析
-hooks/usePointGeocoder/index
+hooks/useBMapGeocodeDetail/index
 :::
 
 :::tip
 在 Ts 中使用批量解析坐标点时，使用泛型 `PointGeocoderResult` 内部可推断 `result` 为可推断为 `PointGeocoderResult`，从而避免读取值时 ts 的报错。
 
 ```ts
-import { usePointGeocoder, PointGeocoderResult } from 'baidu-map-gl-vue'
-const { result } = usePointGeocoder<PointGeocoderResult>()
+import { useBMapGeocodeDetail, GeocodeDetailResult } from 'baidu-map-gl-vue'
+const { result } = useBMapGeocodeDetail(map)
 ```
 
 :::
@@ -27,15 +27,15 @@ const { result } = usePointGeocoder<PointGeocoderResult>()
 
 使用坐标点对象数组作为 `get` 方法参数批量解析坐标点
 :::demo
-hooks/usePointGeocoder/batch
+hooks/useBMapGeocodeDetail/batch
 :::
 
 :::tip
 在 Ts 中使用批量解析坐标点时，使用泛型 `PointGeocoderResult[]` 内部可推断 `result` 为可推断为 `PointGeocoderResult[]`，从而避免遍历时 ts 的报错。
 
 ```ts
-import { usePointGeocoder, PointGeocoderResult } from 'baidu-map-gl-vue'
-const { result } = usePointGeocoder<PointGeocoderResult[]>()
+import { useBMapGeocodeDetail, GeocodeDetailResult } from 'baidu-map-gl-vue'
+const { getBatch } = useBMapGeocodeDetail(map)
 ```
 
 :::
@@ -43,7 +43,7 @@ const { result } = usePointGeocoder<PointGeocoderResult[]>()
 ## 用法
 
 ```ts
-const { get, result, isLoading, isEmpty } = usePointGeocoder(options, cal)
+const { get, result, isLoading, isEmpty } = useBMapGeocodeDetail(map)
 ```
 
 :::tip
@@ -158,7 +158,7 @@ export interface PointGeocoderResult {
 /**
  * 由地址解析坐标点
  */
-export declare function usePointGeocoder<
+export declare function useBMapGeocodeDetail(map?: unknown): {
   T extends PointGeocoderResult | PointGeocoderResult[] = PointGeocoderResult | PointGeocoderResult[]
 >(
   options?: BMapGL.LocationOptions | null,

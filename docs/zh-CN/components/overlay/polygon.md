@@ -14,7 +14,7 @@ overlay/polygon/index
 
 ## 镂空面绘制 / 行政区域边界
 
-:::demo 结合 [`useAreaBoundary`](../hooks/useAreaBoundary) hooks, 并通过指定 `props.isBoundary` 为 `true` 实现行政区域显示效果
+:::demo 结合 [`useBMapAreaBoundary`](../hooks/useBMapAreaBoundary) 获取边界字符串，并通过 `isBoundary` 为 `true` 绘制行政区域
 overlay/polygon/boundaries
 :::
 

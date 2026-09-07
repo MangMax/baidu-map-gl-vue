@@ -180,40 +180,40 @@ export const sidebarConfigZh: DefaultTheme.Sidebar = {
           link: 'usePoint'
         },
         {
-          text: 'useDefaultMarkerIcons 图标',
-          link: 'useDefaultMarkerIcons'
+          text: 'useBMapMarkerIcons 图标',
+          link: 'useBMapMarkerIcons'
         },
         {
-          text: 'useIpLocation Ip定位',
-          link: 'useIpLocation'
+          text: 'useBMapIpLocation IP定位',
+          link: 'useBMapIpLocation'
         },
         {
-          text: 'useBrowserLocation 浏览器定位',
-          link: 'useBrowserLocation'
+          text: 'useBMapGeolocation 百度定位',
+          link: 'useBMapGeolocation'
         },
         {
-          text: 'usePointGeocoder 坐标点解析',
-          link: 'usePointGeocoder'
+          text: 'useBMapGeocodeDetail 坐标点解析',
+          link: 'useBMapGeocodeDetail'
         },
         {
-          text: 'useAddressGeocoder 地址解析',
-          link: 'useAddressGeocoder'
+          text: 'useBMapGeocoder 地址解析',
+          link: 'useBMapGeocoder'
         },
         {
-          text: 'usePointConvertor 坐标转换',
-          link: 'usePointConvertor'
+          text: 'useBMapConvertor 坐标转换',
+          link: 'useBMapConvertor'
         },
         {
-          text: 'useAreaBoundary 区域边界',
-          link: 'useAreaBoundary'
+          text: 'useBMapAreaBoundary 区域边界',
+          link: 'useBMapAreaBoundary'
         },
         {
-          text: 'useViewAnimation 3d视角动画',
-          link: 'useViewAnimation'
+          text: 'useBMapViewAnimation 3d视角动画',
+          link: 'useBMapViewAnimation'
         },
         {
-          text: 'useTrackAnimation 轨迹动画',
-          link: 'useTrackAnimation'
+          text: 'useBMapTrackAnimation 轨迹动画',
+          link: 'useBMapTrackAnimation'
         }
       ]
     },

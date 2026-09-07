@@ -1,21 +1,21 @@
-# usePointConvertor 坐标点转换
+# useBMapConvertor 坐标点转换
 
 用于将其他坐标系的坐标转换为百度坐标。
 
 ```ts
-import { usePointConvertor } from 'baidu-map-gl-vue'
+import { useBMapConvertor } from 'baidu-map-gl-vue'
 ```
 
 ## 示例
 
 :::demo 将谷歌坐标转换为百度坐标
-hooks/usePointConvertor
+hooks/useBMapConvertor
 :::
 
 ## 用法
 
 ```ts
-const { result, convert, isLoading, isError, status } = usePointConvertor()
+const { result, convert, isLoading, isError, status } = useBMapConvertor(map)
 ```
 
 :::tip
@@ -122,7 +122,7 @@ export enum CoordinatesToType {
 <Map @initd="handleInitd"></Map>
 
 <script setup lang="ts">
-  import { useAreaBoundary } from 'baidu-map-gl-vue'
+  import { usePoint } from 'baidu-map-gl-vue'
 
   const { point, set } = usePoint()
 

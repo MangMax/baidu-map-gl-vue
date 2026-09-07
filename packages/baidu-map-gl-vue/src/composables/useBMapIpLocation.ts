@@ -4,6 +4,7 @@
  * 通过 SDK BMapGL.LocalCity 获取 IP 所在城市。
  * 统一异步状态(useBMapAsyncTask),不再由用户担保全局 BMapGL。
  */
+import { computed } from "vue";
 import { resolveMapContext } from "./resolveMapContext";
 import { useBMapAsyncTask } from "./useBMapAsyncTask";
 
@@ -17,6 +18,7 @@ export interface BMapIpLocationResult {
 export function useBMapIpLocation(map?: unknown) {
   const ctx = resolveMapContext(map);
   const task = useBMapAsyncTask<BMapIpLocationResult | null, []>({
+    immediate: false,
     runner: async () => {
       const ready = await ctx.whenReady();
       const LocalCity = (ready.api as { LocalCity: new () => { get: (cb: (r: unknown) => void) => void } })
@@ -38,6 +40,11 @@ export function useBMapIpLocation(map?: unknown) {
     location: task.data,
     isLoading: task.isLoading,
     error: task.error,
+    data: task.data,
+    result: task.data,
+    isError: computed(() => task.status.value === "error"),
+    isEmpty: computed(() => task.data.value === null),
+    status: task.status,
     get: task.execute,
     cancel: task.cancel,
     reset: task.reset,

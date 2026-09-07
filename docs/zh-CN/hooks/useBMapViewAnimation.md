@@ -1,9 +1,9 @@
-# useViewAnimation <Badge type="tip" text="^0.0.30" />
+# useBMapViewAnimation <Badge type="tip" text="^0.0.30" />
 
 该 hooks 用于展示地图的 3D 动画，您可以自定义从地图上某一地点切换到另一地点的 3D 过渡动画效果。
 
 ```ts
-import { useViewAnimation } from 'baidu-map-gl-vue'
+import { useBMapViewAnimation } from 'baidu-map-gl-vue'
 ```
 
 :::warning 注意
@@ -16,13 +16,13 @@ import { useViewAnimation } from 'baidu-map-gl-vue'
 ## 示例
 
 :::demo class="p-bottom"
-hooks/useViewAnimation
+hooks/useBMapViewAnimation
 :::
 
 ## 用法
 
 ```ts
-const { setKeyFrames, start, cancel, stop, proceed, status } = useViewAnimation(map, options)
+const { setKeyFrames, start, cancel, stop, proceed, status } = useBMapViewAnimation(options, map)
 ```
 
 :::tip
@@ -96,7 +96,7 @@ type AnimationStatus = 'PLAYING' | 'STOPPING' | 'INITIAL'
 
 ### 事件监听
 
-调用 `useViewAnimation` 后，即可通过 `viewAnimation` 返回值来添加事件监听，无需等待 `setKeyFrames` 方法调用
+调用 `useBMapViewAnimation` 后，即可通过 `viewAnimation` 返回值来添加事件监听，无需等待 `setKeyFrames` 方法调用
 
 | 事件                | 参数 | 描述                                                                          |
 | ------------------- | ---- | ----------------------------------------------------------------------------- |
@@ -109,7 +109,7 @@ type AnimationStatus = 'PLAYING' | 'STOPPING' | 'INITIAL'
 
 ### 为什么事件监听可以同步，而其他方法需要等到 `setKeyFrames` 方法调用后才可以使用？
 
-之所以事件监听可以同步，是因为 `useViewAnimation` hooks 内部做了处理，先缓存了视角动画初始化前的事件监听，等到 `setKeyFrames` 方法调用后，再由内部添加监听到视角动画实例上。
+之所以事件监听可以同步，是因为 `useBMapViewAnimation` hooks 内部做了处理，先缓存了视角动画初始化前的事件监听，等到 `setKeyFrames` 方法调用后，再由内部添加监听到视角动画实例上。
 
 这只是为了使用开发者使用体验更好，这和你等到 `setKeyFrames` 调用时，在后面添加监听，是一样的效果。
 
@@ -160,7 +160,7 @@ export interface UseViewAnimationOptions {
 }
 declare type AnimationListenerType = 'animationstart' | 'animationiterations' | 'animationend' | 'animationcancel'
 declare type AnimationStatus = 'PLAYING' | 'STOPPING' | 'INITIAL'
-export declare function useViewAnimation(
+export declare function useBMapViewAnimation(
   map: any,
   options: UseViewAnimationOptions
 ): {

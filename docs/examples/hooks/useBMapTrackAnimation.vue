@@ -7,17 +7,19 @@
         lat: 40.050566
       }"
       :zoom="16"
-            ref="map"
-      @pluginReady="handleInitd"
+      :plugins="['TrackAnimation']"
+      ref="map"
+      @ready="handleInitd"
     />
     <div class="state">
+      <span v-if="error">错误 - {{ error }}</span>
       <span>动画状态: {{ status !== 'idle' ? '已开始' : '未开始' }}</span>
       <span>播放状态: {{ status === 'idle' || status === 'stopped' ? '未播放' : '播放中' }}</span>
     </div>
-    <button class="myButton no-m-b" type="button" @click="start">开始</button>
-    <button class="myButton no-m-b" type="button" @click="stop">暂停</button>
-    <button class="myButton no-m-b" type="button" @click="proceed()">继续</button>
-    <button class="myButton no-m-b" type="button" @click="cancel()">取消</button>
+    <button class="myButton no-m-b" type="button" @click="handleStart">开始</button>
+    <button class="myButton no-m-b" type="button" @click="pause">暂停</button>
+    <button class="myButton no-m-b" type="button" @click="proceed">继续</button>
+    <button class="myButton no-m-b" type="button" @click="cancel">取消</button>
   </div>
 </template>
 
@@ -25,10 +27,11 @@
   import { ref } from 'vue'
   import { useBMapTrackAnimation } from 'baidu-map-gl-vue'
   const map = ref(null)
-  const { setPath, start, cancel, stop, proceed, status } = useBMapTrackAnimation({
+  const { setPath, start, pause, cancel, proceed, status } = useBMapTrackAnimation({
     duration: 10000,
     delay: 0
   }, map)
+  const error = ref('')
   const path = [
     {
       lng: 116.297611,
@@ -59,8 +62,15 @@
       lat: 40.056379
     }
   ]
-  function handleInitd() {
-    setPath(path)
+  async function handleInitd() {
+    await setPath(path)
+  }
+  async function handleStart() {
+    try {
+      await start()
+    } catch (err) {
+      error.value = String(err)
+    }
   }
 </script>
 

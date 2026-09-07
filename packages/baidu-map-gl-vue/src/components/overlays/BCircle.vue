@@ -69,7 +69,8 @@ const { resource } = useOverlayResource<BCircleProps, SdkCircle>(
     },
     createWatchers(getCtx, getResource, p, addDisposer) {
       addDisposer(
-        watch([() => p.center.lng, () => p.center.lat], ([lng, lat], [ol, oa]) => {
+        watch([() => p.center?.lng, () => p.center?.lat], ([lng, lat], [ol, oa]) => {
+          if (lng === undefined || lat === undefined) return;
           if (lng === ol && lat === oa) return;
           const res = getResource();
           const ctx = getCtx();

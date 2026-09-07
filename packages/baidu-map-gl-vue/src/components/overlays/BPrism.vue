@@ -6,12 +6,14 @@ import type { ResourceScope } from "../../core/lifecycle/ResourceScope";
 import { toSdkPoints } from "../../core/utils/geometry";
 
 export interface BPrismProps {
-  path: { lng: number; lat: number }[];
+  path: { lng: number; lat: number }[] | string[];
   altitude: number;
   topFillColor?: string;
   topFillOpacity?: number;
   sideFillColor?: string;
   sideFillOpacity?: number;
+  isBoundary?: boolean;
+  autoCenter?: boolean;
   enableMassClear?: boolean;
   visible?: boolean;
 }
@@ -21,6 +23,8 @@ const props = withDefaults(defineProps<BPrismProps>(), {
   topFillOpacity: 0.5,
   sideFillColor: "#fff",
   sideFillOpacity: 0.8,
+  isBoundary: false,
+  autoCenter: true,
   enableMassClear: true,
   visible: true,
 });
@@ -28,7 +32,13 @@ const props = withDefaults(defineProps<BPrismProps>(), {
 const emit = defineEmits<{
   click: [e: unknown];
   dblclick: [e: unknown];
+  mouseover: [e: unknown];
+  mouseout: [e: unknown];
 }>();
+
+function toPrismPath(api: unknown, path: BPrismProps["path"], isBoundary: boolean) {
+  return isBoundary ? path : toSdkPoints(api, path as { lng: number; lat: number }[]);
+}
 
 type SdkPrism = {
   setPath(p: unknown[]): void;
@@ -41,7 +51,7 @@ type SdkPrism = {
   disableMassClear(): void;
 };
 
-const { resource } = useOverlayResource<BPrismProps, SdkPrism>(
+const { resource, rebuild } = useOverlayResource<BPrismProps, SdkPrism>(
   props,
   {
     create: (ctx, p) => {
@@ -49,11 +59,13 @@ const { resource } = useOverlayResource<BPrismProps, SdkPrism>(
         Prism: new (pts: unknown[], a: number, o?: Record<string, unknown>) => unknown;
       };
       if (!p.path?.length) throw new Error("BPrism path is required");
-      return new BMapGL.Prism(toSdkPoints(ctx.api, p.path), p.altitude, {
+      return new BMapGL.Prism(toPrismPath(ctx.api, p.path, !!p.isBoundary), p.altitude, {
         topFillColor: p.topFillColor,
         topFillOpacity: p.topFillOpacity,
         sideFillColor: p.sideFillColor,
         sideFillOpacity: p.sideFillOpacity,
+        isBoundary: p.isBoundary,
+        autoCenter: p.autoCenter,
         enableMassClear: p.enableMassClear,
       }) as unknown as SdkPrism;
     },
@@ -67,16 +79,19 @@ const { resource } = useOverlayResource<BPrismProps, SdkPrism>(
       };
       on("click", (e) => emit("click", e));
       on("dblclick", (e) => emit("dblclick", e));
+      on("mouseover", (e) => emit("mouseover", e));
+      on("mouseout", (e) => emit("mouseout", e));
     },
     createWatchers(getCtx, getResource, p, addDisposer) {
       addDisposer(
         watch(
           [() => p.path, () => p.altitude],
           () => {
-            const res = getResource();
             const ctx = getCtx();
-            if (!res || !ctx) return;
-            if (p.path?.length) res.setPath(toSdkPoints(ctx.api, p.path));
+            if (!p.path?.length || !ctx) return;
+            const res = getResource();
+            if (res) res.setPath(toPrismPath(ctx.api, p.path, !!p.isBoundary));
+            else void rebuild();
           },
           { flush: "sync" },
         ),

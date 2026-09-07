@@ -6,6 +6,7 @@ import { BMapError } from "../../core/errors/BMapError";
 import type { BMapLoadOptions } from "../../core/loader/url";
 import { bmapConfigKey, type BMapPluginConfig } from "../../core/context/pluginConfig";
 import type { BMapProps } from "../../types/components";
+import { stringToPluginDefinitions } from "../../plugins/builtins";
 
 export type { BMapProps };
 
@@ -170,6 +171,9 @@ runtime = new MapRuntime({
   createMap,
   destroyMap,
 });
+for (const definition of stringToPluginDefinitions(props.plugins ?? [])) {
+  runtime.plugins.register(definition);
+}
 
 // 容器 ref 挂载后回填,供 MapRuntime.mount 使用
 onMounted(() => {
@@ -190,6 +194,11 @@ async function boot() {
   status.value = "loading";
   try {
     const ctx = await runtime!.mount();
+    // Plugins are registered per map instance and must be loaded before
+    // ready consumers construct plugin-backed resources.
+    for (const name of props.plugins ?? []) {
+      await runtime!.plugins.whenPlugin(name, runtime!.resources.signal);
+    }
     map.value = ctx.map;
     api.value = ctx.api;
     status.value = "ready";

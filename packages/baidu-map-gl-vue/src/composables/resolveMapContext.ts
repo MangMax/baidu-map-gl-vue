@@ -51,8 +51,10 @@ export function resolveMapContext(map?: unknown): MapContext {
     overlays: null,
     plugins: null,
     whenReady: (signal?: AbortSignal) => {
-      // 实时读取(map 参数为 ref 时,组件挂载后 value 才有值)
+      // 实时读取(map 参数为 ref 时,组件挂载后 value 才有值;api 同样实时从 window.BMapGL 取)
       mapRef.value = readValue(map);
+      apiRef.value =
+        typeof window !== "undefined" ? (window as unknown as Record<string, unknown>).BMapGL ?? null : null;
       const value = mapRef.value;
       if (value) {
         statusRef.value = "ready";

@@ -13,10 +13,15 @@ const props = withDefaults(defineProps<BInfoWindowProps>(), {
   height: 0,
   offset: () => ({ x: 0, y: 0 }),
   open: false,
+  show: undefined,
+  enableMaximize: false,
+  enableAutoPan: true,
+  enableCloseOnClick: false,
 });
 
 const emit = defineEmits<{
   "update:open": [v: boolean];
+  "update:show": [v: boolean];
     open: [];
   close: [];
 }>();
@@ -45,7 +50,10 @@ onMounted(async () => {
   const iw = new BMapGL.InfoWindow(shellRef.value ?? document.createElement("div"), {
     width: props.width,
     height: props.height,
-    title: props.title,
+     title: props.title,
+     enableMaximize: props.enableMaximize,
+     enableAutoPan: props.enableAutoPan,
+     enableCloseOnClick: props.enableCloseOnClick,
     offset: new BMapGL.Size(props.offset.x, props.offset.y),
   }) as unknown as SdkInfoWindow;
   infoWindow.value = iw;
@@ -54,7 +62,10 @@ onMounted(async () => {
   // SDK close/open 事件 → 仅状态真实变化时回写一次(§11.3)
   scope.add(
     bindSdkEvent(iw as any, "close", () => {
-      if (props.open) emit("update:open", false);
+       if (props.open || props.show) {
+         emit("update:open", false);
+         emit("update:show", false);
+       }
       emit("close");
     }),
   );
@@ -67,7 +78,7 @@ onMounted(async () => {
   // open state → SDK(状态机:prop 驱动)
   scope.add(
     watch(
-      () => props.open,
+       () => props.show ?? props.open,
       (open) => {
         const shouldOpen = open;
         if (!iw) return;

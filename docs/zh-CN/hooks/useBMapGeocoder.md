@@ -1,16 +1,16 @@
-# useAddressGeocoder <Badge type="tip" text="^0.0.39" />
+# useBMapGeocoder <Badge type="tip" text="^0.0.39" />
 
 通过地址解析坐标点
 
 ```ts
-import { useAddressGeocoder } from 'baidu-map-gl-vue'
+import { useBMapGeocoder } from 'baidu-map-gl-vue'
 ```
 
 ## 单个地址解析
 
 使用地址字符串作为 `get` 方法参数解析单个地址
 :::demo 通过下拉框切换地址解析坐标点
-hooks/useAddressGeocoder/index
+hooks/useBMapGeocoder/index
 :::
 
 :::tip
@@ -18,7 +18,7 @@ hooks/useAddressGeocoder/index
 
 ```ts
 import { Point } from 'baidu-map-gl-vue'
-const { point } = useAddressGeocoder<Point>()
+const { point } = useBMapGeocoder(map)
 ```
 
 :::
@@ -27,7 +27,7 @@ const { point } = useAddressGeocoder<Point>()
 
 使用地址字符串数组作为 `get` 方法参数批量解析地址
 :::demo
-hooks/useAddressGeocoder/batch
+hooks/useBMapGeocoder/batch
 :::
 
 :::tip
@@ -35,7 +35,7 @@ hooks/useAddressGeocoder/batch
 
 ```ts
 import { Point } from 'baidu-map-gl-vue'
-const { point: points } = useAddressGeocoder<Point[]>()
+const { getBatch } = useBMapGeocoder(map)
 ```
 
 :::
@@ -43,7 +43,7 @@ const { point: points } = useAddressGeocoder<Point[]>()
 ## 用法
 
 ```ts
-const { get, point, isLoading, isEmpty } = useAddressGeocoder(cal)
+const { get, point, isLoading, isEmpty } = useBMapGeocoder(map)
 ```
 
 :::tip
@@ -81,7 +81,7 @@ export declare type AddressGeocoderResult = Point | Point[]
 /**
  * 由地址解析坐标点
  */
-export declare function useAddressGeocoder<T extends AddressGeocoderResult = AddressGeocoderResult>(
+export declare function useBMapGeocoder(map?: unknown): {
   cal?: (point: Ref<T>) => void
 ): {
   get: (address: T extends Point ? string : string[], city: string) => void

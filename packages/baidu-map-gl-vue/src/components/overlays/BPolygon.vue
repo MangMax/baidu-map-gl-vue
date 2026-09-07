@@ -6,7 +6,7 @@ import type { ResourceScope } from "../../core/lifecycle/ResourceScope";
 import { toSdkPoints } from "../../core/utils/geometry";
 
 export interface BPolygonProps {
-  path: { lng: number; lat: number }[];
+  path: { lng: number; lat: number }[] | string[];
   pathVersion?: string | number;
   strokeColor?: string;
   strokeWeight?: number;
@@ -14,6 +14,7 @@ export interface BPolygonProps {
   strokeStyle?: "solid" | "dashed" | "dotted";
   fillColor?: string;
   fillOpacity?: number;
+  isBoundary?: boolean;
   enableMassClear?: boolean;
   enableEditing?: boolean;
   visible?: boolean;
@@ -26,10 +27,15 @@ const props = withDefaults(defineProps<BPolygonProps>(), {
   strokeStyle: "solid",
   fillColor: "#000000",
   fillOpacity: 0.5,
+  isBoundary: false,
   enableMassClear: true,
   enableEditing: false,
   visible: true,
 });
+
+function toPolygonPath(api: unknown, path: BPolygonProps["path"], isBoundary: boolean) {
+  return isBoundary ? path : toSdkPoints(api, path as { lng: number; lat: number }[]);
+}
 
 const emit = defineEmits<{
   click: [e: unknown];
@@ -57,13 +63,14 @@ const { resource } = useOverlayResource<BPolygonProps, SdkPolygon>(
       const BMapGL = ctx.api as {
         Polygon: new (pts: unknown[], o?: Record<string, unknown>) => unknown;
       };
-      return new BMapGL.Polygon(toSdkPoints(ctx.api, p.path), {
+       return new BMapGL.Polygon(toPolygonPath(ctx.api, p.path, !!p.isBoundary), {
         strokeColor: p.strokeColor,
         strokeWeight: p.strokeWeight,
         strokeOpacity: p.strokeOpacity,
         strokeStyle: p.strokeStyle,
         fillColor: p.fillColor,
         fillOpacity: p.fillOpacity,
+        isBoundary: p.isBoundary,
       }) as unknown as SdkPolygon;
     },
     addToMap: (res, ctx, p, scope: ResourceScope) => {
@@ -85,7 +92,9 @@ const { resource } = useOverlayResource<BPolygonProps, SdkPolygon>(
             const res = getResource();
             const ctx = getCtx();
             if (!res || !ctx) return;
-            if (path && path.length > 0) res.setPath(toSdkPoints(ctx.api, path));
+             if (path && path.length > 0) {
+               res.setPath(toPolygonPath(ctx.api, path, !!p.isBoundary));
+             }
           },
           { flush: "sync" },
         ),

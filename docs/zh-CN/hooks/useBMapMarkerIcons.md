@@ -1,9 +1,9 @@
-# useDefaultMarkerIcons
+# useBMapMarkerIcons
 
 通过该 hooks 可获取一些内置的地图图标 (BMapGL.Icon)。
 
 ```ts
-import { useDefaultMarkerIcons } from 'baidu-map-gl-vue'
+import { useBMapMarkerIcons } from 'baidu-map-gl-vue'
 ```
 
 > 参考：[marker 图标可选值](/zh-CN/components/overlay/marker#默认图标可选值)
@@ -11,7 +11,7 @@ import { useDefaultMarkerIcons } from 'baidu-map-gl-vue'
 ## 用法
 
 ```ts
-const icons = useDefaultMarkerIcons()
+const icons = useBMapMarkerIcons()
 ```
 
 :::tip
@@ -36,10 +36,10 @@ const icons = useDefaultMarkerIcons()
 </template>
 
 <script setup lang="ts">
-  import { useAreaBoundary } from 'baidu-map-gl-vue'
+  import { useBMapMarkerIcons } from 'baidu-map-gl-vue'
 
   function handleInitd() {
-    const icons = useDefaultMarkerIcons()
+    const icons = useBMapMarkerIcons()
     // ...
   }
 </script>
@@ -76,5 +76,5 @@ export declare type DefaultMarkerIcons =
   | 'blue8'
   | 'blue9'
   | 'blue10'
-export declare function useDefaultMarkerIcons(): Record<DefaultMarkerIcons, BMapGL.Icon>
+export declare function useBMapMarkerIcons(api?: unknown): Record<string, unknown>
 ```
