@@ -34,7 +34,7 @@ export type MarkerIconName =
   | "blue9"
   | "blue10";
 
-const DEFAULT_ICON_URL = "//mapopen.bj.bcebos.com/cms/react-bmap/markers_new2x_fbb9e99.png";
+const DEFAULT_ICON_URL = "https://mapopen.bj.bcebos.com/cms/react-bmap/markers_new2x_fbb9e99.png";
 
 type IconCtor = {
   Icon: new (url: string, size: unknown, opts?: Record<string, unknown>) => unknown;

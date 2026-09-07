@@ -253,6 +253,24 @@ watch(
   { flush: "post" },
 );
 
+watch(
+  () => props.center,
+  () => {
+    const m = map.value as { centerAndZoom?: (center: unknown, zoom: number) => void } | null;
+    m?.centerAndZoom?.(props.center, props.zoom);
+  },
+  { flush: "post", deep: true },
+);
+
+watch(
+  () => props.zoom,
+  (zoom) => {
+    const m = map.value as { setZoom?: (value: number) => void } | null;
+    m?.setZoom?.(zoom);
+  },
+  { flush: "post" },
+);
+
 const context: MapContext = {
   id: runtime.id,
   status: status as unknown as MapContext["status"],
