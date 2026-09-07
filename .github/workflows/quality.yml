@@ -47,7 +47,7 @@ jobs:
 
       # v2 sources removed: repo is v3-only (彻底重构)
       - name: Legacy v2 build
-        run: echo "v2 sources removed (v3-only repo)
+        run: echo "v2 sources removed (v3-only repo)"
       # Package tarball consumer verification
       - name: Verify package consumers
         run: |
