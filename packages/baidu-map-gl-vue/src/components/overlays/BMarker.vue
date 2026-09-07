@@ -32,7 +32,7 @@ type SdkMarker = {
 };
 
 // 内置图标雪碧图(loc_red 等)
-const DEFAULT_ICON_URL = "//mapopen.bj.bcebos.com/cms/react-bmap/markers_new2x_fbb9e99.png";
+const DEFAULT_ICON_URL = "https://mapopen.bj.bcebos.com/cms/react-bmap/markers_new2x_fbb9e99.png";
 const ICON_OFFSETS: Record<string, [number, number, number, number]> = {
   simple_red: [454, 378, 42, 66],
   simple_blue: [454, 450, 42, 66],
@@ -43,6 +43,11 @@ const ICON_OFFSETS: Record<string, [number, number, number, number]> = {
   location: [400, 378, 46, 70],
 };
 
+const SPECIAL_ICON_URLS: Record<string, string> = {
+  start: "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='24' height='32'%3E%3Cpath fill='%231677ff' stroke='white' stroke-width='2' d='M12 1C6 1 2 5 2 11c0 8 10 19 10 19s10-11 10-19C22 5 18 1 12 1z'/%3E%3Ccircle fill='white' cx='12' cy='11' r='4'/%3E%3C/svg%3E",
+  end: "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='24' height='32'%3E%3Cpath fill='%23f04444' stroke='white' stroke-width='2' d='M12 1C6 1 2 5 2 11c0 8 10 19 10 19s10-11 10-19C22 5 18 1 12 1z'/%3E%3Ccircle fill='white' cx='12' cy='11' r='4'/%3E%3C/svg%3E",
+};
+
 function buildIcon(api: unknown, icon: MarkerIcon | undefined): unknown | undefined {
   if (!icon) return undefined;
   const BMapGL = api as {
@@ -51,6 +56,13 @@ function buildIcon(api: unknown, icon: MarkerIcon | undefined): unknown | undefi
   };
   // 字符串内置名
   if (typeof icon === "string") {
+    if (SPECIAL_ICON_URLS[icon]) {
+      return new BMapGL.Icon(SPECIAL_ICON_URLS[icon], new BMapGL.Size(24, 32), {
+        // Keep the pin tip aligned with the coordinate while the legacy
+        // examples retain their y=-16 offset.
+        anchor: new BMapGL.Size(12, 16),
+      });
+    }
     const [ox, oy, w, h] = ICON_OFFSETS[icon] ?? [454, 378, 42, 66];
     return new BMapGL.Icon(DEFAULT_ICON_URL, new BMapGL.Size(w / 2, h / 2), {
       imageOffset: new BMapGL.Size(ox / 2, oy / 2),

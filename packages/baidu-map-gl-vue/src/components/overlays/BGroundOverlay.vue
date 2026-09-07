@@ -49,8 +49,8 @@ function makeBounds(
     Bounds: new (sw: unknown, ne: unknown) => unknown;
   };
   return new BMapGL.Bounds(
-    new BMapGL.Point(start.lng, end.lat),
-    new BMapGL.Point(end.lng, start.lat),
+    new BMapGL.Point(start.lng, start.lat),
+    new BMapGL.Point(end.lng, end.lat),
   );
 }
 
@@ -72,8 +72,24 @@ const { resource, rebuild } = useOverlayResource<BGroundOverlayProps, SdkGroundO
       }) as unknown as SdkGroundOverlay;
     },
     addToMap: (res, ctx, p, scope: ResourceScope) => {
-      const map = ctx.map as { addOverlay: (o: unknown) => void };
+      const map = ctx.map as {
+        addOverlay: (o: unknown) => void;
+        centerAndZoom?: (center: unknown, zoom: number) => void;
+        getViewport?: (points: unknown[]) => unknown;
+        setViewport?: (viewport: unknown, options?: unknown) => void;
+      };
       if (props.visible) map.addOverlay(res);
+      if (p.autoCenter && map.getViewport && map.setViewport) {
+        const Point = (ctx.api as { Point: new (lng: number, lat: number) => unknown }).Point;
+        const viewport = map.getViewport([
+          new Point(p.startPoint.lng, p.startPoint.lat),
+          new Point(p.endPoint.lng, p.endPoint.lat),
+        ]);
+        if (viewport) map.setViewport(viewport, { margins: [20, 20, 20, 20] });
+      } else if (p.autoCenter && map.centerAndZoom) {
+        const center = (makeBounds(ctx.api, p.startPoint, p.endPoint) as { getCenter?: () => unknown }).getCenter?.();
+        if (center) map.centerAndZoom(center, 16);
+      }
       (ctx as any).overlays?.register?.("ground-overlay", res);
       const on = (name: string, h: (e: unknown) => void) => {
         (res as any).addEventListener?.(name, h);
