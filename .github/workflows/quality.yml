@@ -37,6 +37,9 @@ jobs:
         run: node --experimental-strip-types scripts/generate-manifest-artifacts.mts --check
 
       # Behavior snapshot tests (data-driven, no external network/AK)
+      - name: Build v3 artifacts for global bundle tests
+        run: node --experimental-strip-types scripts/build-v3.mts
+
       - name: Unit & behavior tests
         run: pnpm exec vitest run tests/behavior tests/__smoke__.test.ts
 
