@@ -1,5 +1,5 @@
 <template>
-  <BMap v-bind="$attrs" @initd="handleInitd" :zoom="zoom">
+  <BMap v-bind="$attrs" @ready="handleInitd" :zoom="zoom">
     <BControl style="display: flex; background-color: #fff; padding: 10px" :offset="{ x: 0, y: 0 }">
       <button @click="handleZoomOut">缩小</button>
       <button @click="handleZoomIn">放大</button>
@@ -10,15 +10,15 @@
 <script setup lang="ts">
   import { ref } from 'vue'
   const zoom = ref(10)
-  let _map
-  function handleInitd({ map }) {
+  let _map: { getZoom(): number } | null = null
+  function handleInitd({ map }: { map: { getZoom(): number } }) {
     _map = map
   }
   function handleZoomOut() {
-    zoom.value = _map.getZoom() - 1
+    if (_map) zoom.value = _map.getZoom() - 1
   }
   function handleZoomIn() {
-    zoom.value = _map.getZoom() + 1
+    if (_map) zoom.value = _map.getZoom() + 1
   }
 </script>
 

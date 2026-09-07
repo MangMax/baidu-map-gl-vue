@@ -2,10 +2,10 @@ import path from 'path'
 import fs from 'fs'
 import MarkdownIt from 'markdown-it'
 import mdContainer from 'markdown-it-container'
-import { highlight } from '../utils/higtlight'
+import { highlight } from '../utils/higtlight.ts'
 import type Token from 'markdown-it/lib/token'
 import type Renderer from 'markdown-it/lib/renderer'
-import { hideSomeCode } from '../utils/hideSomeCode'
+import { hideSomeCode } from '../utils/hideSomeCode.ts'
 
 const localMd = MarkdownIt()
 const docRoot = process.cwd()

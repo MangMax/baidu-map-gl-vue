@@ -31,7 +31,7 @@
     fullScreen.value ? calcHeight() : resetHeight()
   }
   function calcHeight() {
-    const mapContainer = demoContainer.value?.querySelector('.baidu-map-container') as HTMLDivElement
+    const mapContainer = demoContainer.value?.querySelector('.bmap-container') as HTMLDivElement
 
     document.body.style.overflow = 'hidden'
     nextTick(() => {
@@ -255,9 +255,9 @@
   .collapse-leave-to {
     max-height: 0;
   }
-  .demo-wrapper:not(.not-full) .demo-container :deep(.baidu-map-container) {
-    width: calc(100% + 2rem) !important;
-    margin-left: -1rem;
+  .demo-wrapper:not(.not-full) .demo-container :deep(.bmap-container) {
+    width: 100% !important;
+    margin-left: 0;
   }
   .p-top :deep(.example-showcase) {
     padding-top: 1rem;

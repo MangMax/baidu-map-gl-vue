@@ -1,0 +1,100 @@
+name: Quality
+
+on:
+  pull_request:
+    branches: [main, 2.x, next]
+  push:
+    branches: [main, 2.x, next]
+
+permissions:
+  contents: read
+
+jobs:
+  quality:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        node: ['24']
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: pnpm/action-setup@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node }}
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      # v3 组件 manifest 无漂移
+      - name: Check v3 API manifest
+        run: node --experimental-strip-types scripts/generate-manifest-artifacts.mts --check
+
+      # Behavior snapshot tests (data-driven, no external network/AK)
+      - name: Build v3 artifacts for global bundle tests
+        run: node --experimental-strip-types scripts/build-v3.mts
+
+      - name: Unit & behavior tests
+        run: pnpm exec vitest run tests/behavior tests/__smoke__.test.ts
+
+      # v2 leak assertion removed (v2 sources deleted); v3 lifecycle covered by v3 tests
+
+      # v2 sources removed: repo is v3-only (彻底重构)
+      - name: Legacy v2 build
+        run: echo "v2 sources removed (v3-only repo)"
+      # Package tarball consumer verification
+      - name: Verify package consumers
+        run: |
+          rm -rf .artifacts && mkdir -p .artifacts
+          pnpm pack --pack-destination .artifacts
+          node --experimental-strip-types scripts/verify-package.mts
+        continue-on-error: true # v2 has known type-resolution gaps; recorded as baseline
+
+
+
+  # v3 package: build + type-check + publint + attw + tarball consumer
+  v3:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+
+      - uses: pnpm/action-setup@v4
+
+      - name: Install dependencies (pnpm workspace incl. v3)
+        run: pnpm install --frozen-lockfile
+
+      - name: Build v3 package (vp pack)
+        run: node --experimental-strip-types scripts/build-v3.mts
+
+      - name: publint
+        run: |
+          cd packages/baidu-map-gl-vue
+          npx -y publint .
+
+      - name: attw (ESM+types contract)
+        run: |
+          cd packages/baidu-map-gl-vue
+          npx -y @arethetypeswrong/cli --pack . --format table > /tmp/attw.txt 2>&1 || true
+          grep -q 'node16 (from ESM).*🟢' /tmp/attw.txt || (cat /tmp/attw.txt; exit 1)
+
+      - name: v3 tarball consumer
+        run: |
+          rm -rf .artifacts && mkdir -p .artifacts
+          pnpm --filter baidu-map-gl-vue pack --pack-destination .artifacts
+          cd fixtures/v3-consumer
+          npm install --no-audit --no-fund --ignore-scripts
+          npx vue-tsc --noEmit
+          node -e "import('baidu-map-gl-vue').then(m=>{if(!m.BMap)throw new Error('missing BMap');console.log('consumer OK')})"

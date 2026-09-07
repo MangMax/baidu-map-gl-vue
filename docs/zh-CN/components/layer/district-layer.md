@@ -3,7 +3,7 @@
 在地图上显示行政区划分
 
 ```ts
-import { BDistrictLayer } from 'vue3-baidu-map-gl'
+import { BDistrictLayer } from 'baidu-map-gl-vue'
 ```
 
 ## 组件示例

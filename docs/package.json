@@ -1,5 +1,6 @@
 {
   "private": true,
+  "type": "module",
   "scripts": {
     "dev": "vitepress dev .",
     "build": "prettier -w ./zh-CN/* && vitepress build .",
@@ -9,26 +10,30 @@
     "lint:zh": "pnpm zhlint '**/*.md' --fix"
   },
   "devDependencies": {
-    "@vite-pwa/vitepress": "^0.3.1",
+    "@vite-pwa/vitepress": "^1.1.0",
     "consola": "^2.15.3",
     "escape-html": "^1.0.3",
     "less": "^4.1.3",
-    "markdown-it": "^13.0.1",
-    "markdown-it-container": "^3.0.0",
+    "markdown-it": "^14.1.0",
+    "markdown-it-container": "^4.0.0",
     "prismjs": "^1.29.0",
     "vanilla-tilt": "^1.8.0",
-    "vite-plugin-pwa": "^0.17.2",
-    "vue3-baidu-map-gl": "workspace:*",
-    "zhlint": "^0.8.2"
+    "vite-plugin-pwa": "^1.3.0",
+    "baidu-map-gl-vue": "workspace:*",
+    "zhlint": "^0.8.2",
+    "chalk": "^4.1.2",
+    "workbox-window": "^7.4.1"
   },
   "engines": {
-    "node": ">=18.0.0"
+    "node": ">=22.0.0"
   },
   "dependencies": {
+    "@baidumap/mapv-three": "^1.7.1",
     "bmap-draw": "^1.0.19",
-    "mapv-three": "^1.0.12",
-    "prism-theme-vars": "^0.2.4",
-    "three": "^0.147.0",
-    "vitepress": "1.3.4"
-  }
+    "prism-theme-vars": "^0.2.5",
+    "three": "^0.180.0",
+    "vitepress": "2.0.0-alpha.20",
+    "@vueuse/core": "^14.4.0"
+  },
+  "name": "docs-site"
 }

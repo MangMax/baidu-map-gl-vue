@@ -3,7 +3,7 @@
 在地图上绘制简单的多边形
 
 ```ts
-import { BPolygon } from 'vue3-baidu-map-gl'
+import { BPolygon } from 'baidu-map-gl-vue'
 ```
 
 ## 组件示例
@@ -14,7 +14,7 @@ overlay/polygon/index
 
 ## 镂空面绘制 / 行政区域边界
 
-:::demo 结合 [`useAreaBoundary`](../hooks/useAreaBoundary) hooks, 并通过指定 `props.isBoundary` 为 `true` 实现行政区域显示效果
+:::demo 结合 [`useBMapAreaBoundary`](../hooks/useBMapAreaBoundary) 获取边界字符串，并通过 `isBoundary` 为 `true` 绘制行政区域
 overlay/polygon/boundaries
 :::
 

@@ -8,18 +8,18 @@
 </template>
 <script lang="ts" setup>
   import { ref } from 'vue'
-  import { ContextMenuItem, ContextMenuSeparator } from 'vue3-baidu-map-gl'
+  import { ContextMenuItem, ContextMenuSeparator } from 'baidu-map-gl-vue'
   const center = ref('北京市')
   const list = ref<(ContextMenuItem | ContextMenuSeparator)[]>([
     {
       text: '放大一级',
-      callback: function ({ map }: { map: BMapGL.Map }) {
+      callback: function ({ map }: { map: { zoomIn(): void; zoomOut(): void } }) {
         map.zoomIn()
       }
     },
     {
       text: '缩小一级',
-      callback: function ({ map }: { map: BMapGL.Map }) {
+      callback: function ({ map }: { map: { zoomIn(): void; zoomOut(): void } }) {
         map.zoomOut()
       }
     },
@@ -37,7 +37,7 @@
   const overlayList = ref<(ContextMenuItem | ContextMenuSeparator)[]>([
     {
       text: '覆盖物上下文菜单',
-      callback: function ({ map }: { map: BMapGL.Map }) {
+      callback: function ({ map }: { map: { zoomIn(): void; zoomOut(): void } }) {
         alert('点击了覆盖物上下文菜单')
       }
     }

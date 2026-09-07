@@ -6,14 +6,14 @@
 - 局部隐藏：隐藏掉局部区域地图元素，比如隐藏掉指定园区范围的地图元素，然后自定义叠加园区模型。
 
 ```ts
-import { BMapMask } from 'vue3-baidu-map-gl'
+import { BMapMask } from 'baidu-map-gl-vue'
 ```
 
 :::tip 注意
 
 1. 局部隐藏适用于地图大级别情况，建议在 zoom>=18 级时使用
 2. 初始地图的中心点需要设置到掩膜区域内
-   :::
+:::
 
 ## 组件示例
 

@@ -18,7 +18,7 @@
       "vitepress",
       "vue",
       "vite/client",
-      "vue3-baidu-map-gl/volar",
+      "baidu-map-gl-vue/volar",
       "vite-plugin-pwa/client",
       "vite-plugin-pwa/vanillajs",
       "vite-plugin-pwa/vue"

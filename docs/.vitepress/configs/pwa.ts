@@ -58,6 +58,7 @@ export const pwa: Partial<PwaOptions> = {
   },
   workbox: {
     cacheId: 'bundle-prefetch',
+    maximumFileSizeToCacheInBytes: 4 * 1024 * 1024,
     globPatterns: ['**/*.{css,js,html,svg,png,ico,txt,woff2,json}'],
     globIgnores: ['*.cdr', '*.glb'],
     runtimeCaching: [

@@ -1,5 +1,5 @@
 import { defineConfig } from 'vitepress'
-import { head, nav, sidebarConfigZh, mdPlugin, pwa } from './configs'
+import { head, nav, sidebarConfigZh, mdPlugin, pwa } from './configs/index.ts'
 import { withPwa } from '@vite-pwa/vitepress'
 
 export default withPwa(
@@ -9,7 +9,7 @@ export default withPwa(
     description:
       '基于百度地图 JavaScript GL 版（使用了 WebGL 对地图、覆盖物等进行渲染，支持 3D 视角展示地图） API 封装设计的 Vue3 组件/hooks 库。',
     lastUpdated: true,
-    base: '/vue3-baidu-map-gl/',
+    base: '/baidu-map-gl-vue/',
     cleanUrls: true,
     head,
     markdown: {
@@ -33,7 +33,7 @@ export default withPwa(
         // options: {
         //   appId: 'RT4OHPUGD1',
         //   apiKey: '76ba0d807534197fb89a2644c412240b',
-        //   indexName: 'vue3-baidu-map-gl-zh'
+        //   indexName: 'baidu-map-gl-vue-zh'
         // }
       },
 
@@ -41,10 +41,10 @@ export default withPwa(
         message: 'Released under the MIT License.',
         copyright: 'Copyright © 2022-present dh and all contributors'
       },
-      socialLinks: [{ icon: 'github', link: 'https://github.com/yue1123/vue3-baidu-map-gl' }],
+      socialLinks: [{ icon: 'github', link: 'https://github.com/MangMax/baidu-map-gl-vue' }],
       sidebar: sidebarConfigZh,
       editLink: {
-        pattern: 'https://github.com/yue1123/vue3-baidu-map-gl/edit/main/docs/:path',
+        pattern: 'https://github.com/MangMax/baidu-map-gl-vue/edit/main/docs/:path',
         text: 'Edit this page on GitHub'
       }
     }

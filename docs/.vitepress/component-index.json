@@ -1,0 +1,32 @@
+{
+  "version": "3.0.0-beta.0",
+  "generatedAt": "2026-09-05T13:35:36.110Z",
+  "components": [
+    "BMap",
+    "BMarker",
+    "BInfoWindow",
+    "BCircle",
+    "BPolyline",
+    "BPolygon",
+    "BLabel",
+    "BContextMenu",
+    "BPrism",
+    "BGroundOverlay",
+    "BBezierCurve",
+    "BMapMask",
+    "BMarker3d",
+    "BAutoComplete",
+    "BPanoramaControl",
+    "BControl",
+    "BPointLayer",
+    "BMarkerCluster",
+    "BZoom",
+    "BScale",
+    "BCityList",
+    "BLocation",
+    "BNavigation3d",
+    "BCopyright",
+    "BDistrictLayer",
+    "BPanoramaCoverageLayer"
+  ]
+}

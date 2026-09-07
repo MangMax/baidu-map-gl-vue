@@ -1,0 +1,63 @@
+{
+  "name": "baidu-map-gl-vue",
+  "description": "A Vue 3 baidu map gl Component Library (v3 modernized runtime).",
+  "version": "3.0.0-beta.0",
+  "type": "module",
+  "main": "./dist/index.mjs",
+  "module": "./dist/index.mjs",
+  "types": "./dist/index.d.ts",
+  "private": false,
+  "sideEffects": false,
+  "files": [
+    "dist",
+    "types",
+    "volar.d.ts"
+  ],
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.mjs"
+    },
+    "./components": {
+      "types": "./dist/components.d.ts",
+      "import": "./dist/components.mjs"
+    },
+    "./composables": {
+      "types": "./dist/composables.d.ts",
+      "import": "./dist/composables.mjs"
+    },
+    "./plugins": {
+      "types": "./dist/plugins.d.ts",
+      "import": "./dist/plugins.mjs"
+    },
+    "./resolver": {
+      "types": "./dist/resolver.d.ts",
+      "import": "./dist/resolver.mjs"
+    },
+    "./core": {
+      "types": "./dist/core.d.ts",
+      "import": "./dist/core.mjs"
+    },
+    "./package.json": "./package.json"
+  },
+  "peerDependencies": {
+    "vue": "^3.5.0"
+  },
+  "engines": {
+    "node": ">=22"
+  },
+  "devDependencies": {
+    "@microsoft/api-extractor": "^7.52.0",
+    "@vitejs/plugin-vue": "^6.0.8",
+    "@vue/language-core": "^2.2.0",
+    "typescript": "^5.8.3",
+    "vite": "^8.2.2",
+    "vite-plugin-dts": "^5.1.0",
+    "vue-tsc": "^2.2.0"
+  },
+  "author": "MangMax",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/MangMax/baidu-map-gl-vue.git"
+  }
+}

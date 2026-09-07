@@ -3,7 +3,7 @@
 定位控件，默认位于地图右下角
 
 ```ts
-import { BLocation } from 'vue3-baidu-map-gl'
+import { BLocation } from 'baidu-map-gl-vue'
 ```
 
 ## 组件示例

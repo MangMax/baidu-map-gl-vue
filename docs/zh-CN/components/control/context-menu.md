@@ -3,7 +3,7 @@
 在地图上添加自定义内容的右键菜单
 
 ```ts
-import { BContextMenu } from 'vue3-baidu-map-gl'
+import { BContextMenu } from 'baidu-map-gl-vue'
 ```
 
 ## 组件示例

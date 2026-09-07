@@ -39,7 +39,7 @@
     })
     view.addLayer(grid)
 
-    fetch('/vue3-baidu-map-gl/beijing.json')
+    fetch('/baidu-map-gl-vue/beijing.json')
       .then((rs) => {
         return rs.json()
       })
@@ -50,7 +50,7 @@
           let item = rs[i]
           data.push({
             geometry: {
-              type: 'Point',
+              type: 'PointLike',
               coordinates: [item[0], item[1]]
             },
             properties: {

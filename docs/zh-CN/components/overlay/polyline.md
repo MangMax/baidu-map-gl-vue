@@ -3,7 +3,7 @@
 在地图上绘制简单的折线
 
 ```ts
-import { BPolyline } from 'vue3-baidu-map-gl'
+import { BPolyline } from 'baidu-map-gl-vue'
 ```
 
 ## 组件示例

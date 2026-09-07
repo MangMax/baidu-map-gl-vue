@@ -1,6 +1,6 @@
 import { watch, h } from 'vue'
 import defaultTheme from 'vitepress/theme'
-import baiduMapInit from 'vue3-baidu-map-gl'
+import { createBMapPlugin } from 'baidu-map-gl-vue'
 import '../styles/index.less'
 
 import Demo from '../components/vp-demo.vue'
@@ -35,8 +35,6 @@ export default {
     tooltipDirective(app)
     app.component('Demo', Demo)
     app.component('Tooltip', Tooltip)
-    app.use(baiduMapInit, {
-      ak: 'cwHsf5i2fAQAlijOyELx5COtkFhItaSm'
-    })
+    app.use(createBMapPlugin({ ak: 'cwHsf5i2fAQAlijOyELx5COtkFhItaSm' }))
   }
 }

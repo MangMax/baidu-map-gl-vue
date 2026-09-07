@@ -7,7 +7,7 @@ title: Map 地图
 地图核心对象，地图控件、覆盖物、图层等需作为其子组件，以获得 map 的实例化对象
 
 ```ts
-import { BMap } from 'vue3-baidu-map-gl'
+import { BMap } from 'baidu-map-gl-vue'
 ```
 
 ## 渲染地图
@@ -30,7 +30,7 @@ map/multiInstance
 
 1. 如果个性化地图没有生效，请先检查 `mapStyleId` 或 `mapStyleJson` 是否正确。如果是通过 `mapStyleId` 实现，还需要检查是否与 `ak` 申请的账号一致
 2. 以下示例使用的 `mapStyleId` 均与 ak 和域名绑定，无法直接复制使用。可根据示例主题名字到[百度地图个性化编辑器](https://lbsyun.baidu.com/apiconsole/custommap)创建后使用
-   :::
+:::
 
 ### 获取资源
 

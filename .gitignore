@@ -32,3 +32,11 @@ lib
 es
 .env
 volar.d.ts
+# M0 artifacts (local, not committed)
+.artifacts
+artifacts
+test-results.json
+
+# 内部实施计划文档(不提交,npm 包/CI 均不需要)
+vue3-baidu-map-gl-modernization-plan-v2.md
+milestone-docs/

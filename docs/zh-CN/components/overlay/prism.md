@@ -3,12 +3,12 @@
 通过该组件可在地图上绘制 3d 棱柱，可以基于位置经纬度，高度，顶面和侧面的颜色、透明度等属性来绘制不规则的棱柱体。
 
 ```ts
-import { BPrism } from 'vue3-baidu-map-gl'
+import { BPrism } from 'baidu-map-gl-vue'
 ```
 
 ## 示例
 
-:::demo 结合 [`useAreaBoundary`](../hooks/useAreaBoundary) hooks, 并通过指定 `props.isBoundary` 为 `true` 实现 3d 行政区域显示效果
+:::demo 通过 [`useBMapAreaBoundary`](../hooks/useBMapAreaBoundary) 获取边界字符串，并传给 `BPrism` 的 `path`，同时设置 `isBoundary` 为 `true`
 overlay/prism
 :::
 
@@ -24,7 +24,7 @@ overlay/prism
 
 | 属性            | 说明                                        | 类型                            | 可选值 | 默认值     | 版本                               |
 | --------------- | ------------------------------------------- | ------------------------------- | ------ | ---------- | ---------------------------------- |
-| path            | 多边形的坐标数组                            | `{ lng: number, lat: number}[]` | -      | `required` | -                                  |
+| path            | 普通多边形使用点对象数组，行政边界使用边界字符串数组 | `{ lng: number, lat: number}[] \| string[]` | - | `required` | - |
 | altitude        | 3d 棱柱高度                                 | `number`                        | -      | `required` | -                                  |
 | topFillColor    | 顶面填充颜色                                | `string `                       | -      | `#fff`     | -                                  |
 | topFillOpacity  | 顶面填充颜色透明度                          | `number`                        | `0-1`  | -          | -                                  |
