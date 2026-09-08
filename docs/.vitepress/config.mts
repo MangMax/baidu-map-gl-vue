@@ -1,19 +1,19 @@
-import { defineConfig } from 'vitepress'
-import { head, nav, sidebarConfigZh, mdPlugin, pwa } from './configs/index.ts'
-import { withPwa } from '@vite-pwa/vitepress'
+import { defineConfig } from "vitepress";
+import { head, nav, sidebarConfigZh, mdPlugin, pwa } from "./configs/index.ts";
+import { withPwa } from "@vite-pwa/vitepress";
 
 export default withPwa(
   defineConfig({
-    lang: 'zh-CN',
-    title: 'Vue3 Baidu Map Gl',
+    lang: "zh-CN",
+    title: "Vue3 Baidu Map Gl",
     description:
-      '基于百度地图 JavaScript GL 版（使用了 WebGL 对地图、覆盖物等进行渲染，支持 3D 视角展示地图） API 封装设计的 Vue3 组件/hooks 库。',
+      "基于百度地图 JavaScript GL 版（使用了 WebGL 对地图、覆盖物等进行渲染，支持 3D 视角展示地图） API 封装设计的 Vue3 组件/hooks 库。",
     lastUpdated: true,
-    base: '/baidu-map-gl-vue/',
+    base: "/baidu-map-gl-vue/",
     cleanUrls: true,
     head,
     markdown: {
-      config: (md) => mdPlugin(md)
+      config: (md) => mdPlugin(md),
     },
     pwa: pwa,
     // locales: {
@@ -22,13 +22,13 @@ export default withPwa(
     // },
     themeConfig: {
       i18nRouting: true,
-      returnToTopLabel: 'top',
-      logo: '/logo.svg',
+      returnToTopLabel: "top",
+      logo: "/logo.svg",
       nav,
-      outlineTitle: '目录',
+      outlineTitle: "目录",
       outline: [2, 5],
       search: {
-        provider: 'local'
+        provider: "local",
         // provider: 'algolia',
         // options: {
         //   appId: 'RT4OHPUGD1',
@@ -38,15 +38,15 @@ export default withPwa(
       },
 
       footer: {
-        message: 'Released under the MIT License.',
-        copyright: 'Copyright © 2022-present dh and all contributors'
+        message: "Released under the MIT License.",
+        copyright: "Copyright © 2022-present dh and all contributors",
       },
-      socialLinks: [{ icon: 'github', link: 'https://github.com/MangMax/baidu-map-gl-vue' }],
+      socialLinks: [{ icon: "github", link: "https://github.com/MangMax/baidu-map-gl-vue" }],
       sidebar: sidebarConfigZh,
       editLink: {
-        pattern: 'https://github.com/MangMax/baidu-map-gl-vue/edit/main/docs/:path',
-        text: 'Edit this page on GitHub'
-      }
-    }
-  })
-)
+        pattern: "https://github.com/MangMax/baidu-map-gl-vue/edit/main/docs/:path",
+        text: "Edit this page on GitHub",
+      },
+    },
+  }),
+);

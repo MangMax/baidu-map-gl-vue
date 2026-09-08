@@ -11,13 +11,13 @@
         border: 'none',
         borderRadius: '3px',
         padding: '5px 10px',
-        fontSize: '16px'
+        fontSize: '16px',
       }"
     />
   </BMap>
 </template>
 
 <script setup lang="ts">
-  import { ref } from 'vue'
-  const content = ref<string>('欢迎使用百度地图GL版Vue3组件库')
+import { ref } from "vue";
+const content = ref<string>("欢迎使用百度地图GL版Vue3组件库");
 </script>

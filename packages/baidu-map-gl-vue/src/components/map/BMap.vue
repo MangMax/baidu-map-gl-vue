@@ -3,6 +3,7 @@ import { ref, shallowRef, computed, watch, onMounted, onUnmounted, provide, inje
 import { mapContextKey, type MapContext, type MapRuntimeStatus } from "../../core/context/types";
 import { MapRuntime } from "../../core/runtime/MapRuntime";
 import { BMapError } from "../../core/errors/BMapError";
+import { bindSdkEvent, type BMapSdkEventTarget } from "../../core/events/EventBridge";
 import type { BMapLoadOptions } from "../../core/loader/url";
 import { bmapConfigKey, type BMapPluginConfig } from "../../core/context/pluginConfig";
 import type { BMapProps } from "../../types/components";
@@ -29,6 +30,7 @@ const props = withDefaults(defineProps<BMapProps>(), {
 const emit = defineEmits<{
   ready: [ctx: { map: unknown; api: unknown }];
   initd: [ctx: { map: unknown; api: unknown }];
+  click: [event: unknown];
   unload: [];
   error: [err: unknown];
 }>();
@@ -205,6 +207,15 @@ async function boot() {
     applyCenterZoom(map.value);
     applyMapType(map.value, api.value);
     syncEnableProps(map.value);
+    const mapEventTarget = map.value as {
+      addEventListener?: (type: string, listener: (event: unknown) => void) => void;
+      removeEventListener?: (type: string, listener: (event: unknown) => void) => void;
+    };
+    if (mapEventTarget.addEventListener && mapEventTarget.removeEventListener) {
+      runtime!.resources.add(
+        bindSdkEvent(mapEventTarget as BMapSdkEventTarget, "click", (event) => emit("click", event)),
+      );
+    }
     const payload = { map: ctx.map, api: ctx.api };
     emit("ready", payload);
     emit("initd", payload);

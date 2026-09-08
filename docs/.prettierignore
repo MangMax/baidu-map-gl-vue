@@ -1,0 +1,4 @@
+**/*.md
+public/**
+.vitepress/dist/**
+.vitepress/cache/**

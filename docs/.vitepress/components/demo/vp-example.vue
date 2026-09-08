@@ -1,18 +1,18 @@
 <script setup lang="ts">
-  const props = defineProps({
-    file: {
-      type: String,
-      required: true
-    },
-    demo: {
-      type: Object,
-      required: true
-    },
-    height: {
-      type: Number,
-      default: undefined
-    }
-  })
+const props = defineProps({
+  file: {
+    type: String,
+    required: true,
+  },
+  demo: {
+    type: Object,
+    required: true,
+  },
+  height: {
+    type: Number,
+    default: undefined,
+  },
+});
 </script>
 
 <template>
@@ -28,11 +28,11 @@
 </template>
 
 <style lang="less" scoped>
-  .example-showcase {
-    padding: 0 1rem;
-    margin: 0.5px;
-  }
-  .example-showcase.has-demo-height > :deep(.bmap-container) {
-    height: var(--demo-height) !important;
-  }
+.example-showcase {
+  padding: 0 1rem;
+  margin: 0.5px;
+}
+.example-showcase.has-demo-height > :deep(.bmap-container) {
+  height: var(--demo-height) !important;
+}
 </style>

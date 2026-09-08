@@ -1,39 +1,39 @@
-import type { HeadConfig } from 'vitepress'
-
+import type { HeadConfig } from "vitepress";
 
 export const head: HeadConfig[] = [
-  ['link', { rel: 'dns-prefetch', href: '//api.map.baidu.com' }],
+  ["link", { rel: "dns-prefetch", href: "//api.map.baidu.com" }],
   [
-    'link',
+    "link",
     {
-      rel: 'icon',
-      type: 'image/png',
-      sizes: '16x16',
-      href: `/baidu-map-gl-vue/logo.svg`
-    }
+      rel: "icon",
+      type: "image/png",
+      sizes: "16x16",
+      href: `/baidu-map-gl-vue/logo.svg`,
+    },
   ],
-  ['meta', { name: 'msapplication-TileColor', content: '#3eaf7c' }],
-  ['meta', { name: 'theme-color', content: '#3eaf7c' }],
+  ["meta", { name: "msapplication-TileColor", content: "#3eaf7c" }],
+  ["meta", { name: "theme-color", content: "#3eaf7c" }],
   [
-    'meta',
+    "meta",
     {
-      name: 'description',
-      content: 'Vue 3 百度地图 GL 是一个基于 Vue 3 和百度地图 GL 的地图组件库，方便开发者快速构建地图应用。'
-    }
-  ],
-  [
-    'meta',
-    {
-      name: 'keywords',
+      name: "description",
       content:
-        'vue3,vue component,baidu map,baidu map gl,baidu-map-gl-vue,vue3-bmap-gl,百度地图,组件库,vue3组件库,vue百度地图'
-    }
-  ]
-]
+        "Vue 3 百度地图 GL 是一个基于 Vue 3 和百度地图 GL 的地图组件库，方便开发者快速构建地图应用。",
+    },
+  ],
+  [
+    "meta",
+    {
+      name: "keywords",
+      content:
+        "vue3,vue component,baidu map,baidu map gl,baidu-map-gl-vue,vue3-bmap-gl,百度地图,组件库,vue3组件库,vue百度地图",
+    },
+  ],
+];
 
-if (process.env.NODE_ENV === 'production') {
+if (process.env.NODE_ENV === "production") {
   head.push([
-    'script',
+    "script",
     {},
     `
         var _hmt = _hmt || [];
@@ -43,6 +43,6 @@ if (process.env.NODE_ENV === 'production') {
           var s = document.getElementsByTagName("script")[0]; 
           s.parentNode.insertBefore(hm, s);
         })();
-        `
-  ])
+        `,
+  ]);
 }

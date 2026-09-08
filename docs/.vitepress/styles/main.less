@@ -1,24 +1,28 @@
 :root {
   --vp-layout-max-width: 1520px;
-  --vp-home-hero-image-background-image: -webkit-radial-gradient(rgba(96, 137, 241, 0.4) 40%,
-      rgba(66, 211, 146, 0.25) 60%);
-  --vp-home-hero-image-background-image: radial-gradient(rgba(96, 137, 241, 0.4) 40%, rgba(66, 211, 146, 0.25) 60%);
+  --vp-home-hero-image-background-image: -webkit-radial-gradient(
+    rgba(96, 137, 241, 0.4) 40%,
+    rgba(66, 211, 146, 0.25) 60%
+  );
+  --vp-home-hero-image-background-image: radial-gradient(
+    rgba(96, 137, 241, 0.4) 40%,
+    rgba(66, 211, 146, 0.25) 60%
+  );
   --vp-home-hero-image-filter: blur(50px);
   --vp-sidebar-width: 282px;
   --vp-c-brand-1: #10b981;
   --vp-c-brand-2: #059669;
   --vp-c-indigo-3: #10b981;
-  --vp-c-warning-1: #EAB306;
+  --vp-c-warning-1: #eab306;
   --vp-c-danger-1: #fff;
   --vp-c-danger-soft: #660000;
   --pwa-border: #ffffff75;
-  --vp-c-indigo-soft: rgba(16, 185, 129, .05);
+  --vp-c-indigo-soft: rgba(16, 185, 129, 0.05);
   --vp-home-hero-name-background: linear-gradient(-347deg, #10b981 20%, #32475b);
   --vp-home-hero-name-color: transparent;
   --vp-badge-tip-border: #059669;
-  --vp-custom-block-info-border: rgba(82, 82, 89, .68);
+  --vp-custom-block-info-border: rgba(82, 82, 89, 0.68);
 }
-
 
 .image-bg {
   position: absolute;
@@ -35,7 +39,7 @@
   opacity: 0.6 !important;
 }
 
-.image-bg+img {
+.image-bg + img {
   -webkit-user-drag: none;
   -moz-user-drag: none;
   -ms-user-drag: none;
@@ -138,10 +142,10 @@ img.resizable-img {
   padding: 5px 15px;
   text-decoration: none;
   margin: 16px 16px 16px 0;
-  transition: opacity .2s ease-in-out;
+  transition: opacity 0.2s ease-in-out;
 
   &:active {
-    opacity: .6;
+    opacity: 0.6;
   }
 }
 
@@ -175,7 +179,7 @@ img.resizable-img {
   margin-bottom: 0;
 }
 
-input[type='checkbox'] {
+input[type="checkbox"] {
   appearance: none;
   padding: 0;
   margin: 0;
@@ -193,7 +197,7 @@ input[type='checkbox'] {
   margin-right: 0.5rem;
 }
 
-input[type='checkbox']:checked {
+input[type="checkbox"]:checked {
   background-image: url("data:image/svg+xml,%3csvg viewBox='0 0 16 16' fill='white' xmlns='http://www.w3.org/2000/svg'%3e%3cpath d='M12.207 4.793a1 1 0 010 1.414l-5 5a1 1 0 01-1.414 0l-2-2a1 1 0 011.414-1.414L6.6 9.086l4.293-4.293a1 1 0 011.414 0z'/%3e%3c/svg%3e");
 }
 

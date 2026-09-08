@@ -1,14 +1,24 @@
 <template>
   <div>
-    <button class="myButton" type="button" v-if="!marker.isDrawing" @click="marker.toggle">绘制点</button>
+    <button class="myButton" type="button" v-if="!marker.isDrawing" @click="marker.toggle">
+      绘制点
+    </button>
     <button class="myButton" type="button" v-else @click="marker.toggle">禁用绘制点</button>
-    <button class="myButton" type="button" v-if="!polyline.isDrawing" @click="polyline.toggle">绘制线</button>
+    <button class="myButton" type="button" v-if="!polyline.isDrawing" @click="polyline.toggle">
+      绘制线
+    </button>
     <button class="myButton" type="button" v-else @click="polyline.toggle">禁用绘制线</button>
-    <button class="myButton" type="button" v-if="!circle.isDrawing" @click="circle.toggle">绘制圆</button>
+    <button class="myButton" type="button" v-if="!circle.isDrawing" @click="circle.toggle">
+      绘制圆
+    </button>
     <button class="myButton" type="button" v-else @click="circle.toggle">禁用绘制圆</button>
-    <button class="myButton" type="button" v-if="!polygon.isDrawing" @click="polygon.toggle">绘制多边形</button>
+    <button class="myButton" type="button" v-if="!polygon.isDrawing" @click="polygon.toggle">
+      绘制多边形
+    </button>
     <button class="myButton" type="button" v-else @click="polygon.toggle">禁用绘制多边形</button>
-    <button class="myButton" type="button" v-if="!rectangle.isDrawing" @click="rectangle.toggle">绘制矩形</button>
+    <button class="myButton" type="button" v-if="!rectangle.isDrawing" @click="rectangle.toggle">
+      绘制矩形
+    </button>
     <button class="myButton" type="button" v-else @click="rectangle.toggle">禁用绘制矩形</button>
     <button class="myButton" type="button" @click="clearFn">清空</button>
     <BMap
@@ -23,151 +33,164 @@
 </template>
 
 <script lang="ts" setup>
-  import { ref } from 'vue'
-  import { useBMapMarkerIcons } from 'baidu-map-gl-vue'
-  let marker = ref({
-    instance: null as { open(): void; closeAll(): void } | null,
-    isDrawing: false,
-    toggle() {
-      let _marker = marker.value
-      if (_marker.instance) {
-        _marker.isDrawing ? _marker.instance.closeAll() : _marker.instance.open()
-        _marker.isDrawing = !_marker.isDrawing
-      }
+import { ref } from "vue";
+import { useBMapMarkerIcons } from "baidu-map-gl-vue";
+let marker = ref({
+  instance: null as { open(): void; closeAll(): void } | null,
+  isDrawing: false,
+  toggle() {
+    let _marker = marker.value;
+    if (_marker.instance) {
+      _marker.isDrawing ? _marker.instance.closeAll() : _marker.instance.open();
+      _marker.isDrawing = !_marker.isDrawing;
     }
-  })
-  let circle = ref({
-    instance: null as { open(): void; closeAll(): void } | null,
-    isDrawing: false,
-    toggle() {
-      let _circle = circle.value
-      if (_circle.instance) {
-        _circle.isDrawing ? _circle.instance.closeAll() : _circle.instance.open()
-        _circle.isDrawing = !_circle.isDrawing
-      }
+  },
+});
+let circle = ref({
+  instance: null as { open(): void; closeAll(): void } | null,
+  isDrawing: false,
+  toggle() {
+    let _circle = circle.value;
+    if (_circle.instance) {
+      _circle.isDrawing ? _circle.instance.closeAll() : _circle.instance.open();
+      _circle.isDrawing = !_circle.isDrawing;
     }
-  })
-  let polyline = ref({
-    instance: null as { open(): void; closeAll(): void } | null,
-    isDrawing: false,
-    toggle() {
-      let _polyline = polyline.value
-      if (_polyline.instance) {
-        _polyline.isDrawing ? _polyline.instance.closeAll() : _polyline.instance.open()
-        _polyline.isDrawing = !_polyline.isDrawing
-      }
+  },
+});
+let polyline = ref({
+  instance: null as { open(): void; closeAll(): void } | null,
+  isDrawing: false,
+  toggle() {
+    let _polyline = polyline.value;
+    if (_polyline.instance) {
+      _polyline.isDrawing ? _polyline.instance.closeAll() : _polyline.instance.open();
+      _polyline.isDrawing = !_polyline.isDrawing;
     }
-  })
-  let polygon = ref({
-    instance: null as { open(): void; closeAll(): void } | null,
-    isDrawing: false,
-    toggle() {
-      let _polygon = polygon.value
-      if (_polygon.instance) {
-        _polygon.isDrawing ? _polygon.instance.closeAll() : _polygon.instance.open()
-        _polygon.isDrawing = !_polygon.isDrawing
-      }
+  },
+});
+let polygon = ref({
+  instance: null as { open(): void; closeAll(): void } | null,
+  isDrawing: false,
+  toggle() {
+    let _polygon = polygon.value;
+    if (_polygon.instance) {
+      _polygon.isDrawing ? _polygon.instance.closeAll() : _polygon.instance.open();
+      _polygon.isDrawing = !_polygon.isDrawing;
     }
-  })
-  let rectangle = ref({
-    instance: null as { open(): void; closeAll(): void } | null,
-    isDrawing: false,
-    toggle() {
-      let _rectangle = rectangle.value
-      if (_rectangle.instance) {
-        _rectangle.isDrawing ? _rectangle.instance.closeAll() : _rectangle.instance.open()
-        _rectangle.isDrawing = !_rectangle.isDrawing
-      }
+  },
+});
+let rectangle = ref({
+  instance: null as { open(): void; closeAll(): void } | null,
+  isDrawing: false,
+  toggle() {
+    let _rectangle = rectangle.value;
+    if (_rectangle.instance) {
+      _rectangle.isDrawing ? _rectangle.instance.closeAll() : _rectangle.instance.open();
+      _rectangle.isDrawing = !_rectangle.isDrawing;
     }
-  })
-  let clearFn = ref()
-  function handleInitd({ map, BMapGL, api }: { map: unknown; BMapGL: { Icon: new (url: string, size: unknown, opts?: Record<string, unknown>) => unknown; Size: new (w: number, h: number) => unknown }; api: unknown }) {
-    import('bmap-draw').then(({ DrawScene, MarkerDraw, PolylineDraw, CircleDraw, PolygonDraw, RectDraw }) => {
-      const scene = new DrawScene(map)
-      clearFn.value = () => scene.clearData()
+  },
+});
+let clearFn = ref();
+function handleInitd({
+  map,
+  BMapGL,
+  api,
+}: {
+  map: unknown;
+  BMapGL: {
+    Icon: new (url: string, size: unknown, opts?: Record<string, unknown>) => unknown;
+    Size: new (w: number, h: number) => unknown;
+  };
+  api: unknown;
+}) {
+  import("bmap-draw").then(
+    ({ DrawScene, MarkerDraw, PolylineDraw, CircleDraw, PolygonDraw, RectDraw }) => {
+      const scene = new DrawScene(map);
+      clearFn.value = () => scene.clearData();
       // 点绘制
-      const defaultIcons = useBMapMarkerIcons(api)
+      const defaultIcons = useBMapMarkerIcons(api);
       marker.value.instance = new MarkerDraw(scene, {
         isOpen: false,
         isSeries: true,
         enableDragging: true,
         baseOpts: {
-          icon: defaultIcons['red1']
-        }
-      })
+          icon: defaultIcons["red1"],
+        },
+      });
       // 折线绘制
       polyline.value.instance = new PolylineDraw(scene, {
         isOpen: false,
         enableSnap: true, // 开启吸附绘制
         matchOverlay: {
           // 自定义吸附点样式
-          type: 'Marker',
+          type: "Marker",
           icon: new BMapGL.Icon(
-            'http://maponline0.bdimg.com/sty/map_icons2x/MapRes/shenghui_1.png',
+            "http://maponline0.bdimg.com/sty/map_icons2x/MapRes/shenghui_1.png",
             new BMapGL.Size(10, 10),
-            { offset: new BMapGL.Size(5, 5) }
-          )
-        }
-      })
+            { offset: new BMapGL.Size(5, 5) },
+          ),
+        },
+      });
       // 多边形绘制
       polygon.value.instance = new PolygonDraw(scene, {
         isOpen: false,
         labelOptions: {
-          borderRadius: '2px',
-          background: '#b5d3fb',
-          border: '1px solid #b5d3fb',
-          color: '#333',
-          fontSize: '12px',
-          letterSpacing: '0',
-          padding: '5px'
+          borderRadius: "2px",
+          background: "#b5d3fb",
+          border: "1px solid #b5d3fb",
+          color: "#333",
+          fontSize: "12px",
+          letterSpacing: "0",
+          padding: "5px",
         },
         baseOpts: {
-          fillColor: '#fff',
+          fillColor: "#fff",
           strokeWeight: 5,
           strokeOpacity: 1,
-          fillOpacity: 0.2
-        }
-      })
+          fillOpacity: 0.2,
+        },
+      });
       // 圆形绘制
       circle.value.instance = new CircleDraw(scene, {
         isOpen: false,
         labelOptions: {
-          borderRadius: '2px',
-          background: '#b5d3fb',
-          border: '1px solid #b5d3fb',
-          color: '#333',
-          fontSize: '12px',
-          letterSpacing: '0',
-          padding: '5px'
+          borderRadius: "2px",
+          background: "#b5d3fb",
+          border: "1px solid #b5d3fb",
+          color: "#333",
+          fontSize: "12px",
+          letterSpacing: "0",
+          padding: "5px",
         },
         baseOpts: {
-          strokeColor: '#6d77f9',
-          fillColor: '#fff',
+          strokeColor: "#6d77f9",
+          fillColor: "#fff",
           strokeWeight: 5,
           strokeOpacity: 1,
-          fillOpacity: 0.2
-        }
-      })
+          fillOpacity: 0.2,
+        },
+      });
       // 矩形绘制
       rectangle.value.instance = new RectDraw(scene, {
         isOpen: false,
         isSeries: true,
         labelOptions: {
-          borderRadius: '2px',
-          background: '#b5d3fb',
-          border: '1px solid #b5d3fb',
-          color: '#333',
-          fontSize: '12px',
-          letterSpacing: '0',
-          padding: '5px'
+          borderRadius: "2px",
+          background: "#b5d3fb",
+          border: "1px solid #b5d3fb",
+          color: "#333",
+          fontSize: "12px",
+          letterSpacing: "0",
+          padding: "5px",
         },
         baseOpts: {
-          fillColor: '#fff',
+          fillColor: "#fff",
           strokeWeight: 5,
           strokeOpacity: 1,
-          fillOpacity: 0.2
-        }
-      })
-    })
-  }
+          fillOpacity: 0.2,
+        },
+      });
+    },
+  );
+}
 </script>

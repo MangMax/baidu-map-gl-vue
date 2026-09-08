@@ -1,63 +1,63 @@
 <script setup lang="ts">
-  import { computed, ref, nextTick, onUnmounted, onMounted } from 'vue'
-  import { useClipboard, useToggle, useEventListener, useDebounceFn } from '@vueuse/core'
-  import { exampleModuleMap } from './../constants'
-  import Example from './demo/vp-example.vue'
-  import SourceCode from './demo/vp-source-code.vue'
-  const props = defineProps<{
-    source: string
-    path: string
-    rawSource: string
-    description?: string
-  }>()
-  const demoContainer = ref<HTMLDivElement>()
-  const rawSource = computed(() => {
-    return decodeURIComponent(props.rawSource)
-  })
-  const [showCode, toggleShowCode] = useToggle()
-  const [fullScreen, toggleFullScreen] = useToggle()
-  const { copy, copied, isSupported } = useClipboard({ source: rawSource.value })
-  const decodedDescription = computed(() => decodeURIComponent(props.description!))
-  const buttonsHeight = 47
-  let preHeight = ref<number>()
-  let height = ref<number>()
-  const debouncedFn = useDebounceFn(() => {
-    if (fullScreen.value) calcHeight()
-  }, 500)
-  useEventListener('resize', debouncedFn)
+import { computed, ref, nextTick, onUnmounted, onMounted } from "vue";
+import { useClipboard, useToggle, useEventListener, useDebounceFn } from "@vueuse/core";
+import { exampleModuleMap } from "./../constants";
+import Example from "./demo/vp-example.vue";
+import SourceCode from "./demo/vp-source-code.vue";
+const props = defineProps<{
+  source: string;
+  path: string;
+  rawSource: string;
+  description?: string;
+}>();
+const demoContainer = ref<HTMLDivElement>();
+const rawSource = computed(() => {
+  return decodeURIComponent(props.rawSource);
+});
+const [showCode, toggleShowCode] = useToggle();
+const [fullScreen, toggleFullScreen] = useToggle();
+const { copy, copied, isSupported } = useClipboard({ source: rawSource.value });
+const decodedDescription = computed(() => decodeURIComponent(props.description!));
+const buttonsHeight = 47;
+let preHeight = ref<number>();
+let height = ref<number>();
+const debouncedFn = useDebounceFn(() => {
+  if (fullScreen.value) calcHeight();
+}, 500);
+useEventListener("resize", debouncedFn);
 
-  function handleFullScreen() {
-    toggleFullScreen()
-    fullScreen.value ? calcHeight() : resetHeight()
-  }
-  function calcHeight() {
-    const mapContainer = demoContainer.value?.querySelector('.bmap-container') as HTMLDivElement
+function handleFullScreen() {
+  toggleFullScreen();
+  fullScreen.value ? calcHeight() : resetHeight();
+}
+function calcHeight() {
+  const mapContainer = demoContainer.value?.querySelector(".bmap-container") as HTMLDivElement;
 
-    document.body.style.overflow = 'hidden'
-    nextTick(() => {
-      const demoEl = demoContainer.value?.querySelector('.example-showcase') as HTMLDivElement
-      const emptyHeight = window.innerHeight - demoEl.offsetHeight
-      preHeight.value = mapContainer.offsetHeight
-      height.value = mapContainer.offsetHeight + emptyHeight - buttonsHeight
-    })
-  }
+  document.body.style.overflow = "hidden";
+  nextTick(() => {
+    const demoEl = demoContainer.value?.querySelector(".example-showcase") as HTMLDivElement;
+    const emptyHeight = window.innerHeight - demoEl.offsetHeight;
+    preHeight.value = mapContainer.offsetHeight;
+    height.value = mapContainer.offsetHeight + emptyHeight - buttonsHeight;
+  });
+}
 
-  function resetHeight() {
-    document.body.style.overflow = 'auto'
-    height.value = preHeight.value
+function resetHeight() {
+  document.body.style.overflow = "auto";
+  height.value = preHeight.value;
+}
+function handleEscKeydown(e) {
+  if (fullScreen.value && e.key === "Escape") {
+    toggleFullScreen(false);
+    resetHeight();
   }
-  function handleEscKeydown(e) {
-    if (fullScreen.value && e.key === 'Escape') {
-      toggleFullScreen(false)
-      resetHeight()
-    }
-  }
-  onMounted(() => {
-    document.addEventListener('keydown', handleEscKeydown)
-  })
-  onUnmounted(() => {
-    document.removeEventListener('keydown', handleEscKeydown)
-  })
+}
+onMounted(() => {
+  document.addEventListener("keydown", handleEscKeydown);
+});
+onUnmounted(() => {
+  document.removeEventListener("keydown", handleEscKeydown);
+});
 </script>
 
 <template>
@@ -133,7 +133,11 @@
               </svg>
             </template>
           </button>
-          <button v-tooltip="copied ? '复制成功' : '复制代码'" v-if="isSupported" @click="() => copy()">
+          <button
+            v-tooltip="copied ? '复制成功' : '复制代码'"
+            v-if="isSupported"
+            @click="() => copy()"
+          >
             <template v-if="copied">
               <svg
                 xmlns="http://www.w3.org/2000/svg"
@@ -167,8 +171,17 @@
               </svg>
             </template>
           </button>
-          <button v-tooltip="showCode ? '隐藏代码' : '显示代码'" v-show="!fullScreen" @click="() => toggleShowCode()">
-            <svg preserveAspectRatio="xMidYMid meet" viewBox="0 0 24 24" width="1.2em" height="1.2em">
+          <button
+            v-tooltip="showCode ? '隐藏代码' : '显示代码'"
+            v-show="!fullScreen"
+            @click="() => toggleShowCode()"
+          >
+            <svg
+              preserveAspectRatio="xMidYMid meet"
+              viewBox="0 0 24 24"
+              width="1.2em"
+              height="1.2em"
+            >
               <path
                 fill="currentColor"
                 d="m23 12l-7.071 7.071l-1.414-1.414L20.172 12l-5.657-5.657l1.414-1.414L23 12zM3.828 12l5.657 5.657l-1.414 1.414L1 12l7.071-7.071l1.414 1.414L3.828 12z"
@@ -190,79 +203,79 @@
 </template>
 
 <style scoped lang="less">
-  .demo-container {
-    border: 1px solid var(--vp-c-divider);
-    border-radius: 6px;
-    overflow: hidden;
-    &.full-screen {
-      background-color: var(--vp-c-divider);
-      position: fixed;
-      width: 100%;
-      height: 100%;
-      top: 0;
-      left: 0;
-      z-index: 99999;
-    }
-    .buttons {
-      border-top: 1px dashed var(--vp-c-divider);
-      padding: 0.5rem 1rem;
+.demo-container {
+  border: 1px solid var(--vp-c-divider);
+  border-radius: 6px;
+  overflow: hidden;
+  &.full-screen {
+    background-color: var(--vp-c-divider);
+    position: fixed;
+    width: 100%;
+    height: 100%;
+    top: 0;
+    left: 0;
+    z-index: 99999;
+  }
+  .buttons {
+    border-top: 1px dashed var(--vp-c-divider);
+    padding: 0.5rem 1rem;
+    display: flex;
+    justify-content: flex-end;
+    align-items: center;
+    background: var(--vp-c-bg);
+    button {
+      width: 30px;
+      height: 30px;
+      color: var(--vp-c-text-2);
       display: flex;
-      justify-content: flex-end;
+      justify-content: center;
       align-items: center;
-      background: var(--vp-c-bg);
-      button {
-        width: 30px;
-        height: 30px;
-        color: var(--vp-c-text-2);
-        display: flex;
-        justify-content: center;
-        align-items: center;
-        transition: color 0.3s;
-        &:hover {
-          color: var(--vp-c-text-1);
-        }
+      transition: color 0.3s;
+      &:hover {
+        color: var(--vp-c-text-1);
       }
     }
-    .buttons + div {
-      border-top: 1px dashed var(--vp-c-divider);
-    }
-    .source_code-container {
-      overflow: hidden;
-    }
-    .hide_code-btn {
-      position: sticky;
-      bottom: 0;
-      top: 0;
-      text-align: center;
-      padding: 0.5rem 0;
-      border-top: 1px dashed var(--vp-c-divider);
-      background-color: var(--vp-custom-block-details-bg);
-      z-index: 99;
-      cursor: pointer;
-    }
   }
-  .collapse-enter-active {
-    transition: all 0.5s ease-in-out;
-    max-height: 0;
+  .buttons + div {
+    border-top: 1px dashed var(--vp-c-divider);
   }
-  .collapse-leave-active {
-    transition: all 0.25s cubic-bezier(0, 1, 0, 1);
-    max-height: 200vh;
+  .source_code-container {
+    overflow: hidden;
   }
-  .collapse-enter-to {
-    max-height: 200vh;
+  .hide_code-btn {
+    position: sticky;
+    bottom: 0;
+    top: 0;
+    text-align: center;
+    padding: 0.5rem 0;
+    border-top: 1px dashed var(--vp-c-divider);
+    background-color: var(--vp-custom-block-details-bg);
+    z-index: 99;
+    cursor: pointer;
   }
-  .collapse-leave-to {
-    max-height: 0;
-  }
-  .demo-wrapper:not(.not-full) .demo-container :deep(.bmap-container) {
-    width: 100% !important;
-    margin-left: 0;
-  }
-  .p-top :deep(.example-showcase) {
-    padding-top: 1rem;
-  }
-  .p-bottom :deep(.example-showcase) {
-    padding-bottom: 1rem;
-  }
+}
+.collapse-enter-active {
+  transition: all 0.5s ease-in-out;
+  max-height: 0;
+}
+.collapse-leave-active {
+  transition: all 0.25s cubic-bezier(0, 1, 0, 1);
+  max-height: 200vh;
+}
+.collapse-enter-to {
+  max-height: 200vh;
+}
+.collapse-leave-to {
+  max-height: 0;
+}
+.demo-wrapper:not(.not-full) .demo-container :deep(.bmap-container) {
+  width: 100% !important;
+  margin-left: 0;
+}
+.p-top :deep(.example-showcase) {
+  padding-top: 1rem;
+}
+.p-bottom :deep(.example-showcase) {
+  padding-bottom: 1rem;
+}
 </style>

@@ -4,26 +4,29 @@
     "target": "ESNext",
     "lib": ["DOM", "ESNext"],
     "module": "esnext",
-    "moduleResolution": "node",
+    "moduleResolution": "bundler",
     "baseUrl": ".",
     "resolveJsonModule": true,
     "esModuleInterop": true,
     "forceConsistentCasingInFileNames": true,
     "strictNullChecks": true,
-    "noUnusedLocals": true,
+    "noUnusedLocals": false,
     "skipLibCheck": true,
     "noImplicitAny": false,
+    "paths": {
+      "baidu-map-gl-vue": ["../packages/baidu-map-gl-vue/src/index.ts"],
+      "baidu-map-gl-vue/*": ["../packages/baidu-map-gl-vue/src/*"]
+    },
     "types": [
       "node",
       "vitepress",
       "vue",
       "vite/client",
-      "baidu-map-gl-vue/volar",
       "vite-plugin-pwa/client",
       "vite-plugin-pwa/vanillajs",
       "vite-plugin-pwa/vue"
     ]
   },
   "include": ["./env.d.ts", "**/*.vue", "**/*.ts", "**/*.d.ts"],
-  "exclude": ["node_modules"]
+  "exclude": ["node_modules", "../packages/baidu-map-gl-vue/src/**/*.test.ts"]
 }

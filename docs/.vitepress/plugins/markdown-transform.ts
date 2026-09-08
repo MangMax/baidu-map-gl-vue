@@ -1,63 +1,73 @@
-import path from 'path'
+import path from "path";
 
-import type { Plugin } from 'vite'
+import type { Plugin } from "vite";
 
-type Append = Record<'headers' | 'footers' | 'scriptSetups', string[]>
+type Append = Record<"headers" | "footers" | "scriptSetups", string[]>;
 
 export function MarkdownTransform(): Plugin {
   return {
-    name: 'element-plus-md-transform',
-    enforce: 'pre',
+    name: "element-plus-md-transform",
+    enforce: "pre",
     async transform(code, id) {
-      if (!id.endsWith('.md')) return
+      if (!id.endsWith(".md")) return;
 
-      const componentId = path.basename(id, '.md')
-      console.log(componentId)
+      const componentId = path.basename(id, ".md");
       const append: Append = {
         headers: [],
         footers: [],
-        scriptSetups: [`const demos = import.meta.globEager('../../examples/${componentId}/*.vue')`]
+        scriptSetups: [
+          `const demos = import.meta.globEager('../../examples/${componentId}/*.vue')`,
+        ],
+      };
+      code = transformVpScriptSetup(code, append);
+      if (code.indexOf(":::demo") !== -1) {
+        code = transformComponentMarkdown(id, componentId, code, append);
       }
-      code = transformVpScriptSetup(code, append)
-      console.log(code.indexOf(':::demo') !== -1)
-      if (code.indexOf(':::demo') !== -1) {
-        code = transformComponentMarkdown(id, componentId, code, append)
-      }
-      return combineMarkdown(code, [combineScriptSetup(append.scriptSetups), ...append.headers], append.footers)
-    }
-  }
+      return combineMarkdown(
+        code,
+        [combineScriptSetup(append.scriptSetups), ...append.headers],
+        append.footers,
+      );
+    },
+  };
 }
 
 const combineScriptSetup = (codes: string[]) =>
   `\n<script setup>
-${codes.join('\n')}
+${codes.join("\n")}
 </script>
-`
+`;
 
 const combineMarkdown = (code: string, headers: string[], footers: string[]) => {
-  const frontmatterEnds = code.indexOf('---\n\n') + 4
-  const firstSubheader = code.search(/\n## \w/)
-  const sliceIndex = firstSubheader < 0 ? frontmatterEnds : firstSubheader
+  const frontmatterEnds = code.indexOf("---\n\n") + 4;
+  const firstSubheader = code.search(/\n## \w/);
+  const sliceIndex = firstSubheader < 0 ? frontmatterEnds : firstSubheader;
 
-  if (headers.length > 0) code = code.slice(0, sliceIndex) + headers.join('\n') + code.slice(sliceIndex)
-  code += footers.join('\n')
+  if (headers.length > 0)
+    code = code.slice(0, sliceIndex) + headers.join("\n") + code.slice(sliceIndex);
+  code += footers.join("\n");
 
-  return `${code}\n`
-}
+  return `${code}\n`;
+};
 
-const vpScriptSetupRE = /<vp-script\s(.*\s)?setup(\s.*)?>([\s\S]*)<\/vp-script>/
+const vpScriptSetupRE = /<vp-script\s(.*\s)?setup(\s.*)?>([\s\S]*)<\/vp-script>/;
 
 const transformVpScriptSetup = (code: string, append: Append) => {
-  const matches = code.match(vpScriptSetupRE)
-  if (matches) code = code.replace(matches[0], '')
-  const scriptSetup = matches?.[3] ?? ''
-  if (scriptSetup) append.scriptSetups.push(scriptSetup)
-  return code
-}
+  const matches = code.match(vpScriptSetupRE);
+  if (matches) code = code.replace(matches[0], "");
+  const scriptSetup = matches?.[3] ?? "";
+  if (scriptSetup) append.scriptSetups.push(scriptSetup);
+  return code;
+};
 
 // const GITHUB_BLOB_URL = `https://github.com/${REPO_PATH}/blob/${REPO_BRANCH}`
 // const GITHUB_TREE_URL = `https://github.com/${REPO_PATH}/tree/${REPO_BRANCH}`
-const transformComponentMarkdown = (id: string, componentId: string, code: string, append: Append) => {
+const transformComponentMarkdown = (
+  id: string,
+  componentId: string,
+  code: string,
+  _append: Append,
+) => {
   //   const lang = getLang(id)
   //   const docUrl = `${GITHUB_BLOB_URL}/${docsDirName}/en-US/component/${componentId}.md`
   //   const componentUrl = `${GITHUB_TREE_URL}/packages/components/${componentId}`
@@ -84,5 +94,5 @@ const transformComponentMarkdown = (id: string, componentId: string, code: strin
   // `
 
   //   append.footers.push(sourceSection, isComponent ? contributorsSection : '')
-  return code
-}
+  return code;
+};
