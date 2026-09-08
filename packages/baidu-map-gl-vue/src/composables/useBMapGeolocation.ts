@@ -33,7 +33,7 @@ export function useBMapGeolocation(options: BMapGeolocationOptions = {}, map?: u
 
   const task = useBMapAsyncTask<BMapGeoResult, []>({
     immediate: false,
-    runner: async () => {
+    runner: async (_taskContext) => {
       const ready = await ctx.whenReady();
       const api = ready.api as {
         Geolocation: new (o?: Record<string, unknown>) => {
@@ -90,4 +90,3 @@ export function useBMapGeolocation(options: BMapGeolocationOptions = {}, map?: u
     reset: task.reset,
   };
 }
-

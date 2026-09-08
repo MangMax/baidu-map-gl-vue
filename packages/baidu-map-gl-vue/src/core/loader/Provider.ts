@@ -10,7 +10,7 @@
 import { BMapError } from "../errors/BMapError";
 import { createBaiduSdkUrl, appendCallback, fingerprintConfig, type BMapLoadOptions } from "./url";
 import { ScriptLoader } from "./ScriptLoader";
-import { SdkRegistry, type SdkLoader } from "./SdkRegistry";
+import { SdkRegistry, getProcessSdkRegistry, type SdkLoader } from "./SdkRegistry";
 
 export interface BMapProvider {
   readonly id: string;
@@ -25,8 +25,12 @@ export class BaiduCdnProvider implements BMapProvider {
   private loader: ScriptLoader;
   private registry: SdkRegistry;
 
-  constructor(loader = new ScriptLoader()) {
+  constructor(loader = new ScriptLoader(), registry?: SdkRegistry) {
     this.loader = loader;
+    if (registry) {
+      this.registry = registry;
+      return;
+    }
     const sdkLoader: SdkLoader = async (options, signal) => {
       const callbackName = `__bmap_init_${Math.random().toString(36).slice(2, 10)}`;
       const url = createBaiduSdkUrl(
@@ -52,7 +56,8 @@ export class BaiduCdnProvider implements BMapProvider {
         throw new BMapError("BMAP_SDK_LOAD_FAILED", "BMap SDK did not expose window.BMapGL");
       return api;
     };
-    this.registry = new SdkRegistry(sdkLoader, fingerprintConfig);
+    // P0-09: 同 realm 进程级共享 registry（显式注入优先）
+    this.registry = getProcessSdkRegistry("baidu-cdn", sdkLoader, fingerprintConfig);
   }
 
   getCacheKey(options: BMapLoadOptions): string {
@@ -85,8 +90,13 @@ export class CustomScriptProvider implements BMapProvider {
   constructor(
     private readonly scriptSrc: string,
     loader = new ScriptLoader(),
+    registry?: SdkRegistry,
   ) {
     this.loader = loader;
+    if (registry) {
+      this.registry = registry;
+      return;
+    }
     const sdkLoader: SdkLoader = async (options, signal) => {
       const callbackName = options.apiUrl
         ? `__bmap_offline_${Math.random().toString(36).slice(2, 10)}`
@@ -113,7 +123,12 @@ export class CustomScriptProvider implements BMapProvider {
         throw new BMapError("BMAP_SDK_LOAD_FAILED", "Custom SDK did not expose window.BMapGL");
       return api;
     };
-    this.registry = new SdkRegistry(sdkLoader, fingerprintConfig);
+    // P0-09: custom-script 按 scriptSrc 命名空间共享，避免与 cdn loader 混用
+    this.registry = getProcessSdkRegistry(
+      `custom-script:${this.scriptSrc}`,
+      sdkLoader,
+      fingerprintConfig,
+    );
   }
 
   getCacheKey(options: BMapLoadOptions): string {

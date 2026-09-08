@@ -1,8 +1,9 @@
 /**
  * M5-02: 网格聚合算法(纯函数,可单测)
  *
- * 依据给定 zoom 对点集做网格聚合:同一网格内的点合并为一个簇。
- * 供 BMarkerCluster 内置实现使用,不依赖任何第三方插件。
+ * P0-17: 像素网格聚合——按 zoom + project 将经纬度投影到像素坐标，
+ * 以 gridSize 为网格边长聚合；低于 minClusterSize 的桶必须展开为单点，
+ * 不得丢点；禁止固定 `lng * 10` 网格。
  */
 import type { PointLike } from "../utils/geometry";
 
@@ -11,61 +12,183 @@ export interface Cluster<Item> {
   points: Item[];
   position: { lng: number; lat: number };
   size: number;
+  /** 是否为聚合簇（size >= minClusterSize）；单点展开为 false */
+  clustered?: boolean;
 }
 
-export interface ClusterOptions {
+export interface ClusterOptions<Item = unknown> {
   /** 网格大小(像素),越大簇越粗 */
   gridSize?: number;
   /** 触发聚合的最小点数,小于该值保持独立 marker */
   minClusterSize?: number;
+  /** 聚合时的地图 zoom（默认 12）；越大网格越细 */
+  zoom?: number;
+  /** 经纬度 → 像素投影；默认等距圆柱近似 */
+  project?: (position: PointLike, zoom: number) => { x: number; y: number };
+  /** 像素 → 经纬度逆投影；默认等距圆柱近似 */
+  unproject?: (point: { x: number; y: number }, zoom: number) => PointLike;
+  /** item 唯一键（用于稳定 id） */
+  getKey?: (item: Item, index: number) => PropertyKey;
+}
+
+export type ClusterFeature<Item> =
+  | { kind: "item"; id: string; item: Item; position: PointLike }
+  | { kind: "cluster"; id: string; items: Item[]; position: PointLike; size: number };
+
+export interface ClusterFeaturesOptions<Item> {
+  zoom?: number;
+  gridSize?: number;
+  project?: (position: PointLike, zoom: number) => { x: number; y: number };
+  unproject?: (point: { x: number; y: number }, zoom: number) => PointLike;
+  getKey?: (item: Item, index: number) => PropertyKey;
+  getPosition?: (item: Item) => PointLike;
+  minClusterSize?: number;
+}
+
+function defaultProject(position: PointLike, zoom: number): { x: number; y: number } {
+  const scale = 256 * Math.pow(2, zoom);
+  return {
+    x: ((position.lng + 180) / 360) * scale,
+    y: ((90 - position.lat) / 180) * scale,
+  };
+}
+
+function defaultUnproject(point: { x: number; y: number }, zoom: number): PointLike {
+  const scale = 256 * Math.pow(2, zoom);
+  return {
+    lng: (point.x / scale) * 360 - 180,
+    lat: 90 - (point.y / scale) * 180,
+  };
 }
 
 /**
- * 简单网格聚合:按经纬度均分网格单元,同单元设一个簇。
- * 不含完整金字塔/相交聚合,但满足"数据组件 + 聚合"的可测试最小实现。
+ * P0-17 推荐签名：像素网格聚合，返回 item/cluster 特征数组。
+ * 低于 minClusterSize 的桶展开为单点特征，不丢点。
+ */
+export function cluster<Item>(
+  items: readonly Item[],
+  options: ClusterFeaturesOptions<Item> & { getPosition: (item: Item) => PointLike },
+): ClusterFeature<Item>[] {
+  const {
+    zoom = 8,
+    gridSize = 128,
+    project = defaultProject,
+    unproject = defaultUnproject,
+    getKey = (_item: Item, index: number) => index,
+    getPosition,
+    minClusterSize = 3,
+  } = options;
+
+  const buckets = new Map<string, { items: Item[]; sumX: number; sumY: number }>();
+  items.forEach((item, index) => {
+    const pos = getPosition(item);
+    const pixel = project(pos, zoom);
+    const cellX = Math.floor(pixel.x / gridSize);
+    const cellY = Math.floor(pixel.y / gridSize);
+    const key = `${cellX}:${cellY}`;
+    let bucket = buckets.get(key);
+    if (!bucket) {
+      bucket = { items: [], sumX: 0, sumY: 0 };
+      buckets.set(key, bucket);
+    }
+    bucket.items.push(item);
+    bucket.sumX += pixel.x;
+    bucket.sumY += pixel.y;
+    void index;
+  });
+
+  const features: ClusterFeature<Item>[] = [];
+  for (const [key, bucket] of buckets) {
+    if (bucket.items.length < minClusterSize) {
+      // P0-17: 低于阈值必须展开为单点
+      bucket.items.forEach((item, i) => {
+        features.push({
+          kind: "item",
+          id: String(getKey(item, i)),
+          item,
+          position: getPosition(item),
+        });
+      });
+      continue;
+    }
+    const centroidPixel = {
+      x: bucket.sumX / bucket.items.length,
+      y: bucket.sumY / bucket.items.length,
+    };
+    features.push({
+      kind: "cluster",
+      id: `c-${key}`,
+      items: bucket.items,
+      position: unproject(centroidPixel, zoom),
+      size: bucket.items.length,
+    });
+  }
+  return features;
+}
+
+/**
+ * 兼容签名：按经纬度集合做像素网格聚合，返回簇数组。
+ * 低于阈值的桶展开为 size=1 的单点条目（clustered:false），不丢点。
  */
 export function gridCluster<Item>(
   items: readonly Item[],
   getPosition: (item: Item) => PointLike,
   options: ClusterOptions = {},
 ): Cluster<Item>[] {
-  const gridSize = options.gridSize ?? 64;
-  const minClusterSize = options.minClusterSize ?? 3;
-  const buckets = new Map<string, Item[]>();
-  const centers = new Map<string, { lng: number; lat: number }>();
+  const {
+    gridSize = 128,
+    minClusterSize = 3,
+    zoom = 8,
+    project = defaultProject,
+    unproject = defaultUnproject,
+    getKey = (_item: Item, index: number) => index,
+  } = options;
 
-  for (const item of items) {
+  const buckets = new Map<string, { items: Item[]; sumX: number; sumY: number }>();
+  items.forEach((item, index) => {
     const pos = getPosition(item);
-    const lngCell = Math.floor(pos.lng * 10); // 以 ~0.1° 为网格单元
-    const latCell = Math.floor(pos.lat * 10);
-    const key = `${lngCell}:${latCell}`;
+    const pixel = project(pos, zoom);
+    const cellX = Math.floor(pixel.x / gridSize);
+    const cellY = Math.floor(pixel.y / gridSize);
+    const key = `${cellX}:${cellY}`;
     let bucket = buckets.get(key);
     if (!bucket) {
-      bucket = [];
+      bucket = { items: [], sumX: 0, sumY: 0 };
       buckets.set(key, bucket);
-      centers.set(key, pos);
     }
-    bucket.push(item);
-  }
+    bucket.items.push(item);
+    bucket.sumX += pixel.x;
+    bucket.sumY += pixel.y;
+    void index;
+  });
 
   const clusters: Cluster<Item>[] = [];
   for (const [key, bucket] of buckets) {
-    const center = centers.get(key)!;
-    // 计算簇真实质心
-    let sumLng = 0;
-    let sumLat = 0;
-    for (const it of bucket) {
-      const p = getPosition(it);
-      sumLng += p.lng;
-      sumLat += p.lat;
+    if (bucket.items.length < minClusterSize) {
+      // 低于阈值：展开为单点条目
+      bucket.items.forEach((item, i) => {
+        const pos = getPosition(item);
+        clusters.push({
+          id: String(getKey(item, i)),
+          points: [item],
+          position: { lng: pos.lng, lat: pos.lat },
+          size: 1,
+          clustered: false,
+        });
+      });
+      continue;
     }
-    const centroid = { lng: sumLng / bucket.length, lat: sumLat / bucket.length };
-    const isCluster = bucket.length >= minClusterSize;
+    const centroidPixel = {
+      x: bucket.sumX / bucket.items.length,
+      y: bucket.sumY / bucket.items.length,
+    };
+    const centroid = unproject(centroidPixel, zoom);
     clusters.push({
-      id: isCluster ? `c-${key}` : key,
-      points: bucket,
-      position: isCluster ? centroid : center,
-      size: bucket.length,
+      id: `c-${key}`,
+      points: bucket.items,
+      position: { lng: centroid.lng, lat: centroid.lat },
+      size: bucket.items.length,
+      clustered: true,
     });
   }
   return clusters;

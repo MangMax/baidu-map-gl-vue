@@ -226,6 +226,17 @@ export class FakeMap extends FakeEventTarget {
     if (typeof zoom === 'number') this.zoom = zoom
   }
 
+  setCenter(point: FakePoint | string) {
+    this.callLog.push('setCenter')
+    this.center = typeof point === 'string' ? { lng: 0, lat: 0 } : point
+  }
+
+  setView(center: FakePoint | string, zoom: number) {
+    this.callLog.push('setView')
+    this.center = typeof center === 'string' ? { lng: 0, lat: 0 } : center
+    this.zoom = zoom
+  }
+
   setZoom(zoom: number, opts?: Record<string, unknown>) {
     this.callLog.push('setZoom')
     this.zoom = zoom

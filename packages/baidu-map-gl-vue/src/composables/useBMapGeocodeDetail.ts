@@ -32,7 +32,7 @@ export function useBMapGeocodeDetail(map?: unknown) {
   const ctx = resolveMapContext(map);
   const task = useBMapAsyncTask<GeocodeDetailResult | null, [{ lng: number; lat: number }]>({
     immediate: false,
-    runner: async (point) => {
+    runner: async (_taskContext, point) => {
       if (!point || typeof point.lng !== "number")
         throw new BMapError("BMAP_INVALID_POINT", "missing required params: point");
       const ready = await ctx.whenReady();

@@ -44,7 +44,7 @@
     "vue": "^3.5.0"
   },
   "engines": {
-    "node": ">=22"
+    "node": ">=24"
   },
   "devDependencies": {
     "@microsoft/api-extractor": "^7.52.0",

@@ -54,7 +54,6 @@ jobs:
           rm -rf .artifacts && mkdir -p .artifacts
           pnpm pack --pack-destination .artifacts
           node --experimental-strip-types scripts/verify-package.mts
-        continue-on-error: true # v2 has known type-resolution gaps; recorded as baseline
 
 
 

@@ -19,7 +19,7 @@ export function useBMapIpLocation(map?: unknown) {
   const ctx = resolveMapContext(map);
   const task = useBMapAsyncTask<BMapIpLocationResult | null, []>({
     immediate: false,
-    runner: async () => {
+    runner: async (_taskContext) => {
       const ready = await ctx.whenReady();
       const LocalCity = (ready.api as { LocalCity: new () => { get: (cb: (r: unknown) => void) => void } })
         .LocalCity;

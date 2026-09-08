@@ -97,6 +97,7 @@ function toPath(exportName: string): string {
     BPanoramaControl: 'controls/BPanoramaControl.vue',
     BControl: 'controls/BControl.vue',
     BPointLayer: 'data/BPointLayer.vue',
+    BMarkerList: 'data/BMarkerList.vue',
     BMarkerCluster: 'data/BMarkerCluster.vue',
     BZoom: 'controls/BZoom.vue',
     BScale: 'controls/BScale.vue',

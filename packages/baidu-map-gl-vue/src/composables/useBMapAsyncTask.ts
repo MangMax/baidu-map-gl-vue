@@ -3,10 +3,11 @@
  *
  * 统一异步服务 composable 状态封装(方案 §13.3):
  * - 每次 execute 带 request sequence ID,旧请求结果不得覆盖新请求
- * - 支持 AbortSignal 或逻辑取消
+ * - P0-18: runner 接收 { signal, requestId }，支持真实取消；
+ *   不支持 AbortSignal 的百度 callback API 在 callback 中检查 signal.aborted
  * - 状态: idle / loading / success / error
- * - 卸载时取消 pending task
- * - 不依赖具体 SDK 服务,定位/地址解析/坐标转换/轨迹动画复用
+ * - cancel 不标记 error；reset 清空 data/error
+ * - 卸载时取消 pending task；scope dispose 后不回写任何 ref
  */
 import { shallowRef, onScopeDispose, type ShallowRef } from "vue";
 
@@ -20,9 +21,15 @@ export interface AsyncTaskState<Result> {
   reset: () => void;
 }
 
+/** P0-18: 传递给 runner 的取消上下文 */
+export interface AsyncTaskContext {
+  signal: AbortSignal;
+  requestId: number;
+}
+
 export interface UseBMapAsyncTaskOptions<Result, Args extends unknown[]> {
-  /** 执行体:可 receive signal 以支持取消 */
-  runner: (...args: Args) => Promise<Result>;
+  /** 执行体:首参接收取消上下文（signal/requestId），以支持真实取消 */
+  runner: (context: AsyncTaskContext, ...args: Args) => Promise<Result>;
   /** 是否立即执行 */
   immediate?: boolean;
   /** 是否在卸载时取消 */
@@ -40,30 +47,39 @@ export function useBMapAsyncTask<Result, Args extends unknown[]>(
 
   let requestId = 0;
   let activeController: AbortController | null = null;
+  let disposed = false;
 
   async function execute(...execArgs: unknown[]): Promise<Result | null> {
     const currentRequestId = ++requestId;
-    // 取消旧请求
+    // 取消旧请求（逻辑 + signal 双通道）
     activeController?.abort("superseded");
     activeController = new AbortController();
-    const signal = activeController.signal;
+    const controller = activeController;
+    const signal = controller.signal;
 
     status.value = "loading";
     isLoading.value = true;
     error.value = null;
 
     try {
-      const result = await options.runner(...(execArgs as Args));
-      // 旧请求结果不覆盖新请求
+      // P0-18: AbortController 传给 runner
+      const result = await options.runner(
+        { signal, requestId: currentRequestId },
+        ...(execArgs as Args),
+      );
+      if (disposed) return null;
+      // scope dispose 后 / 新请求已发出 / 已取消：不回写
       if (currentRequestId !== requestId) return null;
+      if (signal.aborted) return null;
       data.value = result;
       status.value = "success";
       isLoading.value = false;
       return result;
     } catch (err) {
+      if (disposed) return null;
       if (currentRequestId !== requestId) return null;
       if (signal.aborted) {
-        // 被取消:不标记为 error(除非是显式错误)
+        // 被取消:不标记为 error
         isLoading.value = false;
         return null;
       }
@@ -72,9 +88,9 @@ export function useBMapAsyncTask<Result, Args extends unknown[]>(
       isLoading.value = false;
       return null;
     } finally {
-      if (currentRequestId === requestId) {
+      if (currentRequestId === requestId && activeController === controller) {
         activeController = null;
-        isLoading.value = false;
+        if (!disposed) isLoading.value = false;
       }
     }
   }
@@ -83,12 +99,14 @@ export function useBMapAsyncTask<Result, Args extends unknown[]>(
     requestId++;
     activeController?.abort(reason ?? "cancelled");
     activeController = null;
+    if (disposed) return;
     status.value = "idle";
     isLoading.value = false;
   }
 
   function reset() {
     cancel("reset");
+    if (disposed) return;
     data.value = null;
     error.value = null;
     status.value = "idle";
@@ -100,6 +118,7 @@ export function useBMapAsyncTask<Result, Args extends unknown[]>(
 
   if (options.cancelOnScopeDispose !== false) {
     onScopeDispose(() => {
+      disposed = true;
       requestId++;
       activeController?.abort("scope-disposed");
       activeController = null;

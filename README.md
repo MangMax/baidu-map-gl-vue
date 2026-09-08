@@ -7,6 +7,7 @@
 <h1 align="center"><img src="https://user-images.githubusercontent.com/74038190/213844263-a8897a51-32f4-4b3b-b5c2-e1528b89f6f3.png" width="50px" />&nbsp;Vue3 BaiduMap Gl&nbsp;<img src="https://user-images.githubusercontent.com/74038190/213844263-a8897a51-32f4-4b3b-b5c2-e1528b89f6f3.png" width="50px" /></h1>
 
 <p align="center">易用 & 完整 & 高性能</p>
+<p align="center"><strong>v3 beta</strong></p>
 <p align="center">
 <img src="https://img.shields.io/github/license/MangMax/baidu-map-gl-vue?style=flat-square" alt="" />
 <img src="https://img.shields.io/github/package-json/v/MangMax/baidu-map-gl-vue?color=f90&style=flat-square" alt="GitHub package.json version (subfolder of monorepo)"/>
@@ -55,6 +56,29 @@ yarn add baidu-map-gl-vue
 npm install baidu-map-gl-vue
 ```
 
+## v3 快速开始
+
+v3 要求 Node.js >= 24、pnpm >= 12，并使用 workspace 中声明的 `pnpm@12.0.0`。
+
+```ts
+import { BMap } from 'baidu-map-gl-vue'
+
+// 推荐通过 createBMapPlugin 配置 provider/client，再将 provider 传给 BMap。
+// 也可以在已有 window.BMapGL 时直接使用 BMap。
+```
+
+v3 的开发与构建命令以 workspace scripts 为准：
+
+```bash
+pnpm install
+pnpm playground:dev
+pnpm docs:dev
+pnpm build:v3
+pnpm typecheck:v3
+```
+
+从 v2 迁移请先阅读 `scripts/migrate-v2-to-v3.mts` 及文档站的 v3 迁移说明。v3 组件使用 `BMap`、`BMarker` 等 Vue 3 组件，SDK 加载通过 provider/client 管理；`BPointLayer` 已标记为 deprecated，新的列表组件名为 `BMarkerList`。
+
 ## <img src="https://raw.githubusercontent.com/Tarikul-Islam-Anik/Animated-Fluent-Emojis/master/Emojis/Objects/Open%20Book.png" alt="Open Book" width="25" height="25" /> 文档
 
 [中文](https://MangMax.github.io/baidu-map-gl-vue/)
@@ -64,8 +88,8 @@ npm install baidu-map-gl-vue
 
 ```bash
 # 环境
-# pnpm >= 6.0.0
-# node >= 12.0.0
+# pnpm >= 12.0.0
+# node >= 24.0.0
 
 # clone
 git clone https://github.com/MangMax/baidu-map-gl-vue
@@ -74,8 +98,8 @@ cd ./baidu-map-gl-vue
 # install
 pnpm install
 
-# 运行 dev, 实时构建组件库
-pnpm dev
+# 运行 playground
+pnpm playground:dev
 
 # 运行文档站点，用来测试组件，预览文档
 pnpm docs:dev

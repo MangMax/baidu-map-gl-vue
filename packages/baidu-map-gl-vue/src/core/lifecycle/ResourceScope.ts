@@ -98,6 +98,30 @@ export class ResourceScope {
     this.add(cancel);
   }
 
+  /** 从父集合摘除指定 disposer（用于 fork child 主动释放后避免父堆积） */
+  remove(disposer: Disposer): void {
+    this.disposers.delete(disposer);
+  }
+
+  /** 从当前 scope fork 出独立 child scope；父 dispose 时联带 dispose child */
+  fork(_label?: string): ResourceScope {
+    const child = new ResourceScope();
+    if (this._disposed) {
+      child.dispose();
+      return child;
+    }
+    const disposeChild: Disposer = () => child.dispose();
+    this.disposers.add(disposeChild);
+    const originalChildDispose = child.dispose.bind(child);
+    // 覆盖实例 dispose：主动释放时顺带从父摘除，避免父 disposers 堆积；
+    // 父 dispose 联带调用时 remove 已无记录，属于 no-op。
+    child.dispose = () => {
+      originalChildDispose();
+      this.disposers.delete(disposeChild);
+    };
+    return child;
+  }
+
   dispose(): void {
     if (this._disposed) return;
     this._disposed = true;

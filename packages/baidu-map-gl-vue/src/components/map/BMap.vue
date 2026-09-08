@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { ref, shallowRef, computed, watch, onMounted, onUnmounted, provide, inject } from "vue";
-import { mapContextKey, type MapContext, type MapRuntimeStatus } from "../../core/context/types";
+import { mapContextKey, type MapContext, type MapReadyContext } from "../../core/context/types";
 import { MapRuntime } from "../../core/runtime/MapRuntime";
 import { BMapError } from "../../core/errors/BMapError";
 import { bindSdkEvent, type BMapSdkEventTarget } from "../../core/events/EventBridge";
@@ -27,27 +27,35 @@ const props = withDefaults(defineProps<BMapProps>(), {
   loadingBgColor: "#f1f1f1",
 });
 
+export interface MapReadyPayload extends MapReadyContext {
+  container: HTMLElement;
+}
+
 const emit = defineEmits<{
-  ready: [ctx: { map: unknown; api: unknown }];
-  initd: [ctx: { map: unknown; api: unknown; container: HTMLElement }];
+  ready: [payload: MapReadyPayload];
+  initd: [payload: MapReadyPayload];
   pluginReady: [map: unknown];
+  "plugin-ready": [name: string];
+  "plugin-error": [payload: { name: string; error: unknown }];
   click: [event: unknown];
   unload: [];
   error: [err: unknown];
 }>();
 
 const containerRef = ref<HTMLDivElement | null>(null);
-const status = ref<MapRuntimeStatus>("idle");
-const map = shallowRef<unknown>(null);
-const api = shallowRef<unknown>(null);
-const error = shallowRef<unknown>(null);
+
+// P0-04: 不再复制 Runtime 状态，直接复用 runtime refs
+const runtimeRef = shallowRef<MapRuntime | null>(null);
+
+const status = computed(() => runtimeRef.value?.status.value ?? "idle");
+const map = computed(() => runtimeRef.value?.map.value ?? null);
+const api = computed(() => runtimeRef.value?.api.value ?? null);
+const error = computed(() => runtimeRef.value?.error.value ?? null);
 
 const width = computed(() => (typeof props.width === "number" ? `${props.width}px` : props.width));
 const height = computed(() =>
   typeof props.height === "number" ? `${props.height}px` : props.height,
 );
-
-let runtime: MapRuntime | null = null;
 
 // app 级默认 provider 配置
 const appConfig = inject(bmapConfigKey, undefined) as BMapPluginConfig | undefined;
@@ -94,27 +102,49 @@ const destroyMap = (map: unknown) => {
   m?.destroy?.();
 };
 
-/** 将 center/zoom props 应用为 SDK centerAndZoom(百度 Map 构造器不接受 center/zoom) */
-function applyCenterZoom(target: unknown) {
-  const m = target as { centerAndZoom?: (center: unknown, zoom: number) => void } | null;
-  if (!m?.centerAndZoom) return;
-  m.centerAndZoom(props.center, props.zoom);
+type SdkView = {
+  centerAndZoom?: (center: unknown, zoom: number) => void;
+  setCenter?: (center: unknown) => void;
+  setZoom?: (zoom: number) => void;
+  setHeading?: (heading: number) => void;
+  setTilt?: (tilt: number) => void;
+  setView?: (center: unknown, zoom: number) => void;
+  setMapStyleV2?: (config: Record<string, unknown>) => void;
+};
+
+function normalizeCenter(value: unknown): unknown {
+  return value;
 }
 
-function applyView(target: unknown) {
-  const m = target as {
-    setHeading?: (heading: number) => void;
-    setTilt?: (tilt: number) => void;
-    setMapStyleV2?: (config: Record<string, unknown>) => void;
-  } | null;
+/** P0-01/P0-02: 初始化视角只走一次 centerAndZoom + heading/tilt */
+function initializeView(target: unknown) {
+  const m = target as SdkView | null;
   if (!m) return;
-  m.setHeading?.(props.heading);
-  m.setTilt?.(props.tilt);
-  if (props.mapStyleJson) {
-    m.setMapStyleV2?.(props.mapStyleJson);
-  } else if (props.mapStyleId) {
-    m.setMapStyleV2?.({ styleId: props.mapStyleId });
+  if (props.center !== undefined && props.zoom !== undefined) {
+    m.centerAndZoom?.(normalizeCenter(props.center), props.zoom);
   }
+  if (props.heading != null) {
+    m.setHeading?.(props.heading);
+  }
+  if (props.tilt != null) {
+    m.setTilt?.(props.tilt);
+  }
+}
+
+// 初始视角快照，供 resetView 恢复
+let initialViewSnapshot: { center: unknown; zoom: number; heading?: number; tilt?: number } | null =
+  null;
+
+function captureInitialView() {
+  initialViewSnapshot = {
+    center:
+      typeof props.center === "string"
+        ? props.center
+        : { ...(props.center as { lng: number; lat: number }) },
+    zoom: props.zoom as number,
+    heading: props.heading,
+    tilt: props.tilt,
+  };
 }
 
 /** v2 风格地图类型字符串 → SDK 顶层常量字符串(如 BMapGL.BMAP_SATELLITE_MAP) */
@@ -185,7 +215,7 @@ function syncEnableProps(target: unknown) {
 }
 
 // runtime 立即创建(container 在模板 ref,挂载后才有;mount 时使用)
-runtime = new MapRuntime({
+const currentRuntime = new MapRuntime({
   provider: { load: loadFn },
   providerOptions: loadOptions,
   container: null as unknown as HTMLElement,
@@ -193,61 +223,82 @@ runtime = new MapRuntime({
   destroyMap,
 });
 for (const definition of stringToPluginDefinitions(props.plugins ?? [])) {
-  runtime.plugins.register(definition);
+  currentRuntime.plugins.register(definition);
 }
+runtimeRef.value = currentRuntime;
+const runtime = currentRuntime;
 
 // 容器 ref 挂载后回填,供 MapRuntime.mount 使用
 onMounted(() => {
-  runtime!.container = containerRef.value!;
+  runtime.container = containerRef.value!;
   boot().catch(() => {});
 });
 
+/** P0-05: 插件不阻塞 map ready；ready 后台加载插件并逐个 emit */
+async function loadPluginsInBackground(ctx: MapReadyContext) {
+  for (const name of props.plugins ?? []) {
+    try {
+      await runtime.plugins.whenPlugin(name, runtime.resources.signal);
+      emit("plugin-ready", name);
+      // 兼容旧驼峰事件
+      emit("pluginReady", ctx.map);
+    } catch (e) {
+      const err =
+        e instanceof BMapError
+          ? e
+          : new BMapError("BMAP_RESOURCE_CREATE_FAILED", `plugin ${name} failed`, { cause: e });
+      emit("plugin-error", { name, error: err });
+    }
+  }
+}
+
+function applyStyleProps(target: unknown) {
+  const m = target as SdkView | null;
+  if (!m) return;
+  const styleTarget = m as { setMapStyleV2?: (config: Record<string, unknown>) => void };
+  if (props.mapStyleJson) {
+    styleTarget.setMapStyleV2?.(props.mapStyleJson);
+  } else if (props.mapStyleId) {
+    styleTarget.setMapStyleV2?.({ styleId: props.mapStyleId });
+  }
+}
+
 async function boot() {
-  if (runtime!.status.value === "ready") {
-    map.value = runtime!.map.value;
-    api.value = runtime!.api.value;
-    status.value = "ready";
+  if (runtime.status.value === "ready") {
     const payload = {
-      map: runtime!.map.value,
-      api: runtime!.api.value,
+      map: runtime.map.value,
+      api: runtime.api.value,
       container: containerRef.value!,
     };
     emit("ready", payload);
     emit("initd", payload);
-    emit("pluginReady", runtime!.map.value);
+    void loadPluginsInBackground({ map: runtime.map.value, api: runtime.api.value });
     return;
   }
-  status.value = "loading";
   try {
-    const ctx = await runtime!.mount();
-    // Plugins are registered per map instance and must be loaded before
-    // ready consumers construct plugin-backed resources.
-    for (const name of props.plugins ?? []) {
-      await runtime!.plugins.whenPlugin(name, runtime!.resources.signal);
-    }
-    map.value = ctx.map;
-    api.value = ctx.api;
-    status.value = "ready";
-    applyCenterZoom(map.value);
-    applyView(map.value);
-    applyMapType(map.value, api.value);
-    syncEnableProps(map.value);
-    const mapEventTarget = map.value as {
+    const ctx = await runtime.mount();
+    captureInitialView();
+    // map-initializing: centerAndZoom、heading、tilt、options 正在应用
+    initializeView(ctx.map);
+    applyStyleProps(ctx.map);
+    applyMapType(ctx.map, ctx.api);
+    syncEnableProps(ctx.map);
+    const mapEventTarget = ctx.map as {
       addEventListener?: (type: string, listener: (event: unknown) => void) => void;
       removeEventListener?: (type: string, listener: (event: unknown) => void) => void;
     };
     if (mapEventTarget.addEventListener && mapEventTarget.removeEventListener) {
-      runtime!.resources.add(
+      runtime.resources.add(
         bindSdkEvent(mapEventTarget as BMapSdkEventTarget, "click", (event) => emit("click", event)),
       );
     }
     const payload = { map: ctx.map, api: ctx.api, container: containerRef.value! };
+    // P0-05: Map ready 不等待 optional plugin
     emit("ready", payload);
     emit("initd", payload);
-    emit("pluginReady", ctx.map);
+    // 插件后台加载，逐个回执
+    void loadPluginsInBackground(ctx);
   } catch (e) {
-    error.value = e;
-    status.value = "error";
     emit(
       "error",
       e instanceof BMapError
@@ -259,8 +310,8 @@ async function boot() {
 }
 
 onUnmounted(() => {
-  runtime?.dispose();
-  runtime = null;
+  runtime.dispose();
+  runtimeRef.value = null;
   emit("unload");
 });
 
@@ -290,20 +341,61 @@ watch(
   { flush: "post" },
 );
 
+// P0-01: 后续 center 更新只 setCenter，不重置 zoom；分别监听 lng/lat，禁止 deep
+function centerLng(value: BMapProps["center"]): number | string | undefined {
+  if (typeof value === "string") return value;
+  return value?.lng;
+}
+function centerLat(value: BMapProps["center"]): number | undefined {
+  if (typeof value === "string") return undefined;
+  return (value as { lat?: number } | undefined)?.lat;
+}
 watch(
-  () => props.center,
-  () => {
-    const m = map.value as { centerAndZoom?: (center: unknown, zoom: number) => void } | null;
-    m?.centerAndZoom?.(props.center, props.zoom);
+  [() => centerLng(props.center), () => centerLat(props.center)],
+  ([lng, lat], [oldLng, oldLat]) => {
+    const handle = map.value as SdkView | null;
+    if (!handle) return;
+    if (typeof props.center === "string") {
+      if (props.center === oldLng) return;
+      handle.setCenter?.(normalizeCenter(props.center));
+      return;
+    }
+    if (lng == null || lat == null) return;
+    if (lng === oldLng && lat === oldLat) return;
+    handle.setCenter?.(normalizeCenter(props.center));
   },
-  { flush: "post", deep: true },
+  { flush: "post" },
+);
+
+// P0-01: zoom 单独更新只 setZoom
+watch(
+  () => props.zoom,
+  (value, previous) => {
+    if (value == null || value === previous) return;
+    const handle = map.value as SdkView | null;
+    if (!handle) return;
+    handle.setZoom?.(value);
+  },
+  { flush: "post" },
+);
+
+// P0-02: heading/tilt 外部更新同步（SDK 支持才调用）
+watch(
+  () => props.heading,
+  (value, previous) => {
+    if (value == null || value === previous) return;
+    const handle = map.value as SdkView | null;
+    handle?.setHeading?.(value);
+  },
+  { flush: "post" },
 );
 
 watch(
-  () => props.zoom,
-  (zoom) => {
-    const m = map.value as { setZoom?: (value: number) => void } | null;
-    m?.setZoom?.(zoom);
+  () => props.tilt,
+  (value, previous) => {
+    if (value == null || value === previous) return;
+    const handle = map.value as SdkView | null;
+    handle?.setTilt?.(value);
   },
   { flush: "post" },
 );
@@ -319,19 +411,34 @@ const context: MapContext = {
   scheduler: runtime.scheduler,
   overlays: runtime.overlays,
   plugins: runtime.plugins,
-  whenReady: (signal?: AbortSignal) => runtime!.whenReady(signal),
-  dispose: () => runtime!.dispose(),
+  whenReady: (signal?: AbortSignal) => runtime.whenReady(signal),
+  dispose: () => runtime.dispose(),
 };
 provide(mapContextKey, context);
+
+/** P0-03: 真正重置视角到初始快照 */
+function resetView() {
+  const handle = map.value as SdkView | null;
+  if (!handle || !initialViewSnapshot) return;
+  const { center, zoom, heading, tilt } = initialViewSnapshot;
+  if (handle.setView) {
+    handle.setView(normalizeCenter(center), zoom);
+  } else {
+    handle.centerAndZoom?.(normalizeCenter(center), zoom);
+  }
+  if (heading != null) handle.setHeading?.(heading);
+  if (tilt != null) handle.setTilt?.(tilt);
+}
 
 defineExpose({
   getMapInstance: () => map.value,
   getContainer: () => containerRef.value,
-  whenReady: (signal?: AbortSignal) =>
-    runtime
-      ? runtime.whenReady(signal)
-      : Promise.reject(new BMapError("BMAP_RUNTIME_DISPOSED", "not mounted")),
-  resetCenter: () => map.value,
+  whenReady: (signal?: AbortSignal) => runtime.whenReady(signal),
+  resetView,
+  /** @deprecated Use resetView() instead. */
+  resetCenter: () => {
+    resetView();
+  },
   setDragging: (enabled: boolean) => {
     const m = map.value as { enableDragging?: () => void; disableDragging?: () => void } | null;
     if (!m) return;
