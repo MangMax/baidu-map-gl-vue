@@ -133,8 +133,8 @@ map/theme2
 | backgroundColor   | 地图背景颜色, rgba 数组                          | ` number[]`                                                             | -      | `[245, 245, 245, 100]` | <Badge type="tip" text="^2.1.0" /> |
 | showControls      | 是否显示室内图                                   | `boolean`                                                               | -      | `false`                | -                                  |
 | restrictCenter    | 是否限制中心                                     | `boolean`                                                               | -      | `true`                 | <Badge type="tip" text="^1.1.3" /> |
-| plugins           | 需要注册的插件                                   | `['TrackAnimation', 'Mapvgl', 'Mapv', 'MapvThree']`                     | -      | -                      | -                                  |
-| pluginsSourceLink | 自定义插件资源地址                               | `Record<'TrackAnimation' \| 'Mapvgl' \| 'Mapv' \| 'MapvThree', string>` | -      | -                      | -                                  |
+| plugins           | 需要注册的插件                                   | `['TrackAnimation', 'Mapvgl']`                                         | -      | -                      | -                                  |
+| pluginsSourceLink | 自定义插件资源地址                               | `Record<'TrackAnimation' \| 'Mapvgl', string>`                         | -      | -                      | -                                  |
 
 ## 动态组件 Props
 

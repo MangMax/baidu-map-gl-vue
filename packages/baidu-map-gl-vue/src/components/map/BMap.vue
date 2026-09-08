@@ -29,7 +29,8 @@ const props = withDefaults(defineProps<BMapProps>(), {
 
 const emit = defineEmits<{
   ready: [ctx: { map: unknown; api: unknown }];
-  initd: [ctx: { map: unknown; api: unknown }];
+  initd: [ctx: { map: unknown; api: unknown; container: HTMLElement }];
+  pluginReady: [map: unknown];
   click: [event: unknown];
   unload: [];
   error: [err: unknown];
@@ -81,6 +82,8 @@ const createMap = (sdkApi: unknown, container: HTMLElement, opts?: Record<string
   return new BMapGL.Map(container, {
     minZoom: props.minZoom,
     maxZoom: props.maxZoom,
+    restrictCenter: props.restrictCenter,
+    displayOptions: props.displayOptions,
     backgroundColor: props.backgroundColor,
     ...opts,
   });
@@ -96,6 +99,22 @@ function applyCenterZoom(target: unknown) {
   const m = target as { centerAndZoom?: (center: unknown, zoom: number) => void } | null;
   if (!m?.centerAndZoom) return;
   m.centerAndZoom(props.center, props.zoom);
+}
+
+function applyView(target: unknown) {
+  const m = target as {
+    setHeading?: (heading: number) => void;
+    setTilt?: (tilt: number) => void;
+    setMapStyleV2?: (config: Record<string, unknown>) => void;
+  } | null;
+  if (!m) return;
+  m.setHeading?.(props.heading);
+  m.setTilt?.(props.tilt);
+  if (props.mapStyleJson) {
+    m.setMapStyleV2?.(props.mapStyleJson);
+  } else if (props.mapStyleId) {
+    m.setMapStyleV2?.({ styleId: props.mapStyleId });
+  }
 }
 
 /** v2 风格地图类型字符串 → SDK 顶层常量字符串(如 BMapGL.BMAP_SATELLITE_MAP) */
@@ -188,9 +207,14 @@ async function boot() {
     map.value = runtime!.map.value;
     api.value = runtime!.api.value;
     status.value = "ready";
-    const payload = { map: runtime!.map.value, api: runtime!.api.value };
+    const payload = {
+      map: runtime!.map.value,
+      api: runtime!.api.value,
+      container: containerRef.value!,
+    };
     emit("ready", payload);
     emit("initd", payload);
+    emit("pluginReady", runtime!.map.value);
     return;
   }
   status.value = "loading";
@@ -205,6 +229,7 @@ async function boot() {
     api.value = ctx.api;
     status.value = "ready";
     applyCenterZoom(map.value);
+    applyView(map.value);
     applyMapType(map.value, api.value);
     syncEnableProps(map.value);
     const mapEventTarget = map.value as {
@@ -216,9 +241,10 @@ async function boot() {
         bindSdkEvent(mapEventTarget as BMapSdkEventTarget, "click", (event) => emit("click", event)),
       );
     }
-    const payload = { map: ctx.map, api: ctx.api };
+    const payload = { map: ctx.map, api: ctx.api, container: containerRef.value! };
     emit("ready", payload);
     emit("initd", payload);
+    emit("pluginReady", ctx.map);
   } catch (e) {
     error.value = e;
     status.value = "error";
@@ -300,6 +326,7 @@ provide(mapContextKey, context);
 
 defineExpose({
   getMapInstance: () => map.value,
+  getContainer: () => containerRef.value,
   whenReady: (signal?: AbortSignal) =>
     runtime
       ? runtime.whenReady(signal)

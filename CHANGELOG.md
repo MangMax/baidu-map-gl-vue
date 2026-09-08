@@ -130,7 +130,7 @@ All notable changes to this project will be documented in this file. See [standa
 ### ✨ Features | 新功能
 
 * 优化组件之间初始化的发布订阅模式 ([4dbcd9c](https://github.com/yue1123/vue3-baidu-map-gl/commit/4dbcd9ca66f85fba98505441c4bd93b35cb4672c))
-* 增加MapvglThreeLayers插件 ([004cecc](https://github.com/yue1123/vue3-baidu-map-gl/commit/004cecc82c9143abed068e81ad34c9569e79e695))
+* 增加 MapVGL 图层支持 ([004cecc](https://github.com/yue1123/vue3-baidu-map-gl/commit/004cecc82c9143abed068e81ad34c9569e79e695))
 * proxyValue use user key ([37ac9f7](https://github.com/yue1123/vue3-baidu-map-gl/commit/37ac9f78ebe17e7548de569f5ae7e96cc1fdb315))
 * remove dynamic offset props ([abf2ea3](https://github.com/yue1123/vue3-baidu-map-gl/commit/abf2ea338410134de1bbc7f61abb61113486baeb))
 
@@ -386,7 +386,6 @@ All notable changes to this project will be documented in this file. See [standa
 
 ### 🐛 Bug Fixes | Bug 修复
 
-* 修复 mapvThree cdn 地址错误 ([00164f9](https://github.com/yue1123/vue3-baidu-map-gl/commit/00164f905043a5f4d64238d72d7309b537aa2e72))
 * **type:** 修复RangOf2不支持小数导致的ts错误 ([367d378](https://github.com/yue1123/vue3-baidu-map-gl/commit/367d378e5a6e43bd7041eb33f60cc104a4c91ea3))
 
 
@@ -638,7 +637,6 @@ All notable changes to this project will be documented in this file. See [standa
 * 地图默认高度增加到 550px ([d4b637e](https://github.com/yue1123/vue3-baidu-map-gl/commit/d4b637ea9788ecbc34b20b1152ad617413b8506a))
 * 更新mapv,以插件形式提供 ([1dd05fe](https://github.com/yue1123/vue3-baidu-map-gl/commit/1dd05fe3e9dcdcec835925588dbd66ee309a8408))
 * 文档中组件事件的相关内容更新 ([8e0fdd5](https://github.com/yue1123/vue3-baidu-map-gl/commit/8e0fdd57540966b949af5c458ca7b7e2098c05b3))
-* 增加 mapvgl 和 mapv 插件 ([fc9646d](https://github.com/yue1123/vue3-baidu-map-gl/commit/fc9646d66c6fb8a5bed9d37baadd2625ea610c95))
 * 支持更换插件资源地址和自定义插件 ([c6371df](https://github.com/yue1123/vue3-baidu-map-gl/commit/c6371dfd7a919101d581f9d4b581c2f3e063b922))
 * 支持路况显示 ([15d7736](https://github.com/yue1123/vue3-baidu-map-gl/commit/15d77361d4e6c4c347159a5eb36c7f42091b0087))
 * 支持自定义地图属性 ([17176f2](https://github.com/yue1123/vue3-baidu-map-gl/commit/17176f224b86ff8e22facedef1724fe8c33c27c0))
