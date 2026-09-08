@@ -663,11 +663,20 @@ export class FakeTrackAnimation {
 export class FakeControl {
   options: Record<string, unknown>
   callLog: string[] = []
+  visible = true
   defaultAnchor?: unknown
   defaultOffset?: unknown
   initialize?: (map: unknown) => HTMLElement
   constructor(options: Record<string, unknown> = {}) {
     this.options = options
+  }
+
+  show() {
+    this.visible = true
+  }
+
+  hide() {
+    this.visible = false
   }
 }
 
@@ -676,7 +685,21 @@ export class FakeScaleControl extends FakeControl {}
 export class FakeCityListControl extends FakeControl {}
 export class FakeLocationControl extends FakeControl {}
 export class FakeNavigationControl3D extends FakeControl {}
-export class FakeCopyrightControl extends FakeControl {}
+export class FakeCopyrightControl extends FakeControl {
+  copyrights: { id: number; content: string; bounds?: unknown }[] = []
+
+  addCopyright(copyright: { id: number; content: string; bounds?: unknown }) {
+    this.copyrights = [...this.copyrights.filter((item) => item.id !== copyright.id), copyright]
+  }
+
+  removeCopyright(id: number) {
+    this.copyrights = this.copyrights.filter((item) => item.id !== id)
+  }
+
+  getCopyrightCollection() {
+    return this.copyrights
+  }
+}
 export class FakePanoramaControl extends FakeControl {}
 export class FakeAutocomplete extends FakeEventTarget {
   input: HTMLInputElement | undefined
