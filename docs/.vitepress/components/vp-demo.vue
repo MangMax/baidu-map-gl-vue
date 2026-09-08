@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, ref, nextTick, onUnmounted, onMounted } from "vue";
+import { computed, ref, nextTick, onUnmounted, onMounted, watch } from "vue";
 import { useClipboard, useToggle, useEventListener, useDebounceFn } from "@vueuse/core";
 import { exampleModuleMap } from "./../constants";
 import Example from "./demo/vp-example.vue";
@@ -16,11 +16,14 @@ const rawSource = computed(() => {
 });
 const [showCode, toggleShowCode] = useToggle();
 const [fullScreen, toggleFullScreen] = useToggle();
-const { copy, copied, isSupported } = useClipboard({ source: rawSource.value });
-const decodedDescription = computed(() => decodeURIComponent(props.description!));
+const { copy, copied, isSupported } = useClipboard({ source: rawSource });
+const decodedDescription = computed(() =>
+  props.description ? decodeURIComponent(props.description) : "",
+);
 const buttonsHeight = 47;
 let preHeight = ref<number>();
 let height = ref<number>();
+let previousBodyOverflow = "";
 const debouncedFn = useDebounceFn(() => {
   if (fullScreen.value) calcHeight();
 }, 500);
@@ -28,46 +31,64 @@ useEventListener("resize", debouncedFn);
 
 function handleFullScreen() {
   toggleFullScreen();
-  fullScreen.value ? calcHeight() : resetHeight();
 }
 function calcHeight() {
-  const mapContainer = demoContainer.value?.querySelector(".bmap-container") as HTMLDivElement;
-
-  document.body.style.overflow = "hidden";
   nextTick(() => {
+    const mapContainer = demoContainer.value?.querySelector(
+      ".bmap-container",
+    ) as HTMLDivElement | null;
     const demoEl = demoContainer.value?.querySelector(".example-showcase") as HTMLDivElement;
+    if (!mapContainer || !demoEl) return;
     const emptyHeight = window.innerHeight - demoEl.offsetHeight;
     preHeight.value = mapContainer.offsetHeight;
-    height.value = mapContainer.offsetHeight + emptyHeight - buttonsHeight;
+    height.value = Math.max(240, mapContainer.offsetHeight + emptyHeight - buttonsHeight);
   });
 }
 
 function resetHeight() {
-  document.body.style.overflow = "auto";
   height.value = preHeight.value;
 }
-function handleEscKeydown(e) {
+function handleEscKeydown(e: KeyboardEvent) {
   if (fullScreen.value && e.key === "Escape") {
     toggleFullScreen(false);
-    resetHeight();
   }
 }
+watch(fullScreen, (active) => {
+  document.documentElement.classList.toggle("demo-is-fullscreen", active);
+  if (active) {
+    previousBodyOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    calcHeight();
+  } else {
+    document.body.style.overflow = previousBodyOverflow;
+    resetHeight();
+  }
+});
 onMounted(() => {
   document.addEventListener("keydown", handleEscKeydown);
 });
 onUnmounted(() => {
   document.removeEventListener("keydown", handleEscKeydown);
+  document.documentElement.classList.remove("demo-is-fullscreen");
+  document.body.style.overflow = previousBodyOverflow;
 });
 </script>
 
 <template>
   <div class="demo-wrapper">
     <ClientOnly>
-      <p text="sm" v-html="decodedDescription" />
+      <p v-if="decodedDescription" class="demo-description" v-html="decodedDescription" />
       <div class="demo-container" ref="demoContainer" :class="{ 'full-screen': fullScreen }">
         <Example :height="height" :file="path" :demo="exampleModuleMap[path]" />
         <div class="buttons">
-          <button v-tooltip="fullScreen ? '退出全屏（Esc）' : '全屏'" @click="handleFullScreen">
+          <button
+            type="button"
+            class="demo-action"
+            :aria-label="fullScreen ? '退出全屏（Esc）' : '全屏'"
+            :aria-pressed="fullScreen"
+            v-tooltip="fullScreen ? '退出全屏（Esc）' : '全屏'"
+            @click="handleFullScreen"
+          >
             <template v-if="fullScreen">
               <svg width="16" height="16" viewBox="0 0 48 48" fill="none">
                 <path
@@ -134,6 +155,9 @@ onUnmounted(() => {
             </template>
           </button>
           <button
+            type="button"
+            class="demo-action"
+            aria-label="复制示例代码"
             v-tooltip="copied ? '复制成功' : '复制代码'"
             v-if="isSupported"
             @click="() => copy()"
@@ -172,9 +196,12 @@ onUnmounted(() => {
             </template>
           </button>
           <button
+            type="button"
+            class="demo-action"
+            :aria-label="showCode ? '隐藏示例代码' : '显示示例代码'"
             v-tooltip="showCode ? '隐藏代码' : '显示代码'"
             v-show="!fullScreen"
-            @click="() => toggleShowCode()"
+            @click="toggleShowCode()"
           >
             <svg
               preserveAspectRatio="xMidYMid meet"
@@ -194,9 +221,9 @@ onUnmounted(() => {
             <SourceCode :source="props.source" />
           </div>
         </Transition>
-        <div v-if="showCode" class="hide_code-btn" @click="() => toggleShowCode()">
-          <span>隐藏代码</span>
-        </div>
+        <button v-if="showCode" type="button" class="hide_code-btn" @click="toggleShowCode(false)">
+          隐藏代码
+        </button>
       </div>
     </ClientOnly>
   </div>
@@ -205,10 +232,12 @@ onUnmounted(() => {
 <style scoped lang="less">
 .demo-container {
   border: 1px solid var(--vp-c-divider);
-  border-radius: 6px;
+  border-radius: 12px;
+  background: var(--vp-c-bg-soft);
+  box-shadow: 0 8px 30px rgb(15 23 42 / 6%);
   overflow: hidden;
   &.full-screen {
-    background-color: var(--vp-c-divider);
+    background-color: var(--vp-c-bg);
     position: fixed;
     width: 100%;
     height: 100%;
@@ -217,15 +246,17 @@ onUnmounted(() => {
     z-index: 99999;
   }
   .buttons {
-    border-top: 1px dashed var(--vp-c-divider);
-    padding: 0.5rem 1rem;
+    border-top: 1px solid var(--vp-c-divider);
+    padding: 0.6rem 0.75rem;
     display: flex;
     justify-content: flex-end;
     align-items: center;
     background: var(--vp-c-bg);
     button {
-      width: 30px;
-      height: 30px;
+      width: 34px;
+      height: 34px;
+      border: 1px solid transparent;
+      border-radius: 8px;
       color: var(--vp-c-text-2);
       display: flex;
       justify-content: center;
@@ -233,6 +264,12 @@ onUnmounted(() => {
       transition: color 0.3s;
       &:hover {
         color: var(--vp-c-text-1);
+        background: var(--vp-c-default-soft);
+        border-color: var(--vp-c-divider);
+      }
+      &:focus-visible {
+        outline: 2px solid var(--vp-c-brand-1);
+        outline-offset: 2px;
       }
     }
   }
@@ -243,6 +280,8 @@ onUnmounted(() => {
     overflow: hidden;
   }
   .hide_code-btn {
+    width: 100%;
+    border: 0;
     position: sticky;
     bottom: 0;
     top: 0;
@@ -252,7 +291,14 @@ onUnmounted(() => {
     background-color: var(--vp-custom-block-details-bg);
     z-index: 99;
     cursor: pointer;
+    color: var(--vp-c-text-2);
+    &:hover {
+      color: var(--vp-c-brand-1);
+    }
   }
+}
+.demo-description {
+  color: var(--vp-c-text-2);
 }
 .collapse-enter-active {
   transition: all 0.5s ease-in-out;
