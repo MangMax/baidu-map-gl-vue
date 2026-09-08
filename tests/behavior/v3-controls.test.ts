@@ -111,14 +111,52 @@ describe('Control v3', () => {
     expect(map.controls.size).toBe(0)
   })
 
-  it('BCopyright adds a copyright control', async () => {
+  it('BCopyright adds a copyright control with slot content', async () => {
     fake.stats.reset()
-    const { wrapper } = mountControl(BCopyright)
+    const el = host()
+    const wrapper = mount(
+      defineComponent({
+        setup: () => () => h(BMap, { provider: provider() }, () => [
+          h(BCopyright, {}, () => h('span', { class: 'copyright-content' }, 'custom copyright')),
+        ]),
+      }),
+      { attachTo: el },
+    )
     await flushPromises()
     const map = fake.createdMaps[fake.createdMaps.length - 1]
     expect(map.controls.size).toBe(1)
+    const control = [...map.controls][0] as { copyrights?: { content: string }[] }
+    expect(wrapper.text()).toContain('custom copyright')
     wrapper.unmount()
     await nextTick()
     expect(map.controls.size).toBe(0)
+  })
+
+  it('BCopyright toggles visibility without re-adding the control', async () => {
+    fake.stats.reset()
+    const visible = ref(true)
+    const el = host()
+    const wrapper = mount(
+      defineComponent({
+        setup: () => () => h(BMap, { provider: provider() }, () => [
+          h(BCopyright, { visible: visible.value }, () => 'custom copyright'),
+        ]),
+      }),
+      { attachTo: el },
+    )
+    await flushPromises()
+    const map = fake.createdMaps[fake.createdMaps.length - 1]
+    const control = [...map.controls][0] as { copyrights?: unknown[] }
+    expect(control.copyrights).toHaveLength(1)
+    visible.value = false
+    await nextTick()
+    expect(map.controls.size).toBe(1)
+    expect(control.copyrights).toHaveLength(0)
+    visible.value = true
+    await nextTick()
+    expect(map.controls.size).toBe(1)
+    expect(control.copyrights).toHaveLength(1)
+    wrapper.unmount()
+    await nextTick()
   })
 })

@@ -1,8 +1,13 @@
 <script setup lang="ts">
-import { watch, ref } from "vue";
+import { getCurrentInstance, onUpdated, ref, watch } from "vue";
 import { useControlResource } from "../../core/composables/useControlResource";
 import type { MapReadyContext } from "../../core/context/types";
 import type { ResourceScope } from "../../core/lifecycle/ResourceScope";
+import {
+  copyrightControlPosCache,
+  removeCopyrightControlIfEmpty,
+  type CopyrightControl,
+} from "./copyrightControlPosCache";
 
 export interface BCopyrightProps {
   anchor?: string;
@@ -16,58 +21,97 @@ const props = withDefaults(defineProps<BCopyrightProps>(), {
   visible: true,
 });
 
-type SdkControl = {
-  setCopyright?: (el: HTMLElement) => void;
-  setOptions?: (o: Record<string, unknown>) => void;
-};
-
 const containerRef = ref<HTMLElement | null>(null);
+const id = getCurrentInstance()?.uid ?? Math.random();
+let control: CopyrightControl | null = null;
+let readyContext: MapReadyContext | null = null;
+let registered = false;
 
-const { resource } = useControlResource<BCopyrightProps, SdkControl>(props, {
+const { resource } = useControlResource<BCopyrightProps, CopyrightControl>(props, {
   create: (ctx, p) => {
-    const anchor = p.anchor ?? "BMAP_ANCHOR_TOP_LEFT";
-    const offset = p.offset ?? { x: 0, y: 0 };
+    readyContext = ctx;
+    const anchor = p.anchor ?? "BMAP_ANCHOR_BOTTOM_LEFT";
+    const cached = copyrightControlPosCache.get(anchor);
+    if (cached) {
+      control = cached;
+      return cached;
+    }
+
     const win = window as any;
-    const control = new (ctx.api as any).CopyrightControl({
-      offset: new (ctx.api as any).Size(offset.x, offset.y),
+    const api = ctx.api as any;
+    const created = new api.CopyrightControl({
+      offset: new api.Size(p.offset?.x ?? 0, p.offset?.y ?? 0),
       anchor: win[anchor] ?? anchor,
-    }) as unknown as SdkControl;
-    // 版权内容取 slot 容器
-    if (containerRef.value) control.setCopyright?.(containerRef.value);
-    return control;
+    }) as CopyrightControl;
+    control = created;
+    copyrightControlPosCache.set(anchor, created);
+    return created;
   },
-  addToMap: (res, ctx, p, scope: ResourceScope) => {
-    if (props.visible) (ctx.map as { addControl: (c: unknown) => void }).addControl(res);
-    (ctx as any).overlays?.register?.("control", res);
+  addToMap: (res, ctx, p, _scope: ResourceScope) => {
+    const anchor = p.anchor ?? "BMAP_ANCHOR_BOTTOM_LEFT";
+    if (res === copyrightControlPosCache.get(anchor)) {
+      const entries = res.getCopyrightCollection?.() ?? [];
+      if (entries.length === 0) {
+        (ctx.map as { addControl: (control: unknown) => void }).addControl(res);
+      }
+    }
+    readyContext = ctx;
+    registerCopyright();
   },
   createWatchers(getCtx, getResource, p, addDisposer) {
-    addDisposer(
-      watch(
-        () => p.visible,
-        (v) => {
-          const res = getResource();
-          const ctx = getCtx();
-          if (!res || !ctx) return;
-          const map = ctx.map as {
-            addControl: (c: unknown) => void;
-            removeControl: (c: unknown) => void;
-          };
-          if (v) map.addControl(res);
-          else map.removeControl(res);
-        },
-      ),
+    const stop = watch(
+      () => p.visible,
+      (visible) => {
+        const res = getResource();
+        const ctx = getCtx();
+        if (!res || !ctx) return;
+        if (visible) registerCopyright();
+        else {
+          res.removeCopyright(id);
+          registered = false;
+        }
+      },
     );
+    addDisposer(stop);
   },
   remove: (res, ctx) => {
-    (ctx.map as { removeControl: (c: unknown) => void }).removeControl(res);
+    const anchor = props.anchor ?? "BMAP_ANCHOR_BOTTOM_LEFT";
+    res.removeCopyright(id);
+    registered = false;
+    removeCopyrightControlIfEmpty(anchor, res, ctx);
+    if (control === res) control = null;
+    readyContext = null;
   },
 });
 
-defineOptions({ name: "BCopyright" });
+function registerCopyright() {
+  if (registered || !props.visible || !control || !readyContext || !containerRef.value) return;
+  control.addCopyright({
+    id,
+    content: containerRef.value.innerHTML,
+    bounds: (readyContext.map as { getBounds?: () => unknown }).getBounds?.(),
+  });
+  registered = true;
+}
+
+onUpdated(() => {
+  if (!control || !containerRef.value || !registered) return;
+  const current = control.getCopyrightCollection?.().find((item) => item.id === id);
+  if (!current || current.content === containerRef.value.innerHTML) return;
+  control.addCopyright({
+    id,
+    content: containerRef.value.innerHTML,
+    bounds: current.bounds,
+  });
+});
+
+defineOptions({ name: "BCopyright", inheritAttrs: false });
 </script>
 
 <template>
-  <div ref="container" style="display: none">
-    <slot />
+  <div style="display: none">
+    <div ref="containerRef" v-bind="$attrs">
+      <slot />
+    </div>
   </div>
 </template>
