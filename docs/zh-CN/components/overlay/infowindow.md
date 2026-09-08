@@ -62,5 +62,25 @@ overlay/dynmicInfoWindow
 | open       | 信息窗口被打开时触发此事件                 | `event{type, target, point}` |
 | clickclose | 点击信息窗口的关闭按钮时触发此事件         | `event{type, target}`        |
 
+## v3 状态同步与清理
+
+`open` 是 v3 推荐的受控状态，支持 `v-model:open`。旧的 `show` / `v-model:show` 仍作为 deprecated alias 保留。
+
+```vue
+<BInfoWindow
+  v-model:open="open"
+  :position="position"
+  title="北京"
+  :width="320"
+>
+  内容
+</BInfoWindow>
+```
+
+- `title`、`width`、`height` 和 `position` 更新后会同步到已经创建的 InfoWindow；`offset` 作为创建参数应用。
+- SDK 自己打开或关闭窗口时，组件会回写 `update:open` 和 `update:show`，不会重复发出相同状态。
+- 组件卸载时会关闭并从地图移除 InfoWindow。
+- slot 内容变化会触发 redraw；内部观察器会在卸载时断开。
+
 <!-- maximize	event{type, target}	信息窗口最大化后触发此事件
 restore	event{type, target}	信息窗口还原时触发此事件 -->

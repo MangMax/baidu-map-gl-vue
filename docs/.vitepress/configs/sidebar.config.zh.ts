@@ -145,6 +145,16 @@ export const sidebarConfigZh: DefaultTheme.Sidebar = {
       ],
     },
     {
+      text: "数据组件",
+      collapsed: false,
+      items: [
+        {
+          text: "Marker 列表与聚合",
+          link: "/zh-CN/components/data",
+        },
+      ],
+    },
+    {
       text: "图层组件",
       collapsed: false,
       base: "/zh-CN/components/layer/",
@@ -214,6 +224,10 @@ export const sidebarConfigZh: DefaultTheme.Sidebar = {
         {
           text: "useBMapTrackAnimation 轨迹动画",
           link: "useBMapTrackAnimation",
+        },
+        {
+          text: "useBMapAsyncTask 异步任务",
+          link: "useBMapAsyncTask",
         },
       ],
     },
