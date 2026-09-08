@@ -22,14 +22,14 @@
       <template v-if="!isLoading">
         <template v-for="(item, index) in result">
           <template v-if="item.detail">
-          <BMarker :position="item.detail.point"></BMarker>
-          <BLabel
-            style="color: #333; font-size: 9px"
-            :position="item.detail.point"
-            :content="`${index}. 地址: ${item.detail.address} 所属商圈:${item.detail.business} 最匹配地点: ${
-              item.detail.surroundingPois[0]?.title || '无'
-            }`"
-          ></BLabel>
+            <BMarker :position="item.detail.point"></BMarker>
+            <BLabel
+              style="color: #333; font-size: 9px"
+              :position="item.detail.point"
+              :content="`${index}. 地址: ${item.detail.address} 所属商圈:${item.detail.business} 最匹配地点: ${
+                item.detail.surroundingPois[0]?.title || '无'
+              }`"
+            ></BLabel>
           </template>
         </template>
       </template>
@@ -38,47 +38,51 @@
 </template>
 
 <script lang="ts" setup>
-  import { useBMapGeocodeDetail, GeocodeDetailResult } from 'baidu-map-gl-vue'
-  const points = [
-    { lng: 116.307852, lat: 40.057031 },
-    { lng: 116.313082, lat: 40.047674 },
-    { lng: 116.328749, lat: 40.026922 },
-    { lng: 116.347571, lat: 39.988698 },
-    { lng: 116.316163, lat: 39.997753 },
-    { lng: 116.345867, lat: 39.998333 },
-    { lng: 116.403472, lat: 39.999411 },
-    { lng: 116.307901, lat: 40.05901 }
-  ]
-  import { ref } from 'vue'
-  const map = ref()
-  const { getBatch, isLoading } = useBMapGeocodeDetail(map)
-  type BatchItem = { point: { lng: number; lat: number }; detail: GeocodeDetailResult | null }
-  const result = ref<Array<{ point: { lng: number; lat: number }; detail: GeocodeDetailResult }>>([])
-  function handleInitd() {
-    getBatch(points).then((r) => {
-      result.value = (r as BatchItem[]).filter((x): x is NonNullable<typeof x> => x.detail !== null) as any
-    })
-  }
+import { useBMapGeocodeDetail, GeocodeDetailResult } from "baidu-map-gl-vue";
+const points = [
+  { lng: 116.307852, lat: 40.057031 },
+  { lng: 116.313082, lat: 40.047674 },
+  { lng: 116.328749, lat: 40.026922 },
+  { lng: 116.347571, lat: 39.988698 },
+  { lng: 116.316163, lat: 39.997753 },
+  { lng: 116.345867, lat: 39.998333 },
+  { lng: 116.403472, lat: 39.999411 },
+  { lng: 116.307901, lat: 40.05901 },
+];
+import { ref } from "vue";
+const map = ref();
+const { getBatch, isLoading } = useBMapGeocodeDetail(map);
+type BatchItem = {
+  point: { lng: number; lat: number };
+  detail: GeocodeDetailResult | null;
+  error?: unknown;
+};
+const result = ref<BatchItem[]>([]);
+function handleInitd() {
+  getBatch(points).then((r) => {
+    result.value = r;
+  });
+}
 </script>
 
 <style>
-  .point-list {
-    color: #333;
-    background-color: #fff;
-    font-size: 10px;
-    padding: 10px;
-    border-radius: 8px;
-    box-shadow: rgb(0 0 0 / 15%) 1px 2px 1px;
-  }
-  .point-list ul {
-    margin: 0;
-    padding: 0;
-  }
-  .point-list li {
-    list-style: none;
-    border-bottom: 1px solid #f1f1f1;
-  }
-  .point-list span {
-    margin-right: 15px;
-  }
+.point-list {
+  color: #333;
+  background-color: #fff;
+  font-size: 10px;
+  padding: 10px;
+  border-radius: 8px;
+  box-shadow: rgb(0 0 0 / 15%) 1px 2px 1px;
+}
+.point-list ul {
+  margin: 0;
+  padding: 0;
+}
+.point-list li {
+  list-style: none;
+  border-bottom: 1px solid #f1f1f1;
+}
+.point-list span {
+  margin-right: 15px;
+}
 </style>

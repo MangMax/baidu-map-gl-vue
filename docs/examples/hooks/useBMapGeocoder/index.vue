@@ -21,47 +21,47 @@
 </template>
 
 <script lang="ts" setup>
-  import { ref, watch } from 'vue'
-  import { useBMapGeocoder } from 'baidu-map-gl-vue'
-  const map = ref()
-  const defaultCenter = { lng: 116.404, lat: 39.915 }
-  const addressList = ref([
-    {
-      address: '北京市海淀区上地10街',
-      city: '北京市'
-    },
-    {
-      address: '北京市海淀区海淀三山五园绿道',
-      city: '北京市'
-    },
-    {
-      address: '北京市东城区天安门东通道',
-      city: '北京市'
-    }
-  ])
-  const currentAddress = ref(addressList.value[0])
+import { ref, watch } from "vue";
+import { useBMapGeocoder } from "baidu-map-gl-vue";
+const map = ref();
+const defaultCenter = { lng: 116.404, lat: 39.915 };
+const addressList = ref([
+  {
+    address: "北京市海淀区上地10街",
+    city: "北京市",
+  },
+  {
+    address: "北京市海淀区海淀三山五园绿道",
+    city: "北京市",
+  },
+  {
+    address: "北京市东城区天安门东通道",
+    city: "北京市",
+  },
+]);
+const currentAddress = ref(addressList.value[0]);
 
-  watch(
-    () => currentAddress,
-    (n) => {
-      get(n.value.address, n.value.city)
-    },
-    {
-      deep: true
-    }
-  )
-  const { get, point, isLoading, isEmpty } = useBMapGeocoder(map)
+watch(
+  () => currentAddress,
+  (n) => {
+    get(n.value.address, n.value.city);
+  },
+  {
+    deep: true,
+  },
+);
+const { get, point, isLoading, isEmpty } = useBMapGeocoder(map);
 
-  function handleInitd() {
-    get(currentAddress.value.address, currentAddress.value.city)
-  }
+function handleInitd() {
+  get(currentAddress.value.address, currentAddress.value.city);
+}
 </script>
 
 <style>
-  .state {
-    margin-top: 15px;
-  }
-  .state span {
-    margin-right: 25px;
-  }
+.state {
+  margin-top: 15px;
+}
+.state span {
+  margin-right: 25px;
+}
 </style>

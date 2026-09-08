@@ -24,22 +24,22 @@
 </template>
 
 <script setup lang="ts">
-  import { ref } from 'vue'
-  import { useBMapAreaBoundary } from 'baidu-map-gl-vue'
-  const topFillOpacity = ref<number>(0.5)
-  const area = ref<string>('北京市')
-  const map = ref()
-  const { boundaries: pathPoints, get } = useBMapAreaBoundary(map)
+import { ref } from "vue";
+import { useBMapAreaBoundary } from "baidu-map-gl-vue";
+const topFillOpacity = ref<number>(0.5);
+const area = ref<string>("北京市");
+const map = ref();
+const { boundaries: pathPoints, get } = useBMapAreaBoundary(map);
 
-  function handleInitd() {
-    get(area.value)
-  }
+function handleInitd() {
+  get(area.value);
+}
 
-  function handleMouseover() {
-    topFillOpacity.value = 1
-  }
+function handleMouseover() {
+  topFillOpacity.value = 1;
+}
 
-  function handleMouseout() {
-    topFillOpacity.value = 0.5
-  }
+function handleMouseout() {
+  topFillOpacity.value = 0.5;
+}
 </script>

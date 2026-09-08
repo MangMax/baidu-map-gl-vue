@@ -16,6 +16,13 @@
     "pack:v3": "pnpm --filter baidu-map-gl-vue pack --pack-destination .artifacts",
     "playground:dev": "vp run -C apps/playground dev",
     "playground:build": "pnpm --filter playground build",
+    "docs:dev": "vp run --filter ./docs dev",
+    "docs:build": "vp run --filter ./docs build",
+    "docs:format": "vp run --filter ./docs format",
+    "docs:format:check": "vp run --filter ./docs format:check",
+    "docs:lint": "vp run --filter ./docs lint",
+    "docs:check": "vp run --filter ./docs check",
+    "docs:typecheck": "vp run --filter ./docs typecheck",
     "migrate": "node --experimental-strip-types scripts/migrate-v2-to-v3.mts",
     "changeset": "changeset"
   },

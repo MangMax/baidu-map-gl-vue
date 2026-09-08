@@ -1,29 +1,29 @@
 /* https://github.com/antfu/prism-theme-vars */
-@import url('prism-theme-vars/base.css');
-@import url('prism-theme-vars/marker.css');
+@import url("prism-theme-vars/base.css");
+@import url("prism-theme-vars/marker.css");
 
-[class*='language-']:before {
-  content: '' !important;
+[class*="language-"]:before {
+  content: "" !important;
 }
 
-div[class*='language-'] {
+div[class*="language-"] {
   padding: 0 !important;
 }
 
-[class~='language-vue'] {
+[class~="language-vue"] {
   padding: var(--prism-block-padding-y) var(--prism-block-padding-x) !important;
 }
 
-[class~='language-vue']:before {
-  content: 'vue' !important;
+[class~="language-vue"]:before {
+  content: "vue" !important;
 }
 
-span[class~='language-css']:before {
-  content: '';
+span[class~="language-css"]:before {
+  content: "";
 }
 
-span[class~='language-css'] .token.property {
-  color: #B2CCD6;
+span[class~="language-css"] .token.property {
+  color: #b2ccd6;
 }
 
 :root {
@@ -48,7 +48,7 @@ span[class~='language-css'] .token.property {
   --prism-deleted: #bc6066;
   --prism-class: #54b1bf;
   --prism-builtin: #f07178;
-  --prism-property: #C792EA;
+  --prism-property: #c792ea;
   --prism-namespace: #db889a;
   --prism-punctuation: #89ddff;
   --prism-decorator: #bd8f8f;
@@ -62,7 +62,7 @@ span[class~='language-css'] .token.property {
 }
 
 .token.selector {
-  color: #FFCB6B;
+  color: #ffcb6b;
 }
 
 code {
@@ -83,32 +83,32 @@ code .token.inserted {
   color: var(--c-brand);
 }
 
-div[class*=language-] {
+div[class*="language-"] {
   position: relative;
   margin: 1rem -1.5rem;
   background-color: var(--vp-code-block-bg);
   overflow-x: auto;
 }
 
-li>div[class*='language-'] {
+li > div[class*="language-"] {
   border-radius: 6px 0 0 6px;
   margin: 1rem -1.5rem 1rem -1.25rem;
 }
 
 @media (min-width: 420px) {
-  div[class*='language-'] {
+  div[class*="language-"] {
     margin: 1rem 0;
     border-radius: 6px;
   }
 
-  li>div[class*='language-'] {
+  li > div[class*="language-"] {
     margin: 1rem 0 1rem 0;
     border-radius: 6px;
   }
 }
 
-[class*='language-'] pre,
-[class*='language-'] code {
+[class*="language-"] pre,
+[class*="language-"] code {
   color: var(--prism-foreground) !important;
   text-align: left;
   white-space: pre;
@@ -119,7 +119,7 @@ li>div[class*='language-'] {
   hyphens: none;
 }
 
-[class*='language-'] pre {
+[class*="language-"] pre {
   position: relative;
   z-index: 1;
   margin: 0;
@@ -128,7 +128,7 @@ li>div[class*='language-'] {
   overflow-x: auto;
 }
 
-[class*='language-'] code {
+[class*="language-"] code {
   padding: 0;
 }
 
@@ -151,7 +151,7 @@ li>div[class*='language-'] {
 
 /* Line numbers mode */
 
-div[class*='language-'].line-numbers-mode {
+div[class*="language-"].line-numbers-mode {
   padding-left: 3.5rem;
 }
 

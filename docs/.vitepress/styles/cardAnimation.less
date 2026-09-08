@@ -1,10 +1,9 @@
 /* card animation */
 @property --gradient-angle {
-  syntax: '<angle>';
+  syntax: "<angle>";
   initial-value: 360deg;
   inherits: false;
 }
-
 
 .VPFeature,
 .VPTeamMembersItem,
@@ -15,7 +14,7 @@
   border-radius: 12px !important;
   overflow: visible !important;
 
-  &>* {
+  & > * {
     position: relative;
     z-index: 10;
     background-color: unset !important;
@@ -23,7 +22,7 @@
 
   &::after,
   &::before {
-    content: '';
+    content: "";
     display: inline-block;
     position: absolute;
     width: 100%;
@@ -55,21 +54,24 @@
 }
 
 .dark {
-
   .VPFeature,
   .VPTeamMembersItem,
   .CardAnimation {
     &::after {
-      background: linear-gradient(1turn,
-          hsla(0, 0%, 100%, 0.5),
-          hsla(0, 0%, 100%, 0.1),
-          #fff,
-          hsla(0, 0%, 100%, 0.3)) !important;
-      background: linear-gradient(var(--gradient-angle),
-          rgba(96, 137, 241, 0.45),
-          hsla(0, 0%, 100%, 0.1),
-          #fff,
-          rgba(66, 211, 146, 0.3)) !important;
+      background: linear-gradient(
+        1turn,
+        hsla(0, 0%, 100%, 0.5),
+        hsla(0, 0%, 100%, 0.1),
+        #fff,
+        hsla(0, 0%, 100%, 0.3)
+      ) !important;
+      background: linear-gradient(
+        var(--gradient-angle),
+        rgba(96, 137, 241, 0.45),
+        hsla(0, 0%, 100%, 0.1),
+        #fff,
+        rgba(66, 211, 146, 0.3)
+      ) !important;
     }
   }
 }
@@ -78,21 +80,24 @@
 .VPTeamMembersItem,
 .CardAnimation {
   &::after {
-    background: linear-gradient(1turn,
-        rgba(66, 211, 146, 0.3),
-        var(--vp-button-alt-border),
-        rgba(96, 137, 241, 0.45),
-        rgba(29, 224, 177, 0.3));
-    background: linear-gradient(var(--gradient-angle),
-        rgba(66, 211, 146, 0.3),
-        var(--vp-button-alt-border),
-        rgba(96, 137, 241, 0.45),
-        rgba(29, 224, 177, 0.3));
+    background: linear-gradient(
+      1turn,
+      rgba(66, 211, 146, 0.3),
+      var(--vp-button-alt-border),
+      rgba(96, 137, 241, 0.45),
+      rgba(29, 224, 177, 0.3)
+    );
+    background: linear-gradient(
+      var(--gradient-angle),
+      rgba(66, 211, 146, 0.3),
+      var(--vp-button-alt-border),
+      rgba(96, 137, 241, 0.45),
+      rgba(29, 224, 177, 0.3)
+    );
   }
 }
 
 @media (prefers-reduced-motion: reduce) {
-
   .VPFeature,
   .VPTeamMembersItem,
   .CardAnimation {

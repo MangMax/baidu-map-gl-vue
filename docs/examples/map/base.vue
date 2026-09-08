@@ -55,7 +55,7 @@
       :tilt="73"
       :center="{
         lng: 116.28019,
-        lat: 40.049191
+        lat: 40.049191,
       }"
       :zoom="19"
       :minZoom="3"
@@ -73,19 +73,19 @@
 </template>
 
 <script setup lang="ts">
-  import { ref } from 'vue'
-  import { BMapProps } from 'baidu-map-gl-vue'
-  const type = ref<string>('BMAP_NORMAL_MAP')
-  const mapSetting = ref<BMapProps>({
-    enableDragging: true,
-    enableInertialDragging: true,
-    enableScrollWheelZoom: false,
-    enableContinuousZoom: true,
-    enableResizeOnCenter: true,
-    enableDoubleClickZoom: false,
-    enableKeyboard: true,
-    enablePinchToZoom: true,
-    enableAutoResize: true,
-    enableTraffic: false
-  })
+import { ref } from "vue";
+import { BMapProps } from "baidu-map-gl-vue";
+const type = ref<string>("BMAP_NORMAL_MAP");
+const mapSetting = ref<BMapProps>({
+  enableDragging: true,
+  enableInertialDragging: true,
+  enableScrollWheelZoom: false,
+  enableContinuousZoom: true,
+  enableResizeOnCenter: true,
+  enableDoubleClickZoom: false,
+  enableKeyboard: true,
+  enablePinchToZoom: true,
+  enableAutoResize: true,
+  enableTraffic: false,
+});
 </script>

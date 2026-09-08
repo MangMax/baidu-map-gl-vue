@@ -1,6 +1,13 @@
 <template>
   <div>
-    <BMap v-bind="$attrs" enableScrollWheelZoom ref="map" :center="point" @ready="handleInitd" @click="handleClick">
+    <BMap
+      v-bind="$attrs"
+      enableScrollWheelZoom
+      ref="map"
+      :center="point"
+      @ready="handleInitd"
+      @click="handleClick"
+    >
       <template v-if="!isLoading && !isEmpty">
         <BMarker :position="point"></BMarker>
         <BLabel
@@ -16,27 +23,25 @@
 </template>
 
 <script lang="ts" setup>
-  import { ref } from 'vue'
-  import { useBMapGeocodeDetail, GeocodeDetailResult } from 'baidu-map-gl-vue'
-  const map = ref()
-  const { get, result, isLoading, isEmpty } = useBMapGeocodeDetail(map)
-  const point = ref({ lng: 116.30793520652882, lat: 40.05861561613348 })
-  const markerPoint = point
-
-  function handleInitd() {
-    get(point.value)
-  }
-  function handleClick(e: { latlng: { lng: number; lat: number } }) {
-    markerPoint.value = e.latlng
-    get(e.latlng)
-  }
+import { ref } from "vue";
+import { useBMapGeocodeDetail } from "baidu-map-gl-vue";
+const map = ref();
+const { get, result, isLoading, isEmpty } = useBMapGeocodeDetail(map);
+const point = ref({ lng: 116.30793520652882, lat: 40.05861561613348 });
+function handleInitd() {
+  get(point.value);
+}
+function handleClick(e: { latlng: { lng: number; lat: number } }) {
+  point.value = e.latlng;
+  get(e.latlng);
+}
 </script>
 
 <style>
-  .state {
-    margin-top: 15px;
-  }
-  .state span {
-    margin-right: 25px;
-  }
+.state {
+  margin-top: 15px;
+}
+.state span {
+  margin-right: 25px;
+}
 </style>

@@ -10,11 +10,11 @@
 </template>
 
 <style scoped>
-  .map-wrapper {
-    display: flex;
-    justify-content: space-between;
-  }
-  .map-wrapper .map-item {
-    flex-basis: calc(50% - 7.5px);
-  }
+.map-wrapper {
+  display: flex;
+  justify-content: space-between;
+}
+.map-wrapper .map-item {
+  flex-basis: calc(50% - 7.5px);
+}
 </style>

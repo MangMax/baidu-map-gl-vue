@@ -1,5 +1,12 @@
 <template>
-  <BMap v-bind="$attrs" :minZoom="3" :zoom="zoom" enableScrollWheelZoom ref="map" @ready="handleInitd">
+  <BMap
+    v-bind="$attrs"
+    :minZoom="3"
+    :zoom="zoom"
+    enableScrollWheelZoom
+    ref="map"
+    @ready="handleInitd"
+  >
     <BControl
       style="
         border-radius: 4px;
@@ -18,33 +25,40 @@
         <option value="成都">成都</option>
       </select>
     </BControl>
-    <BPolygon :key="area" isBoundary :path="pathPoints" stroke-color="#000" fillColor="blue" :stroke-weight="1" />
+    <BPolygon
+      :key="area"
+      isBoundary
+      :path="pathPoints"
+      stroke-color="#000"
+      fillColor="blue"
+      :stroke-weight="1"
+    />
   </BMap>
 </template>
 
 <script setup lang="ts">
-  import { ref, watch } from 'vue'
-  import { useBMapAreaBoundary } from 'baidu-map-gl-vue'
-  const zoom = ref<number>(11)
-  const area = ref<string>('顺义区')
-  const map = ref()
-  const areaZoomMap: Record<string, number> = {
-    北京市: 9,
-    顺义区: 11,
-    四川: 7,
-    成都: 9
-  }
+import { ref, watch } from "vue";
+import { useBMapAreaBoundary } from "baidu-map-gl-vue";
+const zoom = ref<number>(11);
+const area = ref<string>("顺义区");
+const map = ref();
+const areaZoomMap: Record<string, number> = {
+  北京市: 9,
+  顺义区: 11,
+  四川: 7,
+  成都: 9,
+};
 
-  const { boundaries: pathPoints, get } = useBMapAreaBoundary(map)
+const { boundaries: pathPoints, get } = useBMapAreaBoundary(map);
 
-  function handleInitd() {
-    get(area.value)
-  }
-  watch(
-    () => area.value,
-    (val) => {
-      zoom.value = areaZoomMap[val]
-      get(val)
-    }
-  )
+function handleInitd() {
+  get(area.value);
+}
+watch(
+  () => area.value,
+  (val) => {
+    zoom.value = areaZoomMap[val];
+    get(val);
+  },
+);
 </script>

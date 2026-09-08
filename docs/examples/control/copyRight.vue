@@ -14,18 +14,18 @@
         <h3>动态内容2: {{ count }}</h3>
       </BCopyright>
     </BMap>
-    <button class="myButton no-m-b" @click="toggle">{{ show ? '隐藏' : '显示' }}右上角版权</button>
+    <button class="myButton no-m-b" @click="toggle">{{ show ? "隐藏" : "显示" }}右上角版权</button>
   </div>
 </template>
 
 <script setup lang="ts">
-  import { ref } from 'vue'
-  const count = ref<number>(1)
-  const show = ref<boolean>(true)
-  function toggle() {
-    show.value = !show.value
-  }
-  setInterval(() => {
-    count.value++
-  }, 1000)
+import { ref } from "vue";
+const count = ref<number>(1);
+const show = ref<boolean>(true);
+function toggle() {
+  show.value = !show.value;
+}
+setInterval(() => {
+  count.value++;
+}, 1000);
 </script>

@@ -12,5 +12,5 @@
 </template>
 
 <script setup lang="ts">
-  const point1 = { lat: 39.915185, lng: 116.400901 }
+const point1 = { lat: 39.915185, lng: 116.400901 };
 </script>
