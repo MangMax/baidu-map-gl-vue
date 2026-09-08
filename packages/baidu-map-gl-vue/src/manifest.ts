@@ -105,6 +105,12 @@ export const componentManifest = [
     source: "./components/data/BPointLayer.vue",
   },
   {
+    name: "BMarkerList",
+    exportName: "BMarkerList",
+    category: "data",
+    source: "./components/data/BMarkerList.vue",
+  },
+  {
     name: "BMarkerCluster",
     exportName: "BMarkerCluster",
     category: "data",

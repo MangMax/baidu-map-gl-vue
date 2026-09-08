@@ -13,12 +13,23 @@ const props = withDefaults(defineProps<BMarkerProps>(), {
   visible: true,
   title: "",
   enableClicking: true,
+  enableDragging: false,
 });
 
 const emit = defineEmits<{
   click: [e: unknown];
-  dragend: [e: unknown];
   dblclick: [e: unknown];
+  rightclick: [e: unknown];
+  mousedown: [e: unknown];
+  mouseup: [e: unknown];
+  mouseover: [e: unknown];
+  mouseout: [e: unknown];
+  dragstart: [e: unknown];
+  dragging: [e: unknown];
+  dragend: [e: unknown];
+  "drag-end": [e: unknown];
+  remove: [e: unknown];
+  "update:position": [position: { lng: number; lat: number }];
 }>();
 
 type SdkMarker = {
@@ -26,9 +37,12 @@ type SdkMarker = {
   setOffset(o: unknown): void;
   setZIndex(z: number): void;
   setRotation(r: number): void;
+  setTitle(t: string): void;
+  setIcon?(icon: unknown): void;
   enableDragging(): void;
   disableDragging(): void;
-  setTitle(t: string): void;
+  show?(): void;
+  hide?(): void;
 };
 
 // 内置图标雪碧图(loc_red 等)
@@ -81,6 +95,7 @@ function buildIcon(api: unknown, icon: MarkerIcon | undefined): unknown | undefi
   return new BMapGL.Icon(c.imageUrl, new BMapGL.Size(c.size.width, c.size.height), opts);
 }
 
+// P0-13: 创建时应用全部构造属性（offset/title/icon/enableClicking/rotation/draggable）
 const make = (api: unknown, position: { lng: number; lat: number }, p: BMarkerProps) => {
   const BMapGL = api as {
     Point: new (lng: number, lat: number) => unknown;
@@ -91,19 +106,72 @@ const make = (api: unknown, position: { lng: number; lat: number }, p: BMarkerPr
     offset: new BMapGL.Size((p.offset ?? { x: 0, y: 0 }).x, (p.offset ?? { x: 0, y: 0 }).y),
     title: p.title,
     enableClicking: p.enableClicking,
+    enableDragging: p.enableDragging,
   };
+  if (p.rotation != null) opts.rotation = p.rotation;
   const icon = buildIcon(api, p.icon);
   if (icon) opts.icon = icon;
-  return new BMapGL.Marker(new BMapGL.Point(position.lng, position.lat), opts) as unknown as SdkMarker;
+  const marker = new BMapGL.Marker(
+    new BMapGL.Point(position.lng, position.lat),
+    opts,
+  ) as unknown as SdkMarker;
+  // 部分 SDK 构造期忽略 rotation/dragging，创建后显式同步一次，保证与更新行为一致
+  if (p.rotation != null) {
+    try {
+      marker.setRotation(p.rotation);
+    } catch {
+      /* 忽略不支持的 setter */
+    }
+  }
+  if (p.zIndex != null) {
+    try {
+      marker.setZIndex(p.zIndex);
+    } catch {
+      /* 忽略不支持的 setter */
+    }
+  }
+  if (p.enableDragging) {
+    try {
+      marker.enableDragging();
+    } catch {
+      /* 忽略 */
+    }
+  }
+  return marker;
 };
 
-const { resource } = useOverlayResource<BMarkerProps, SdkMarker>(
+function setVisible(
+  ctx: MapReadyContext,
+  res: SdkMarker,
+  visible: boolean | undefined,
+) {
+  const map = ctx.map as {
+    addOverlay: (o: unknown) => void;
+    removeOverlay: (o: unknown) => void;
+  };
+  if (visible === false) {
+    // 优先 show/hide（不破坏 overlay 归属），否则 add/remove
+    const withVis = res as SdkMarker & { show?: () => void; hide?: () => void };
+    if (withVis.hide && withVis.show) withVis.hide();
+    else map.removeOverlay(res);
+  } else {
+    const withVis = res as SdkMarker & { show?: () => void; hide?: () => void };
+    if (withVis.hide && withVis.show) withVis.show();
+    else map.addOverlay(res);
+  }
+}
+
+const { resource, rebuild } = useOverlayResource<BMarkerProps, SdkMarker>(
   props,
   {
     create: (ready, p) => make(ready.api, p.position, p),
     addToMap: (res, ctx, p, scope: ResourceScope) => {
-      (ctx.map as { addOverlay: (o: unknown) => void }).addOverlay(res);
-      (ctx as any).overlays?.register?.("marker", res);
+      // P0-13: visible 初始行为——visible=false 时不 add，避免先 add 再等 watcher
+      if (p.visible !== false) {
+        (ctx.map as { addOverlay: (o: unknown) => void }).addOverlay(res);
+      }
+      // P0-13 §6.5: 删除错误的 `(ctx as any).overlays` 注册；
+      // Registry 统一由 useOverlayResource 上下文管理，此处只做地图添加。
       // SDK 事件绑定(ready 后,res 可用),注册到 scope,卸载时释放
       bindMarkerEvents(ctx, res, scope);
     },
@@ -147,11 +215,39 @@ const { resource } = useOverlayResource<BMarkerProps, SdkMarker>(
       );
       addDisposer(
         watch(
+          () => p.rotation,
+          (r) => {
+            const res = getResource();
+            if (r != null && res) res.setRotation(r);
+          },
+        ),
+      );
+      addDisposer(
+        watch(
           () => p.title,
           (t) => {
             const r = getResource();
             if (t != null && r) r.setTitle(t);
           },
+        ),
+      );
+      // icon: SDK 支持 setter 则 setter，否则重建（避免行为不一致）
+      addDisposer(
+        watch(
+          () => p.icon,
+          (icon) => {
+            const res = getResource();
+            const ctx = getCtx();
+            if (!res || !ctx) return;
+            if (typeof (res as SdkMarker).setIcon === "function") {
+              const built = buildIcon(ctx.api, icon);
+              if (built) (res as SdkMarker).setIcon!(built);
+              else void rebuild();
+            } else {
+              void rebuild();
+            }
+          },
+          { deep: true },
         ),
       );
       // visible 幂等切换(§11.2)
@@ -162,15 +258,11 @@ const { resource } = useOverlayResource<BMarkerProps, SdkMarker>(
             const res = getResource();
             const ctx = getCtx();
             if (!res || !ctx) return;
-            const map = ctx.map as {
-              addOverlay: (o: unknown) => void;
-              removeOverlay: (o: unknown) => void;
-            };
-            if (visible) map.addOverlay(res);
-            else map.removeOverlay(res);
+            setVisible(ctx, res, visible);
           },
         ),
       );
+      // draggable: enable/disable 切换
       addDisposer(
         watch(
           () => p.enableDragging,
@@ -180,11 +272,23 @@ const { resource } = useOverlayResource<BMarkerProps, SdkMarker>(
           },
         ),
       );
+      // enableClicking 构造期：变化重建
+      addDisposer(
+        watch(
+          () => p.enableClicking,
+          (v, old) => {
+            if (v === old) return;
+            void rebuild();
+          },
+        ),
+      );
     },
     remove: (res, ctx) => removeOverlay(res, ctx),
   },
   "marker",
 );
+
+type DragEndEvent = { position?: { lng: number; lat: number }; point?: { lng: number; lat: number } };
 
 // SDK 事件绑定:ready 后(res 可用)调用,全部注册到 scope
 function bindMarkerEvents(ctx: MapReadyContext, res: SdkMarker, scope: ResourceScope) {
@@ -193,8 +297,25 @@ function bindMarkerEvents(ctx: MapReadyContext, res: SdkMarker, scope: ResourceS
     scope.add(() => (res as any).removeEventListener?.(name, h));
   };
   on("click", (e) => emit("click", e));
-  on("dragend", (e) => emit("dragend", e));
   on("dblclick", (e) => emit("dblclick", e));
+  on("rightclick", (e) => emit("rightclick", e));
+  on("mousedown", (e) => emit("mousedown", e));
+  on("mouseup", (e) => emit("mouseup", e));
+  on("mouseover", (e) => emit("mouseover", e));
+  on("mouseout", (e) => emit("mouseout", e));
+  on("dragstart", (e) => emit("dragstart", e));
+  on("dragging", (e) => emit("dragging", e));
+  on("dragend", (e) => {
+    emit("dragend", e);
+    emit("drag-end", e);
+    // 拖拽结束回写位置
+    const evt = e as DragEndEvent;
+    const position = evt.position ?? evt.point;
+    if (position && typeof position.lng === "number" && typeof position.lat === "number") {
+      emit("update:position", { lng: position.lng, lat: position.lat });
+    }
+  });
+  on("remove", (e) => emit("remove", e));
 }
 
 // provide 必须在 setup 中调用

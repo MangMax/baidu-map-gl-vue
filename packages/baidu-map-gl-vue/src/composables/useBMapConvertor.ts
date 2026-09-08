@@ -34,7 +34,7 @@ export function useBMapConvertor(map?: unknown) {
 
   const task = useBMapAsyncTask<GeoPoint[], [GeoPoint[], CoordinatesFromType, CoordinatesToType]>({
     immediate: false,
-    runner: async (points, from, to) => {
+    runner: async (_taskContext, points, from, to) => {
       if (!points?.length)
         throw new BMapError("BMAP_RESOURCE_CREATE_FAILED", "missing required params: points");
       if (!from)

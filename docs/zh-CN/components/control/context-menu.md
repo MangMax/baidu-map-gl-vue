@@ -41,3 +41,12 @@ context-menu/index
 | unload | 组件卸载时会调用此方法                                                           | -                           |
 | open   | 右键菜单打开时触发，事件参数 point 和 pixel 分别表示菜单开启时的地理和像素坐标点 | ((e: Event) => void)        |
 | close  | 右键菜单关闭时触发，事件参数 point 和 pixel 分别表示菜单开启时的地理和像素坐标点 | ((e: Event) => void)        |
+
+## v3 target 切换
+
+`BContextMenu` 会把菜单挂载到最近的父覆盖物；没有父覆盖物时挂载到地图。target 发生变化时，组件会先从旧 target 移除，再挂载到新 target，不会同时残留在两个对象上。
+
+- `visible=false` 时菜单从当前 target 移除，恢复为 `true` 后重新挂载。
+- `menuItems` 变化时会重建菜单并重新挂载。
+- `open` / `close` 只表示 SDK 菜单真正打开或关闭，不表示菜单的挂载和移除。
+- 组件卸载时会从当前 target 移除菜单。

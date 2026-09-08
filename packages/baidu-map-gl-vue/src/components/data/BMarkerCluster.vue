@@ -19,6 +19,8 @@ export interface BMarkerClusterProps {
   getPosition: (item: any) => PointLike;
   minClusterSize?: number;
   gridSize?: number;
+  /** 聚合 zoom；默认读取地图初始 zoom，未提供时为 12 */
+  zoom?: number;
   dataVersion?: PropertyKey;
   visible?: boolean;
 }
@@ -72,11 +74,25 @@ function buildHost(c: MapReadyContext) {
   };
 }
 
+function resolveZoom(c: MapReadyContext): number {
+  if (props.zoom != null) return props.zoom;
+  const map = c.map as { getZoom?: () => number; zoom?: number } | null;
+  try {
+    if (typeof map?.getZoom === "function") return map.getZoom();
+    if (typeof map?.zoom === "number") return map.zoom;
+  } catch {
+    /* 忽略 */
+  }
+  return 8;
+}
+
 function applyData() {
   if (!manager || !readyCtx) return;
+  // P0-17: gridSize/zoom 参与像素网格聚合；低于阈值的桶展开为单点，不丢点
   const clustered = gridCluster(props.data, props.getPosition, {
     minClusterSize: props.minClusterSize ?? 3,
-    gridSize: props.gridSize,
+    gridSize: props.gridSize ?? 128,
+    zoom: resolveZoom(readyCtx),
   });
   // 以 cluster.id 为 key
   manager.sync(clustered, (c: any) => c.id, props.dataVersion, false);

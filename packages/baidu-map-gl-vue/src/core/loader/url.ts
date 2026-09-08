@@ -28,9 +28,16 @@ export function createBaiduSdkUrl(
   return url;
 }
 
+/** 浏览器相对 URL 解析：基于 document.baseURI，SSR 回退 localhost */
+export function resolveBrowserUrl(input: string): URL {
+  const base =
+    typeof document !== "undefined" && document.baseURI ? document.baseURI : "http://localhost/";
+  return new URL(input, base);
+}
+
 /** 离线/私有 apiUrl 兼容:保留 callBack 追加(方案 §8.4 保留简单 apiUrl 兼容层) */
 export function appendCallback(url: string, callbackName: string): string {
-  const u = new URL(url);
+  const u = resolveBrowserUrl(url);
   u.searchParams.set("callback", callbackName);
   return u.toString().replace(/&$/, "");
 }

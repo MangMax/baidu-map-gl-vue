@@ -164,6 +164,37 @@ map/theme2
 | loadingBgColor         | 加载背景图颜色                                                                                                                                                                 | `string`                              | `#f1f1f1`         | <Badge type="tip" text="^2.1.0" /> |
 | loadingTextColor       | 加载文字图颜色                                                                                                                                                                 | `string`                              | `#999`            | <Badge type="tip" text="^2.1.0" /> |
 
+## v3 行为说明
+
+### 地图初始化与更新
+
+- `center` 和 `zoom` 在地图首次创建时一起应用，初始化使用 SDK 的 `centerAndZoom`。
+- 地图创建完成后，单独更新 `center` 只调用 `setCenter`，不会重置当前 `zoom`。
+- 单独更新 `zoom` 只调用 `setZoom`。
+- `heading` 和 `tilt` 会在初始化时应用，也会在对应 prop 变化时同步到 SDK；具体是否生效取决于 SDK 能力。
+
+### ready 与插件事件
+
+`ready` 表示 SDK client 和地图实例已经创建完成，可以创建普通覆盖物。`plugins` 的加载不会阻塞 `ready`。
+
+```vue
+<BMap
+  :provider="provider"
+  :plugins="['TrackAnimation']"
+  @ready="onReady"
+  @plugin-ready="onPluginReady"
+  @plugin-error="onPluginError"
+>
+</BMap>
+```
+
+| 事件 | 说明 | 参数 |
+| --- | --- | --- |
+| `ready` | 地图实例创建并完成初始配置后触发 | `{ map, api, container }` |
+| `plugin-ready` | 单个插件加载完成后触发 | `name: string` |
+| `plugin-error` | 单个插件加载失败；不会改变已经 ready 的地图状态 | `{ name, error }` |
+| `initd` | `ready` 的兼容事件，建议迁移到 `ready` | `{ map, api, container }` |
+
 ## 地图类型
 
 | 值                 | 描述         |
@@ -197,7 +228,10 @@ map/theme2
 | getMapInstance    | 父组件获取 map 实例方法          | `() => void`                       |
 | getBaseMapOptions | 父组件/外部获取 map 组件 options | `() => void`                       |
 | resetCenter       | 重置地图中心                     | `() => void`                       |
+| resetView         | 恢复首次初始化时的 center、zoom、heading 和 tilt | `() => void` |
 | setDragging       | 设置地图是否可拖动               | `(nableDragging: boolean) => void` |
+
+`resetCenter` 已 deprecated，不再返回 map 实例；新代码请使用 `resetView`。
 
 ## 组件事件
 

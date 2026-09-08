@@ -83,3 +83,24 @@ simple_red , simple_blue , loc_red , loc_blue , start , end , location
 | dragging        | 覆盖物拖拽中事件的回调函数                                                         | `((e: Event) => void)`      |
 | dragend         | 拖拽覆盖物结束事件的回调函数                                                       | `((e: Event) => void)`      |
 | rightclick      | 鼠标右键单击事件的回调函数                                                         | `((e: Event) => void)`      |
+
+## v3 生命周期与更新行为
+
+- `visible=false` 时，Marker 创建后不会先添加到地图再等待 watcher，而是从创建开始保持隐藏。
+- `position`、`offset`、`title`、`rotation`、`zIndex`、`enableDragging` 和 `visible` 支持运行时更新。
+- `icon` 在 SDK 支持 `setIcon` 时原地更新；不支持时会移除旧 Marker 并重建。
+- `enableClicking` 是构造期属性，变化时会重建 Marker。
+- 组件卸载时会移除 Marker 和事件监听。
+
+拖拽结束时，组件除了触发 `dragend`，还会触发 `drag-end`，并在 SDK 事件包含位置时触发 `update:position`：
+
+```vue
+<BMarker
+  :position="position"
+  :enable-dragging="true"
+  @drag-end="onDragEnd"
+  @update:position="position = $event"
+/>
+```
+
+v3 支持的主要事件包括：`click`、`dblclick`、`rightclick`、`mousedown`、`mouseup`、`mouseover`、`mouseout`、`dragstart`、`dragging`、`dragend`、`drag-end` 和 `remove`。

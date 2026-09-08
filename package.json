@@ -12,7 +12,7 @@
     "generate:manifest": "node --experimental-strip-types scripts/generate-manifest-artifacts.mts",
     "generate:manifest:check": "node --experimental-strip-types scripts/generate-manifest-artifacts.mts --check",
     "build:v3": "node --experimental-strip-types scripts/build-v3.mts",
-    "typecheck:v3": "node --experimental-strip-types packages/baidu-map-gl-vue/node_modules/.bin/vue-tsc -p packages/baidu-map-gl-vue/tsconfig.build.json",
+    "typecheck:v3": "pnpm exec vue-tsc -p packages/baidu-map-gl-vue/tsconfig.build.json",
     "pack:v3": "pnpm --filter baidu-map-gl-vue pack --pack-destination .artifacts",
     "playground:dev": "vp run -C apps/playground dev",
     "playground:build": "pnpm --filter playground build",

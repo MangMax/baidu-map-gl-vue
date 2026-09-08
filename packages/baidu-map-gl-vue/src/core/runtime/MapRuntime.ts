@@ -19,6 +19,15 @@ interface Waiter {
   resolve: (ctx: MapReadyContext) => void;
   reject: (err: unknown) => void;
   signal?: AbortSignal;
+  onAbort?: () => void;
+}
+
+function createAbortError(reason?: unknown): BMapError {
+  return new BMapError(
+    "BMAP_PROVIDER_ABORTED",
+    typeof reason === "string" ? reason : "waitForReady aborted",
+    reason !== undefined ? { cause: reason } : undefined,
+  );
 }
 
 export interface MapRuntimeOptions {
@@ -119,33 +128,42 @@ export class MapRuntime {
     if (this.status.value === "disposed" || this.status.value === "disposing") {
       return Promise.reject(new BMapError("BMAP_RUNTIME_DISPOSED", "MapRuntime disposed"));
     }
+    // 已 abort 的 signal 立即拒绝，不先加入 Set
+    if (signal?.aborted) {
+      return Promise.reject(createAbortError((signal as AbortSignal).reason));
+    }
     return new Promise((resolve, reject) => {
       const waiter: Waiter = { resolve, reject, signal };
+      waiter.onAbort = () => {
+        this.settleWaiter(waiter, { ok: false, error: createAbortError(signal?.reason) });
+      };
       this.waiters.add(waiter);
-      if (signal) {
-        signal.addEventListener(
-          "abort",
-          () => {
-            this.waiters.delete(waiter);
-            reject(new BMapError("BMAP_PROVIDER_ABORTED", "waitForReady aborted"));
-          },
-          { once: true },
-        );
-      }
+      signal?.addEventListener("abort", waiter.onAbort, { once: true });
     });
+  }
+
+  private settleWaiter(
+    waiter: Waiter,
+    outcome: { ok: true; value: MapReadyContext } | { ok: false; error: unknown },
+  ) {
+    if (!this.waiters.has(waiter)) return;
+    this.waiters.delete(waiter);
+    if (waiter.signal && waiter.onAbort) {
+      waiter.signal.removeEventListener("abort", waiter.onAbort);
+    }
+    if (outcome.ok) waiter.resolve(outcome.value);
+    else waiter.reject(outcome.error);
   }
 
   private flushWaiters(ctx: MapReadyContext) {
     for (const w of [...this.waiters]) {
-      this.waiters.delete(w);
-      w.resolve(ctx);
+      this.settleWaiter(w, { ok: true, value: ctx });
     }
   }
 
   private flushWaitersError(err: unknown) {
     for (const w of [...this.waiters]) {
-      this.waiters.delete(w);
-      w.reject(err);
+      this.settleWaiter(w, { ok: false, error: err });
     }
   }
 

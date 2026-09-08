@@ -56,29 +56,40 @@ export function useOverlayResource<Props, Resource>(
   overlayType = "overlay",
 ): UseOverlayResourceResult<Resource> {
   const ctx = useRequiredMapContext();
-  const scope = new ResourceScope();
+  const componentScope = new ResourceScope();
+  let instanceScope: ResourceScope | null = null;
   const resource = shallowRef<Resource | null>(null);
   let readyCtx: MapReadyContext | null = null;
   let disposed = false;
   let createToken = 0;
 
+  const ensureInstanceScope = () => {
+    if (!instanceScope || instanceScope.isDisposed) {
+      instanceScope = componentScope.fork("overlay-instance");
+    }
+    return instanceScope;
+  };
+
   // 在 setup 同步注册响应式 watcher(避免 async 续体丢失响应式)
+  // watcher 本体进入 componentScope（跨 rebuild 存活），通过 getResource 读取当前实例
   lifecycle.createWatchers?.(
     () => readyCtx,
     () => resource.value,
     props,
-    (d) => scope.add(d),
+    (d) => componentScope.add(d),
   );
 
   onMounted(async () => {
     const token = ++createToken;
     try {
-      const ready = await ctx.whenReady(scope.signal);
-      if (scope.isDisposed || disposed || token !== createToken) return;
+      const ready = await ctx.whenReady(componentScope.signal);
+      if (componentScope.isDisposed || disposed || token !== createToken) return;
       readyCtx = ready;
 
+      // P0-12: 每个实例独立 child scope；create/addToMap 的监听与资源进入 instanceScope
+      const scope = ensureInstanceScope();
       const created = await lifecycle.create(ready, props, scope);
-      if (scope.isDisposed || disposed || token !== createToken) {
+      if (scope.isDisposed || componentScope.isDisposed || disposed || token !== createToken) {
         lifecycle.remove(created, ready);
         return;
       }
@@ -86,7 +97,7 @@ export function useOverlayResource<Props, Resource>(
       resource.value = markRaw(raw as object) as Resource;
       lifecycle.addToMap(created, ready, props, scope);
     } catch (error) {
-      if (!scope.signal.aborted && !disposed) {
+      if (!componentScope.signal.aborted && !disposed) {
         ctx.events.emit("resource:error", {
           error:
             error instanceof BMapError
@@ -109,34 +120,45 @@ export function useOverlayResource<Props, Resource>(
       }
     }
     resource.value = null;
-    scope.dispose();
+    instanceScope?.dispose();
+    instanceScope = null;
+    componentScope.dispose();
   });
 
   /** 用当前 props 重建覆盖物(remove 旧 + create 新 + add) */
   const rebuild = async () => {
     if (!readyCtx || disposed) return;
+    const ready = readyCtx;
     const old = resource.value;
     if (old) {
       try {
-        lifecycle.remove(old, readyCtx);
+        lifecycle.remove(old, ready);
       } catch {
         /* 忽略移除错误 */
       }
       resource.value = null;
     }
+    // P0-12: 废弃旧 instanceScope，重 fork 新实例 scope，避免复用同一 scope 堆积 listener
+    instanceScope?.dispose();
+    instanceScope = componentScope.fork("overlay-instance");
+    const scope = instanceScope;
     const token = ++createToken;
-    const created = await lifecycle.create(readyCtx, props, scope);
-    if (scope.isDisposed || disposed || token !== createToken) {
-      lifecycle.remove(created, readyCtx);
+    const created = await lifecycle.create(ready, props, scope);
+    if (scope.isDisposed || componentScope.isDisposed || disposed || token !== createToken) {
+      try {
+        lifecycle.remove(created, ready);
+      } catch {
+        /* 忽略清理错误 */
+      }
       return;
     }
     resource.value = markRaw(created as object) as Resource;
-    lifecycle.addToMap(created, readyCtx, props, scope);
+    lifecycle.addToMap(created, ready, props, scope);
   };
 
   return {
     resource,
-    ready: ctx.whenReady(scope.signal),
+    ready: ctx.whenReady(componentScope.signal),
     rebuild,
   };
 }

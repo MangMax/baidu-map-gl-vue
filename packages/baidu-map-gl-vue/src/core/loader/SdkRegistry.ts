@@ -24,6 +24,40 @@ export interface SdkLoader {
 
 const isClient = typeof window !== "undefined";
 
+const PROCESS_SDK_REGISTRY_SYMBOL = Symbol.for("baidu-map-gl-vue.sdk-registry");
+
+type GlobalWithRegistry = typeof globalThis & {
+  [PROCESS_SDK_REGISTRY_SYMBOL]?: Map<string, SdkRegistry>;
+};
+
+/**
+ * 进程级（同 realm）共享 registry，按 namespace 隔离不同 loader 语义
+ * （如 baidu-cdn vs custom-script），同 namespace 内共享 entries。
+ * SSR 不执行真实加载，由 load() 内守卫；可变状态不跨请求共享含用户 AK 的服务端状态。
+ */
+export function getProcessSdkRegistry(
+  namespace: string,
+  loader: SdkLoader,
+  fingerprintFn: (o: BMapLoadOptions) => string,
+): SdkRegistry {
+  const globalObject = globalThis as GlobalWithRegistry;
+  let byNamespace = globalObject[PROCESS_SDK_REGISTRY_SYMBOL];
+  if (!byNamespace) {
+    byNamespace = new Map<string, SdkRegistry>();
+    globalObject[PROCESS_SDK_REGISTRY_SYMBOL] = byNamespace;
+  }
+  const existing = byNamespace.get(namespace);
+  if (existing) return existing;
+  const created = new SdkRegistry(loader, fingerprintFn);
+  byNamespace.set(namespace, created);
+  return created;
+}
+
+/** 仅测试使用：重置进程级 registry */
+export function resetProcessSdkRegistryForTests(): void {
+  delete (globalThis as GlobalWithRegistry)[PROCESS_SDK_REGISTRY_SYMBOL];
+}
+
 export class SdkRegistry {
   private entries = new Map<string, SdkRegistryEntry>();
   private loader: SdkLoader;
