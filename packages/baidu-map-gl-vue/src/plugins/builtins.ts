@@ -55,7 +55,8 @@ function loadScriptWithExport(
       return;
     }
     const script = document.createElement("script");
-    script.src = url;
+    // MapVGL bundles inject Baidu analytics scripts, which can be blocked by browser extensions.
+    (window as any)._disable_hmt = true;
     script.async = true;
     script.onload = () => {
       const exported = exportGetter();
@@ -63,7 +64,25 @@ function loadScriptWithExport(
       else reject(new Error(`plugin did not expose export: ${url}`));
     };
     script.onerror = () => reject(new Error(`failed to load plugin: ${url}`));
-    document.body.appendChild(script);
+    if (url.includes("mapvgl")) {
+      fetch(url)
+        .then((response) => response.text())
+        .then((source) => {
+          // MapVGL injects analytics on load; extensions commonly block that request.
+          script.textContent = source.replace(
+            /window\._disable_hmt\|\|\(window\._hmt[\s\S]*?\}\(\)\);?/g,
+            "",
+          );
+          document.body.appendChild(script);
+          const exported = exportGetter();
+          if (exported) resolve(exported);
+          else reject(new Error(`plugin did not expose export: ${url}`));
+        })
+        .catch(() => reject(new Error(`failed to load plugin: ${url}`)));
+    } else {
+      script.src = url;
+      document.body.appendChild(script);
+    }
     if (signal) {
       signal.addEventListener(
         "abort",
@@ -84,7 +103,7 @@ export const BUILTIN_PLUGIN_URLS = {
   drawingManager:
     "https://mapopen.bj.bcebos.com/github/BMapGLLib/DrawingManager/src/DrawingManager.min.js",
   geoUtils: "https://mapopen.bj.bcebos.com/github/BMapGLLib/GeoUtils/src/GeoUtils.min.js",
-  mapvgl: "https://unpkg.com/mapvgl@1.0.0/dist/mapvgl.min.js",
+  mapvgl: "https://unpkg.com/mapvgl@1.0.0-beta.188/dist/mapvgl.min.js",
 } as const;
 
 /** TrackAnimation 插件:暴露 window.BMapGLLib.TrackAnimation */

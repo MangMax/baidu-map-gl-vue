@@ -227,8 +227,8 @@ export const sidebarConfigZh: DefaultTheme.Sidebar = {
           link: "offline-map",
         },
         {
-          text: "mapv 可视化",
-          link: "mapv",
+          text: "MapVGL 可视化",
+          link: "mapvgl",
         },
         {
           text: "bmap-draw 鼠标测量与绘制",

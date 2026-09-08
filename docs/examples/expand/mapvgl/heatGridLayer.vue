@@ -12,7 +12,7 @@
     }"
     mapStyleId="980161f3645989feac25a0da15da4178"
     enableScrollWheelZoom
-    :plugins="['Mapvgl', 'Mapv']"
+    :plugins="['Mapvgl']"
     @pluginReady="handlePluginReady"
   />
 </template>
@@ -50,7 +50,7 @@ function handlePluginReady(map) {
         let item = rs[i];
         data.push({
           geometry: {
-            type: "PointLike",
+            type: "Point",
             coordinates: [item[0], item[1]],
           },
           properties: {

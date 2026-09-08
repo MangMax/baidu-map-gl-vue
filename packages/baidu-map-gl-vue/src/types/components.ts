@@ -33,6 +33,10 @@ export interface BMapProps {
   mapType?: string;
   heading?: number;
   tilt?: number;
+  mapStyleId?: string;
+  mapStyleJson?: Record<string, unknown>;
+  displayOptions?: Record<string, unknown>;
+  restrictCenter?: boolean;
   minZoom?: number;
   maxZoom?: number;
   noAnimation?: boolean;
