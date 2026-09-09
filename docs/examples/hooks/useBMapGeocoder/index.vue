@@ -42,9 +42,9 @@ const addressList = ref([
 const currentAddress = ref(addressList.value[0]);
 
 watch(
-  () => currentAddress,
+  currentAddress,
   (n) => {
-    get(n.value.address, n.value.city);
+    get(n.address, n.city);
   },
   {
     deep: true,

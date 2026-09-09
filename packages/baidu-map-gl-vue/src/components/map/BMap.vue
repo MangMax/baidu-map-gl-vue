@@ -1,11 +1,35 @@
 <script setup lang="ts">
-import { ref, shallowRef, computed, watch, onMounted, onUnmounted, provide, inject } from "vue";
+import {
+  computed,
+  inject,
+  onActivated,
+  onDeactivated,
+  onMounted,
+  onUnmounted,
+  provide,
+  readonly,
+  ref,
+  shallowRef,
+  useId,
+  watch,
+} from "vue";
 import { mapContextKey, type MapContext, type MapReadyContext } from "../../core/context/types";
+import {
+  bmapClientContextKey,
+  createClientContext,
+  defaultClientDefinitionKey,
+  type BMapClientContext,
+} from "../../core/context/client";
+import { targetContextKey, type TargetContext } from "../../core/context/target";
 import { MapRuntime } from "../../core/runtime/MapRuntime";
 import { BMapError } from "../../core/errors/BMapError";
+import { logger } from "../../core/logger";
 import type { BMapLoadOptions } from "../../core/loader/url";
-import { existingGlobalProvider, type BMapProvider } from "../../core/loader/Provider";
-import { createBMapClient, type BMapProviderLike } from "../../client";
+import {
+  baiduCdnProvider,
+  existingGlobalProvider,
+} from "../../core/loader/Provider";
+import type { BMapClient, CreateBMapClientOptions } from "../../client/types";
 import { normalizeMapMouseEvent } from "../../driver/normalize";
 import { bmapConfigKey, type BMapPluginConfig } from "../../core/context/pluginConfig";
 import type { BMapProps } from "../../types/components";
@@ -28,6 +52,7 @@ const props = withDefaults(defineProps<BMapProps>(), {
   enableDragging: true,
   enableScrollWheelZoom: false,
   loadingBgColor: "#f1f1f1",
+  keepAliveBehavior: "suspend",
 });
 
 export interface MapReadyPayload extends MapReadyContext {
@@ -45,8 +70,10 @@ const emit = defineEmits<{
 }>();
 
 const containerRef = ref<HTMLDivElement | null>(null);
+// SSR-safe DOM id(服务端只输出固定容器 shell,客户端 mounted 后加载)
+const containerId = useId();
 
-// 不再复制 Runtime 状态，直接复用 runtime refs
+// 不再复制 Runtime 状态，直接复用 runtime refs(单一来源)
 const runtimeRef = shallowRef<MapRuntime | null>(null);
 
 const status = computed(() => runtimeRef.value?.status.value ?? "idle");
@@ -59,24 +86,64 @@ const height = computed(() =>
   typeof props.height === "number" ? `${props.height}px` : props.height,
 );
 
-// app 级默认 provider 配置
+// Client 查找顺序:显式 client prop > 显式 definition > 显式 provider/ak >
+// 最近 BMapProvider > app.use 默认 definition > 旧 bmapConfig > opt-in existingGlobal > 报错
+const parentClientContext = inject(bmapClientContextKey, undefined) as
+  | BMapClientContext
+  | undefined;
+const defaultDefinition = inject(defaultClientDefinitionKey, undefined) as
+  | CreateBMapClientOptions
+  | undefined;
 const appConfig = inject(bmapConfigKey, undefined) as BMapPluginConfig | undefined;
 
-// Provider 解析：显式 provider prop > app.use 默认 > 已存在全局（经 loader 边界）
-const provider: BMapProviderLike =
-  props.provider ??
-  (appConfig?.provider?.load
-    ? appConfig.provider
-    : (existingGlobalProvider() as unknown as BMapProvider));
+let clientContext: BMapClientContext;
+let ownClientContext = false;
+if (props.client) {
+  clientContext = createClientContext({ client: props.client as BMapClient });
+  ownClientContext = true;
+} else if (props.definition) {
+  clientContext = createClientContext({ definition: props.definition });
+  ownClientContext = true;
+} else if (props.provider || props.ak || props.apiUrl) {
+  const provider = (props.provider as BMapClientContext extends never ? never : CreateBMapClientOptions["provider"]) ?? appConfig?.provider ?? baiduCdnProvider();
+  const loadOptions: BMapLoadOptions = {
+    ak: props.ak ?? appConfig?.defaults?.ak,
+    apiUrl: props.apiUrl ?? appConfig?.defaults?.apiUrl,
+    version: appConfig?.defaults?.version ?? "1.0",
+  };
+  clientContext = createClientContext({ definition: { provider: provider as CreateBMapClientOptions["provider"], loadOptions } });
+  ownClientContext = true;
+} else if (parentClientContext) {
+  clientContext = parentClientContext;
+} else if (defaultDefinition) {
+  clientContext = createClientContext({ definition: defaultDefinition });
+  ownClientContext = true;
+} else if (appConfig?.provider) {
+  clientContext = createClientContext({
+    definition: { provider: appConfig.provider, loadOptions: appConfig.defaults },
+  });
+  ownClientContext = true;
+} else if (props.allowExistingGlobal) {
+  clientContext = createClientContext({
+    definition: { provider: existingGlobalProvider(), loadOptions: {} },
+  });
+  ownClientContext = true;
+} else if (typeof window !== "undefined" && (window as unknown as { BMapGL?: unknown }).BMapGL) {
+  // 向后兼容:默认不静默读取 window.BMapGL,仅在全局已存在时回退并 warn
+  logger.warn("BMap resolved window.BMapGL fallback; prefer <BMapProvider> or app.use(createBMapPlugin(...))");
+  clientContext = createClientContext({
+    definition: { provider: existingGlobalProvider(), loadOptions: {} },
+  });
+  ownClientContext = true;
+} else {
+  // 无定义:创建空 context,mount 时抛出明确缺失错误(经 error 事件)
+  clientContext = createClientContext({ definition: undefined });
+  ownClientContext = true;
+}
 
-const loadOptions: BMapLoadOptions = {
-  ak: props.ak ?? appConfig?.defaults?.ak,
-  apiUrl: props.apiUrl ?? appConfig?.defaults?.apiUrl,
-  version: appConfig?.defaults?.version ?? "1.0",
-};
-
-const clientFactory = (signal?: AbortSignal) =>
-  createBMapClient({ provider, loadOptions }, signal);
+if (ownClientContext) {
+  provide(bmapClientContextKey, clientContext);
+}
 
 // 初始视角快照，供 resetView 恢复
 const initialViewSnapshot: {
@@ -141,10 +208,11 @@ function applyStyleProps(ctx: MapReadyContext) {
   }
 }
 
-// runtime 立即创建(container 在模板 ref,挂载后才有;mount 时使用)
+// runtime 创建(SSR-safe:构造不访问 window/document;container 挂载后回填,mount 仅 onMounted)
 const currentRuntime = new MapRuntime({
-  clientFactory,
+  clientContext,
   container: null as unknown as HTMLElement,
+  initialView: initialViewSnapshot,
   mapOptions: {
     minZoom: props.minZoom,
     maxZoom: props.maxZoom,
@@ -159,10 +227,32 @@ for (const definition of stringToPluginDefinitions(props.plugins ?? [])) {
 runtimeRef.value = currentRuntime;
 const runtime = currentRuntime;
 
-// 容器 ref 挂载后回填,供 MapRuntime.mount 使用
+// 容器 ref 挂载后回填,供 MapRuntime.mount 使用(SSR 服务端不执行)
 onMounted(() => {
-  runtime.container = containerRef.value!;
+  if (!containerRef.value) return;
+  runtime.container = containerRef.value;
   boot().catch(() => {});
+});
+
+// KeepAlive:默认 suspend(不销毁 WebGL Map),激活后自动 checkResize
+onDeactivated(() => {
+  if (props.keepAliveBehavior === "dispose") {
+    runtime.dispose();
+  } else {
+    runtime.suspend("keep-alive");
+  }
+});
+
+onActivated(() => {
+  if (runtime.status.value === "disposed" && props.keepAliveBehavior === "dispose") {
+    if (containerRef.value) {
+      runtime.container = containerRef.value;
+      // 注意:disposed 后 mount 会抛,此处重建路径经全新 Runtime?保持简单:重新 boot 前需外部重挂
+    }
+    return;
+  }
+  runtime.resume("keep-alive");
+  runtime.checkResize();
 });
 
 /** 插件不阻塞 map ready；ready 后台加载插件并逐个 emit */
@@ -197,8 +287,7 @@ async function boot() {
   }
   try {
     const ctx = await runtime.mount();
-    // map-initializing: centerAndZoom、heading、tilt、options 正在应用
-    ctx.client.driver.map.initializeView(ctx.map, initialViewSnapshot);
+    // initialView 已由 Runtime.initializeView 应用,此处仅应用样式/类型/开关
     applyStyleProps(ctx);
     applyMapType(ctx);
     syncEnableProps(ctx);
@@ -335,16 +424,50 @@ const context: MapContext = {
   status: status as unknown as MapContext["status"],
   client: client as unknown as MapContext["client"],
   map: map as unknown as MapContext["map"],
+  handle: map as unknown as MapContext["handle"],
   error: error as unknown as MapContext["error"],
   resources: runtime.resources,
+  scope: runtime.resources,
   events: runtime.events,
   scheduler: runtime.scheduler,
   overlays: runtime.overlays,
+  layers: runtime.layers,
+  controls: runtime.controls,
   plugins: runtime.plugins,
   whenReady: (signal?: AbortSignal) => runtime.whenReady(signal),
+  retry: () => runtime.retry(),
   dispose: () => runtime.dispose(),
 };
 provide(mapContextKey, context);
+
+// 默认 Target:挂到 Map,随 handle 就绪自动更新;嵌套 Marker/Cluster 覆盖此 Target
+{
+  const kindRef = shallowRef<"map">("map");
+  const targetRef = computed(
+    () => (map.value as unknown as import("../../driver/types/handles").SdkHandle<string> | null) ?? null,
+  );
+  const mapTarget: TargetContext = {
+    kind: readonly(kindRef),
+    target: targetRef,
+    add: (resource) => {
+      const m = map.value;
+      const c = client.value;
+      if (!m || !c) return;
+      c.driver.overlays.add({ kind: "map", handle: m } as never, resource as never);
+    },
+    remove: (resource) => {
+      const m = map.value;
+      const c = client.value;
+      if (!m || !c) return;
+      try {
+        c.driver.overlays.remove({ kind: "map", handle: m } as never, resource as never);
+      } catch {
+        /* ignore */
+      }
+    },
+  };
+  provide(targetContextKey, mapTarget);
+}
 
 /** 真正重置视角到初始快照 */
 function resetView() {
@@ -358,6 +481,10 @@ defineExpose({
   getMapInstance: () => map.value,
   getContainer: () => containerRef.value,
   whenReady: (signal?: AbortSignal) => runtime.whenReady(signal),
+  retry: () => runtime.retry(),
+  suspend: (reason?: unknown) => runtime.suspend(reason),
+  resume: (reason?: unknown) => runtime.resume(reason),
+  checkResize: () => runtime.checkResize(),
   resetView,
   /** @deprecated Use resetView() instead. */
   resetCenter: () => {
@@ -376,6 +503,7 @@ defineOptions({ name: "BMap" });
 
 <template>
   <div
+    :id="containerId"
     class="bmap-container"
     :style="{ width, height, background: loadingBgColor }"
     style="position: relative; overflow: hidden"
@@ -392,7 +520,16 @@ defineOptions({ name: "BMap" });
           transform: 'translate(-50%,-50%)',
         }"
       >
-        {{ status === "loading" ? "map loading..." : status === "error" ? "map error" : "" }}
+        {{
+          status === "loading" ||
+          status === "waiting-client" ||
+          status === "creating" ||
+          status === "initializing"
+            ? "map loading..."
+            : status === "error"
+              ? "map error"
+              : ""
+        }}
       </div>
     </slot>
     <slot :status="status" :map="map" :error="error" :client="client" />

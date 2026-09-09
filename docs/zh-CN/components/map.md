@@ -57,7 +57,7 @@ map/theme2
 <!-- prettier-ignore -->
 ```html
 <template>
-  <BMap>
+  <BMap ak="百度地图ak">
     <template #loading>
       <div class="spinner">
         <div class="double-bounce1"></div>
@@ -128,13 +128,16 @@ map/theme2
 | ----------------- | ------------------------------------------------ | ----------------------------------------------------------------------- | ------ | ---------------------- | ---------------------------------- |
 | ak                | 百度地图 [ak](../guide/quick-start#申请-ak-密钥) | `string`                                                                | -      | -                      | -                                  |
 | apiUrl            | 自建地图 api 资源地址（一般用于离线地图）        | `string`                                                                | -      | -                      | <Badge type="tip" text="^2.3.0" /> |
+| provider          | 自定义 SDK 加载器（默认百度 CDN）                | `BMapProviderLike`                                                      | -      | -                      | -                                  |
+| client            | 已创建好的 `BMapClient`（最高优先级）            | `BMapClient`                                                            | -      | -                      | -                                  |
+| definition        | 完整 Client 定义（覆盖 provider/ak 解析）        | `CreateBMapClientOptions`                                               | -      | -                      | -                                  |
+| allowExistingGlobal | 显式允许复用已存在的全局 `BMapGL`              | `boolean`                                                               | -      | -                      | -                                  |
+| keepAliveBehavior | KeepAlive 下的行为：`suspend` 不销毁地图（激活后自动 `checkResize`），`dispose` 则销毁 | `'suspend' \| 'dispose'` | - | `'suspend'` | - |
 | minZoom           | 地图允许展示的最小级别                           | `number`                                                                | `0-21` | `0`                    | -                                  |
 | maxZoom           | 地图允许展示的最大级别                           | `number`                                                                | `0-21` | `21`                   | -                                  |
 | backgroundColor   | 地图背景颜色, rgba 数组                          | ` number[]`                                                             | -      | `[245, 245, 245, 100]` | <Badge type="tip" text="^2.1.0" /> |
-| showControls      | 是否显示室内图                                   | `boolean`                                                               | -      | `false`                | -                                  |
 | restrictCenter    | 是否限制中心                                     | `boolean`                                                               | -      | `true`                 | <Badge type="tip" text="^1.1.3" /> |
 | plugins           | 需要注册的插件                                   | `['TrackAnimation', 'Mapvgl']`                                         | -      | -                      | -                                  |
-| pluginsSourceLink | 自定义插件资源地址                               | `Record<'TrackAnimation' \| 'Mapvgl', string>`                         | -      | -                      | -                                  |
 
 ## 动态组件 Props
 
@@ -142,7 +145,7 @@ map/theme2
 | ---------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ------------------------------------- | ----------------- | ---------------------------------- |
 | width                  | 地图显示宽度                                                                                                                                                                   | `string / number`                     | `100%`            | <Badge type="tip" text="^1.0.1" /> |
 | height                 | 地图显示高度                                                                                                                                                                   | `string / number`                     | `550px`           | <Badge type="tip" text="^1.0.1" /> |
-| center                 | 地图默认中心点，可使用城市名，如：北京市，也可以使用对象如 `{lng: 121.424333, lat: 31.228604}` 表示经纬度。                                                                    | `string / {lng: number, lat: number}` | `北京市`          | -                                  |
+| center                 | 地图默认中心点，可使用城市名，如：北京市，也可以使用对象如 `{lng: 121.424333, lat: 31.228604}` 表示经纬度。                                                                    | `string / {lng: number, lat: number}` | `{ lng: 116.403901, lat: 39.915185 }` | - |
 | heading                | 地图旋转角度                                                                                                                                                                   | `number`                              | `0`               | -                                  |
 | tilt                   | 地图倾斜角度                                                                                                                                                                   | `number`                              | `0 `              | -                                  |
 | mapType                | 地图类型 [mapType](#地图类型)                                                                                                                                                  | `string`                              | `BMAP_NORMAL_MAP` | -                                  |
@@ -159,10 +162,8 @@ map/theme2
 | enableDoubleClickZoom  | 启用地图双击缩放，左键双击放大、右键双击缩小                                                                                                                                   | `boolean`                             | `false`           | -                                  |
 | enableKeyboard         | 启用键盘操作，键盘的上、下、左、右键可连续移动地图。同时按下其中两个键可使地图进行对角移动。PgUp、PgDn、Home 和 End 键会使地图平移其 1/2 的大小。 +、-键会使地图放大或缩小一级 | `boolean`                             | `true`            | -                                  |
 | enablePinchToZoom      | 启用双指缩放地图                                                                                                                                                               | `boolean`                             | `true`            | -                                  |
-| enableAutoResize       | 启用自动适应容器尺寸变化                                                                                                                                                       | `boolean`                             | `true`            | -                                  |
-| enableIconClick        | 是否启用底图可点击                                                                                                                                                             | `boolean`                             | `true`            | <Badge type="tip" text="^2.1.0" /> |
+| enableAutoResize       | 保留字段，当前版本未生效（容器尺寸变化请调用暴露的 `checkResize()`）                                                                                                          | `boolean`                             | `true`            | -                                  |
 | loadingBgColor         | 加载背景图颜色                                                                                                                                                                 | `string`                              | `#f1f1f1`         | <Badge type="tip" text="^2.1.0" /> |
-| loadingTextColor       | 加载文字图颜色                                                                                                                                                                 | `string`                              | `#999`            | <Badge type="tip" text="^2.1.0" /> |
 
 ## v3 行为说明
 
@@ -177,9 +178,24 @@ map/theme2
 
 `ready` 表示 SDK client 和地图实例已经创建完成，可以创建普通覆盖物。`plugins` 的加载不会阻塞 `ready`。
 
+### KeepAlive
+
+地图组件在 `deactivated` 时默认**不销毁** WebGL 地图（`keepAliveBehavior="suspend"`），仅暂停高频计算；
+`activated` 时自动恢复并 `checkResize()`。如需停用时销毁，设为 `"dispose"`。
+
+```vue
+<BMap ak="百度地图ak" keepAliveBehavior="suspend" />
+```
+
+### 子资源挂载目标
+
+覆盖物默认挂载到地图。`BMarker` 会为其子树提供新的挂载目标，因此 `BContextMenu` 写在
+`BMarker` 内时自动挂到该 Marker；父资源晚于子组件就绪时，子组件会自动等待并原子挂载
+（先从旧目标移除，再挂到新目标，不会同时残留）。
+
 ```vue
 <BMap
-  :provider="provider"
+  ak="百度地图ak"
   :plugins="['TrackAnimation']"
   @ready="onReady"
   @plugin-ready="onPluginReady"
@@ -228,6 +244,10 @@ map/theme2
 | getMapInstance    | 父组件获取 map 句柄（`MapHandle`，非 raw SDK 地图） | `() => MapHandle \| null` |
 | getContainer      | 获取地图容器 DOM                 | `() => HTMLElement \| null`        |
 | whenReady         | 地图 ready 后 resolve             | `(signal?: AbortSignal) => Promise<MapReadyContext>` |
+| retry             | 加载失败后重试                   | `() => Promise<MapReadyContext>`   |
+| suspend           | 暂停高频计算（KeepAlive 停用时自动调用，不销毁地图） | `(reason?: unknown) => void` |
+| resume            | 恢复并自动 `checkResize`（KeepAlive 激活时自动调用） | `(reason?: unknown) => void` |
+| checkResize       | 容器尺寸变化后手动重设地图尺寸   | `() => void`                       |
 | resetCenter       | 重置地图中心（deprecated）       | `() => void`                       |
 | resetView         | 恢复首次初始化时的 center、zoom、heading 和 tilt | `() => void` |
 | setDragging       | 设置地图是否可拖动               | `(enabled: boolean) => void` |
@@ -241,32 +261,12 @@ map/theme2
 | ready           | 地图实例创建并完成初始配置后触发                                                            | `{ client, map, container }`             |
 | initd           | `ready` 的兼容事件，建议迁移到 `ready`                                                      | `{ client, map, container }`             |
 | unload          | 组件卸载时会触发此事件                                                                      | -                                        |
-| plugin-ready    | 单个插件加载完成后触发（`@pluginReady` 为其别名，载荷相同）                                 | `name: string`                           |
+| plugin-ready    | 单个插件加载完成后触发（载荷为插件名字符串；v2 的 `@pluginReady` 已移除）                   | `name: string`                           |
 | plugin-error    | 单个插件加载失败；不会改变已经 ready 的地图状态                                             | `{ name, error }`                        |
 | error           | 地图创建失败时触发                                                                          | `BMapError`                              |
 | click           | 左键单击地图时触发，事件经归一化（`point/pixel/domEvent/raw`）                               | `MapMouseEvent`                          |
-| movestart       | 地图移动开始时触发此事件                                                                    | `{type, target}`                         |
-| moving          | 地图移动过程中触发此事件                                                                    | `{type, target}`                         |
-| moveend         | 地图移动结束时触发此事件                                                                    | `{type, target}`                         |
-| zoomstart       | 地图更改缩放级别开始时触发触发此事件                                                        | `{type, target}`                         |
-| zoomend         | 地图更改缩放级别结束时触发触发此事件                                                        | `{type, target}`                         |
-| addoverlay      | 当组件被挂载到地图中时会触发此事件                                                          | `{type, target}`                         |
-| removeoverlay   | 当组件被移除时会触发此事件                                                                  | `{type, target}`                         |
-| addcontrol      | 当组件被挂载到地图中时会触发此事件                                                          | `{type, target}`                         |
-| removecontrol   | 当组件被移除时会触发此事件                                                                  | `{type, target}`                         |
-| clearoverlays   | 当使用方法一次性移除全部覆盖物时会触发此事件                                                | `{type, target}`                         |
-| dragstart       | 开始拖拽地图时触发                                                                          | `{type, target, pixel, point}`           |
-| dragging        | 拖拽地图过程中触发                                                                          | `{type, target, pixel, point}`           |
-| dragend         | 停止拖拽地图时触发                                                                          | `{type, target, pixel, point}`           |
-| addtilelayer    | 添加一个自定义地图图层时触发此事件                                                          | `{type, target}`                         |
-| removetilelayer | 移除一个自定义地图图层时触发此事件                                                          | `{type, target}`                         |
-| load            | 调用方法时会触发此事件。这表示位置、缩放层级已经确定，但可能还在载入地图图块                | `{type, target}`                         |
-| resize          | 地图可视区域大小发生变化时会触发此事件                                                      | `{type, target, pixel, point}`           |
-| hotspotclick    | 点击热区时触发此事件                                                                        | `{type, target}`                         |
-| hotspotover     | 鼠标移至热区时触发此事件                                                                    | `{type, target}`                         |
-| hotspotout      | 鼠标移出热区时触发此事件                                                                    | `{type, target}`                         |
-| tilesloaded     | 当地图所有图块完成加载时触发此事件                                                          | `{type, target}`                         |
-| touchstart      | 触摸开始时触发此事件，仅适用移动设备                                                        | `{type, target}`                         |
-| touchmove       | 触摸移动时触发此事件，仅适用移动设备                                                        | `{type, target}`                         |
-| touchend        | 触摸结束时触发此事件，仅适用移动设备                                                        | `{type, target}`                         |
-| longpress       | 长按事件，仅适用移动设备                                                                    | `{type, target}`                         |
+
+::: warning 注意
+`BMap` 仅转发以上事件。`movestart/moving/zoomstart/tilesloaded` 等原生 SDK 事件当前版本不转发，
+如需监听请经 `ready` 载荷的 `client.driver.events.on(map, name, handler)` 自行订阅并记得在卸载时取消。
+:::

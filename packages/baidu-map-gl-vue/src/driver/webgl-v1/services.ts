@@ -26,6 +26,98 @@ function normalizeLocation(rawSdk: unknown, location: unknown): unknown {
   return location;
 }
 
+export interface ServiceErrorInfo {
+  code: number | string;
+  message: string;
+}
+
+export interface JsonpErrorCapture {
+  /** 扫描并包装新增回调；SDK 调用前后各调一次 */
+  rescan(): void;
+  getLastError(): ServiceErrorInfo | null;
+}
+
+/**
+ * 百度 JSAPI 服务走 JSONP,失败(如配额 302)时只回 null 并丢弃服务端错误码。
+ *
+ * 该函数嗅探 `BMapGL._rd` 回调注册表,把服务端 `result.error/error_msg` 记录下来,
+ * 供 composable 在空结果时还原为明确错误。全部防御式实现:`_rd` 不存在或形态
+ * 不符时静默退化为空捕获,不影响正常流程；包装器只记录不阻断业务回调。
+ */
+export function captureJsonpServiceError(rawSdk: unknown): JsonpErrorCapture {
+  const noop: JsonpErrorCapture = { rescan: () => {}, getLastError: () => null };
+  try {
+    const ns = (rawSdk as Record<string, unknown> | null | undefined)?.["_rd"] as Record<
+      string,
+      unknown
+    > | null | undefined;
+    if (!ns || typeof ns !== "object") return noop;
+    const seen = new Set<string>();
+    try {
+      for (const key of Object.keys(ns)) seen.add(key);
+    } catch {
+      return noop;
+    }
+    let last: ServiceErrorInfo | null = null;
+    const wrap = () => {
+      let keys: string[];
+      try {
+        keys = Object.keys(ns);
+      } catch {
+        return;
+      }
+      for (const key of keys) {
+        if (seen.has(key)) continue;
+        seen.add(key);
+        let fn: unknown;
+        try {
+          fn = ns[key];
+        } catch {
+          continue;
+        }
+        if (typeof fn !== "function") continue;
+        const original = fn as (...args: unknown[]) => unknown;
+        try {
+          ns[key] = function (this: unknown, ...args: unknown[]) {
+            try {
+              const payload = args[0] as {
+                result?: { error?: unknown; error_msg?: unknown };
+              } | null | undefined;
+              const code = payload?.result?.error;
+              const isError =
+                (typeof code === "number" && code !== 0) ||
+                (typeof code === "string" && code !== "" && code !== "0");
+              if (isError) {
+                last = {
+                  code: code as number | string,
+                  message: String(payload?.result?.error_msg ?? ""),
+                };
+              }
+            } catch {
+              /* 嗅探失败不影响业务回调 */
+            }
+            return original.apply(this, args);
+          };
+        } catch {
+          /* 冻结对象等情况直接跳过 */
+        }
+      }
+    };
+    return {
+      rescan: () => {
+        try {
+          wrap();
+        } catch {
+          /* ignore */
+        }
+      },
+      getLastError: () => last,
+    };
+  } catch {
+    return noop;
+  }
+}
+
 export function createWebGlV1ServiceDriver(input: WebGlV1ServiceDriverInput): ServiceDriver {
   const { rawSdk, geometry } = input;
 

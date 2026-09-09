@@ -1,4 +1,5 @@
 // Generated file. Do not edit directly.
+export { default as BMapProvider } from './provider/BMapProvider.vue'
 export { default as BMap } from './map/BMap.vue'
 export { default as BMarker } from './overlays/BMarker.vue'
 export { default as BInfoWindow } from './overlays/BInfoWindow.vue'

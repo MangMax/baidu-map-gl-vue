@@ -6,10 +6,10 @@
  * - 状态机 INITIAL/PLAYING/STOPPING(不读 SDK 私有 _status)
  * - 卸载时取消动画,不残留
  */
-import { ref, shallowRef, onUnmounted, type Ref } from "vue";
+import { ref, shallowRef, toRaw, onUnmounted, type Ref } from "vue";
 import { resolveMapContext } from "./resolveMapContext";
 import type { MapReadyContext } from "../core/context/types";
-import type { ServiceHandle } from "../driver/types/handles";
+import type { MapHandle, ServiceHandle } from "../driver/types/handles";
 
 /** 视角动画关键帧 */
 export interface ViewAnimationKeyFrames {
@@ -53,6 +53,15 @@ export function useBMapViewAnimation(
   let readyPromise: Promise<MapReadyContext> | null = null;
   const getReady = () => (readyPromise ??= ctx.whenReady());
 
+  /** 传入 <BMap> 组件实例 ref 时解包出真正的 MapHandle（与 useBMapTrackAnimation 一致） */
+  function resolveMapHandle(readyCtx: MapReadyContext): MapHandle {
+    const component = (
+      map as { value?: { getMapInstance?: () => unknown } } | undefined
+    )?.value;
+    const unwrapped = toRaw(component?.getMapInstance?.() ?? readyCtx.map);
+    return (unwrapped ?? readyCtx.map) as MapHandle;
+  }
+
   let sdkAnimation: ServiceHandle<"service:view-animation"> | null = null;
   let keyFramesData: ViewAnimationKeyFrames[] = [];
 
@@ -80,7 +89,7 @@ export function useBMapViewAnimation(
     if (status.value === "PLAYING") return;
     const readyCtx = await getReady();
     if (!sdkAnimation) createAnimation(readyCtx);
-    readyCtx.client.driver.map.startViewAnimation(readyCtx.map, sdkAnimation!);
+    readyCtx.client.driver.map.startViewAnimation(resolveMapHandle(readyCtx), sdkAnimation!);
     status.value = "PLAYING";
   }
 
@@ -101,9 +110,10 @@ export function useBMapViewAnimation(
   function cancel() {
     if (status.value === "INITIAL") return;
     void getReady().then((readyCtx) => {
+      const mapHandle = resolveMapHandle(readyCtx);
       const raw = sdkAnimation?.raw as { _cancel?: (m: unknown) => void } | undefined;
-      raw?._cancel?.(readyCtx.map.raw);
-      readyCtx.client.driver.map.stopViewAnimation(readyCtx.map);
+      raw?._cancel?.(mapHandle.raw);
+      readyCtx.client.driver.map.stopViewAnimation(mapHandle);
     });
     status.value = "INITIAL";
   }
@@ -111,7 +121,7 @@ export function useBMapViewAnimation(
   onUnmounted(() => {
     // 资源归零:取消动画
     void getReady().then((readyCtx) => {
-      readyCtx.client.driver.map.stopViewAnimation(readyCtx.map);
+      readyCtx.client.driver.map.stopViewAnimation(resolveMapHandle(readyCtx));
     });
     sdkAnimation = null;
     status.value = "INITIAL";

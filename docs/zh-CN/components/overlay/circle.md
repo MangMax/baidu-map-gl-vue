@@ -38,15 +38,10 @@ overlay/circle
 
 ## 组件事件
 
-| 事件名     | 说明                                                                                  | 类型                        |
-| ---------- | ------------------------------------------------------------------------------------- | --------------------------- |
-| initd      | 组件初始化后，调用的方法，返回一个地图实例                                            | `{ map, BmapGL, instance }` |
-| unload     | 组件卸载时会调用此方法                                                                | -                           |
-| click      | 鼠标左键单击事件的回调函数。 当双击时，产生的事件序列为：`click -> click -> dblclick` | `((e: Event) => void) `     |
-| dblclick   | 鼠标左键双击事件的回调函数                                                            | `((e: Event) => void) `     |
-| mousedown  | 鼠标左键在该覆盖物上按下的回调函数                                                    | `((e: Event) => void) `     |
-| mouseup    | 鼠标左键在该覆盖物上抬起的回调函数                                                    | `((e: Event) => void) `     |
-| mouseout   | 鼠标指针移出该覆盖物事件的回调函数                                                    | `((e: Event) => void) `     |
-| mouseover  | 鼠标指针移入该覆盖物事件的回调函数                                                    | `((e: Event) => void) `     |
-| remove     | 该覆盖物被移除的回调函数                                                              | `((e: Event) => void) `     |
-| lineupdate | 覆盖物被编辑后的回调函数                                                              | `((e: Event) => void) `     |
+v3 子组件没有 `initd/unload` 事件；以下为实际发出的 typed emits（载荷为 SDK 原生事件）：
+
+| 事件名 | 说明 | 类型 |
+| --- | --- | --- |
+| click | 鼠标左键单击事件的回调函数 | `(e: unknown) => void` |
+| dblclick | 鼠标左键双击事件的回调函数 | `(e: unknown) => void` |
+

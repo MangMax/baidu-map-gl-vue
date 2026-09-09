@@ -80,6 +80,7 @@ if (process.argv.includes('--check')) {
 
 function toPath(exportName: string): string {
   const map: Record<string, string> = {
+    BMapProvider: 'provider/BMapProvider.vue',
     BMap: 'map/BMap.vue',
     BMarker: 'overlays/BMarker.vue',
     BInfoWindow: 'overlays/BInfoWindow.vue',

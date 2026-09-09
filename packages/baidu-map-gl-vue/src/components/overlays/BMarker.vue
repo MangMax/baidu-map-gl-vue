@@ -1,7 +1,8 @@
 <script setup lang="ts">
-import { provide, watch } from "vue";
+import { computed, provide, readonly, shallowRef, watch } from "vue";
 import { useOverlayResource, removeOverlay } from "../../core/composables/useOverlayResource";
 import { overlayContextKey } from "../../core/context/types";
+import { targetContextKey, type TargetContext } from "../../core/context/target";
 import type { MapReadyContext } from "../../core/context/types";
 import type { ResourceScope } from "../../core/lifecycle/ResourceScope";
 import type { MarkerHandle } from "../../driver/types/handles";
@@ -218,7 +219,19 @@ function bindMarkerEvents(ctx: MapReadyContext, res: MarkerHandle, scope: Resour
 }
 
 // provide 必须在 setup 中调用
+// 旧 key 保持兼容(函数式读取);新 TargetContext 为响应式 shallowRef,支持父晚就绪
 provide(overlayContextKey, () => resource.value);
+{
+  const kindRef = shallowRef<"marker">("marker");
+  const targetRef = computed(() => (resource.value as unknown as import("../../driver/types/handles").SdkHandle<string> | null) ?? null);
+  const markerTarget: TargetContext = {
+    kind: readonly(kindRef),
+    target: targetRef,
+    add: () => {},
+    remove: () => {},
+  };
+  provide(targetContextKey, markerTarget);
+}
 </script>
 
 <template>

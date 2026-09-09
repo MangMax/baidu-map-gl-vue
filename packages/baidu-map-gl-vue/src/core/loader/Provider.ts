@@ -18,7 +18,9 @@ export interface BMapProvider {
   load(options: BMapLoadOptions, signal?: AbortSignal): Promise<unknown>;
 }
 
-const isClient = typeof window !== "undefined";
+function isClient(): boolean {
+  return typeof window !== "undefined";
+}
 
 export class BaiduCdnProvider implements BMapProvider {
   readonly id = "baidu-cdn";
@@ -75,10 +77,10 @@ export class ExistingGlobalProvider implements BMapProvider {
     return "existing-global";
   }
   async load(): Promise<unknown> {
-    if (!isClient || !(window as any).BMapGL) {
+    if (!isClient() || !(window as unknown as { BMapGL?: unknown }).BMapGL) {
       throw new BMapError("BMAP_SDK_LOAD_FAILED", "window.BMapGL is not present");
     }
-    return (window as any).BMapGL;
+    return (window as unknown as { BMapGL: unknown }).BMapGL;
   }
 }
 

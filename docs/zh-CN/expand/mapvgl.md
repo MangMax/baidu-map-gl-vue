@@ -27,15 +27,15 @@ app.use(baiduMap, {
 </template>
 ```
 
-因为资源是通过异步方式加载，所以需要监听 pluginReady 事件：
+因为资源是通过异步方式加载，所以需要监听 `plugin-ready` 事件（载荷为插件名字符串；v2 的 `@pluginReady` 已移除）：
 
 ```vue
 <template>
-  <BMap :plugins="['Mapvgl']" @pluginReady="handlePluginReady"></BMap>
+  <BMap :plugins="['Mapvgl']" @plugin-ready="handlePluginReady"></BMap>
 </template>
 <script lang="ts" setup>
-  function handlePluginReady() {
-    // ...
+  function handlePluginReady(name: string) {
+    // name === 'Mapvgl'
   }
 </script>
 ```

@@ -24,7 +24,7 @@
           <template v-if="item.detail">
             <BMarker :position="item.detail.point"></BMarker>
             <BLabel
-              style="color: #333; font-size: 9px"
+              :style="{ color: '#333', fontSize: '9px' }"
               :position="item.detail.point"
               :content="`${index}. 地址: ${item.detail.address} 所属商圈:${item.detail.business} 最匹配地点: ${
                 item.detail.surroundingPois[0]?.title || '无'

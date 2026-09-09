@@ -26,6 +26,14 @@ export interface BMapProps {
   ak?: string;
   apiUrl?: string;
   provider?: { load(opts?: unknown, signal?: AbortSignal): Promise<unknown> };
+  /** 显式 Client(最高优先级,查找顺序首位) */
+  client?: import("../client/types").BMapClient;
+  /** 显式 Client Definition(覆盖 Provider/默认) */
+  definition?: import("../client/types").CreateBMapClientOptions;
+  /** 显式 opt-in 才允许读取 window.BMapGL(默认不静默读取) */
+  allowExistingGlobal?: boolean;
+  /** KeepAlive 行为:suspend(默认,不销毁 WebGL Map) | dispose */
+  keepAliveBehavior?: "suspend" | "dispose";
   center?: { lng: number; lat: number } | string;
   zoom?: number;
   width?: string | number;

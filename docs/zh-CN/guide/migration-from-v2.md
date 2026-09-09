@@ -18,17 +18,17 @@ app.use(Vue3BaiduMapGl, { ak: 'YOUR_AK' })
 
 ### v3
 ```ts
-import { createBMapPlugin, baiduCdnProvider } from 'baidu-map-gl-vue'
+import { createBMapPlugin } from 'baidu-map-gl-vue'
+// ak 给 createBMapPlugin（或 definition.loadOptions）；baiduCdnProvider() 本身不收 ak 参数
 app.use(createBMapPlugin({
-  provider: baiduCdnProvider({
-    ak: import.meta.env.VITE_BAIDU_MAP_AK,
-    version: '1.0',
-  }),
+  ak: import.meta.env.VITE_BAIDU_MAP_AK,
+  version: '1.0',
 }))
 ```
 
-> 兼容:`app.use(Vue3BaiduMapGl, { ak })` 在 v3 仍可用(内部映射到 `createBMapPlugin`),
-> 但推荐迁移到新 API。
+> 不兼容：v2 的默认导出 `app.use(Vue3BaiduMapGl, { ak })` 在 v3 已移除，
+> 请改用具名 `createBMapPlugin`。`baiduCdnProvider()` 工厂不接受 ak/version 参数，
+> 它们属于 Client 定义的 `loadOptions`。
 
 ---
 
@@ -36,7 +36,7 @@ app.use(createBMapPlugin({
 
 | v2 API | v3 处理 | 迁移动作 |
 |---|---|---|
-| `app.use(Vue3BaiduMapGl, { ak })` | 保留,映射到 `createBMapPlugin` | 可选迁移 |
+| `app.use(Vue3BaiduMapGl, { ak })`（默认导出） | 已移除，改用具名 `createBMapPlugin({ ak })` | 必须迁移 |
 | 按需导入组件(`BMap` 等) | 保留组件名与根 named exports | 无需改动 |
 | `@initd` | 保留并 **deprecate**,新增 `@ready` | 建议改为 `@ready` |
 | `getMapInstance()` | 保留,返回 `MapHandle`（不再是 raw SDK 地图；raw 地图经 `./advanced` 的 `unwrapRaw` 获取）,新增 `whenReady()` | 涉及 raw 地图访问时迁移 |
@@ -45,8 +45,8 @@ app.use(createBMapPlugin({
 | `@pluginReady(map)`（旧驼峰事件，载荷为地图实例） | 已移除，统一为 `@plugin-ready`（载荷为插件名）；地图实例改用 `ready` 载荷、`whenReady()` 或组件 `ref.getMapInstance()` 获取 | 涉及插件回调取地图时迁移 |
 | `v-model:show`(InfoWindow) | 保留 | 无需改动 |
 | `modelValue`(InfoWindow) | beta 期保留 + warning | 改为 `open`/`v-model:open` |
-| `usePubSub` | 从主入口移除;短期放入 `legacy` | 改用 context/whenReady |
-| `getScriptAsync` | legacy 保留,推荐 Provider/loader | 可选迁移 |
+| `usePubSub` | 已移除 | 改用 context/whenReady（`useBMap()` + `whenReady()`） |
+| `getScriptAsync` | 已移除，改走 Provider/loader | 改用 `baiduCdnProvider` / `customScriptProvider` |
 | 任意 `package/*` 深路径 | 不再保证;提供明确 exports | 改用子路径 |
 
 ---
@@ -61,8 +61,8 @@ app.use(createBMapPlugin({
   ...
 </BMap>
 
-<!-- v3(等价,initd→ready) -->
-<BMap :provider="provider" :center="center" :zoom="14" @ready="onReady">
+<!-- v3(等价,initd→ready；provider 只决定加载器，ak 走全局插件或 ak prop) -->
+<BMap ak="xxx" :center="center" :zoom="14" @ready="onReady">
   ...
 </BMap>
 ```

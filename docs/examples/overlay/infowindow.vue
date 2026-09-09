@@ -24,9 +24,6 @@
         title="文字内容"
       >
         地址：北京市东城区王府井大街88号乐天银泰百货八层
-        <template #maxContent>
-          <h1>最大化内容</h1>
-        </template>
       </BInfoWindow>
       <BInfoWindow v-model:show="show1" :position="{ lng: 116.404, lat: 39.925 }" title="动态内容">
         <h2>count: {{ count }}</h2>

@@ -17,7 +17,7 @@ hooks/useBMapGeocoder/index
 在 Ts 中使用单个解析地址时，使用泛型 `Point` 内部可推断 `point` 为可推断为 `Point`，从而避免读取值时 ts 的报错。
 
 ```ts
-import { Point } from 'baidu-map-gl-vue'
+import type { Point } from 'baidu-map-gl-vue'
 const { point } = useBMapGeocoder(map)
 ```
 
@@ -34,7 +34,7 @@ hooks/useBMapGeocoder/batch
 在 Ts 中使用批量解析地址时，使用泛型 `Point[]` 内部可推断 `point` 为可推断为 `Point[]`，从而避免遍历时 ts 的报错。
 
 ```ts
-import { Point } from 'baidu-map-gl-vue'
+import type { Point } from 'baidu-map-gl-vue'
 const { getBatch } = useBMapGeocoder(map)
 ```
 
@@ -48,6 +48,12 @@ const { get, getBatch, point, isLoading, isEmpty } = useBMapGeocoder(map)
 
 :::tip
 该 hooks 需要地图 ready 后才能执行解析；在 `<BMap>` 子树内调用时可省略 `map` 参数
+:::
+
+::: warning AK 域名白名单
+正向地址解析走百度服务端接口，受 AK 的 Referer 白名单限制：若当前页面域名不在白名单内，
+接口将返回空结果（表现为 `isEmpty`，无错误抛出）。本地开发遇到空结果时，请先到百度地图
+开放平台检查该 AK 的 Referer 白名单是否包含当前域名。
 :::
 
 ### 参数

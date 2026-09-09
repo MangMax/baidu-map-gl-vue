@@ -15,6 +15,7 @@
 | `BMAP_PARENT_CONTEXT_MISSING` | 上下文 | ❌ | 子组件未挂在 `BMap` 内(缺少 map context) |
 | `BMAP_RESOURCE_CREATE_FAILED` | 资源 | ❌ | Overlay/Control/Layer 创建失败 |
 | `BMAP_PLUGIN_LOAD_FAILED` | 插件 | ✅ | 插件脚本加载或初始化失败 |
+| `BMAP_SERVICE_FAILED` | 服务 | ✅ | 地理编码/转换等服务端接口失败（配额用尽、Referer 白名单、超时） |
 | `BMAP_INVALID_POINT` | 参数 | ❌ | 传入非法坐标(缺 lng/lat) |
 
 ## 错误对象结构
@@ -44,7 +45,7 @@ interface BMapErrorLike {
 - 检查网络能否访问 `api.map.baidu.com/api`。
 - 检查 CSP `script-src` 是否放行。
 - 检查 AK 是否有效。
-**解决**:使用自定义 Provider(自托管脚本),见[配置指南](./config.md#provider)。
+**解决**:使用自定义 Provider(自托管脚本),见[配置指南](./config.md#client-查找顺序)。
 
 ### `BMAP_SDK_LOAD_TIMEOUT`
 
@@ -69,8 +70,8 @@ interface BMapErrorLike {
 
 ### `BMAP_PARENT_CONTEXT_MISSING`
 
-**原因**:`BMarker`/`BCircle` 等子组件未包裹在 `BMap` 内。
-**解决**:将子组件放在 `<BMap>` 的默认插槽中。
+**原因**:`BMarker`/`BCircle` 等子组件未包裹在 `BMap` 内，且上层也没有 `<BMapProvider>` 提供 Client 上下文。
+**解决**:将子组件放在 `<BMap>` 的默认插槽中；纯服务 hooks（`useBMapGeocoder` 等）可放在 `<BMapProvider>` 子树内。
 
 ### `BMAP_RESOURCE_CREATE_FAILED`
 
@@ -82,6 +83,15 @@ interface BMapErrorLike {
 **原因**:插件脚本加载或 `load()` 失败。
 **解决**:插件插件版本是否与 SDK 兼容;检查 `plugin` 字段;使用 `urlPluginDefinition` 固定版本。
 
+### `BMAP_SERVICE_FAILED`
+
+**原因**:地理编码 / 逆地理编码 / 坐标转换等服务端接口失败。百度 JSAPI 失败时只回空结果，
+库内会还原服务端错误码，常见取值：
+- `302 当天配额已用完`：该 AK 当日配额耗尽，到开放平台申请提高配额或更换 AK；
+- `200 版本过低`：多为 AK Referer 白名单拦截（非白名单域名请求被拒），检查白名单是否包含当前域名；
+- `... timed out after 15000ms`：服务端 15s 内未回包，检查网络后重试。
+**解决**:按上述错误信息处理；空结果（无错误码）多为 genuinely 无匹配，可按 `isEmpty` 展示。
+
 ### `BMAP_INVALID_POINT`
 
 **原因**:position/center 等缺少 `lng`/`lat`。
@@ -89,12 +99,13 @@ interface BMapErrorLike {
 
 ## 统一捕获
 
-组件通过 `@resource-error`/`@error` 事件接收错误,或经 map context 的 `events` 总线订阅 `resource:error`:
+`BMap` 通过 `@error` 事件接收加载错误；各子组件的创建失败经内部诊断总线 `resource:error` 上报，
+可在 `<BMap>` 子树内订阅：
 
 ```ts
 import { useBMapContext } from 'baidu-map-gl-vue'
 
-const ctx = useBMapContext()
+const ctx = useBMapContext() // 须在 <BMap> 子树内调用
 ctx.events.on('resource:error', (e) => {
   console.error(e.error.code, e.error.toJSON())
 })

@@ -1,24 +1,25 @@
 /**
- * MapRuntime
+ * MapRuntime v2
  *
  * 每个地图实例的运行时容器:
- * - 状态机 idle/loading/ready/error/disposing/disposed
- * - whenReady:可被多个子组件调用,状态可回放
- * - dispose:清理 done 等待者、资源作用域、事件总线、scheduler
- *
- * Runtime 只管理 Map，SDK 创建统一走 client.driver.map；
- * MapReadyContext 为 { client, map: MapHandle }。
+ * - 状态机 idle/waiting-client/creating/initializing/ready/error/disposing/disposed
+ *   ("loading" 保留为 waiting-client 别名,向后兼容)
+ * - Runtime 只管理 Map,不再加载 Plugin(PluginRegistry 的 map-scope 实例属于 Runtime)
+ * - mount 去重经 mountPromise;retry 清错重入;suspend/resume 供 KeepAlive
+ * - dispose 顺序:disposing → reject waiters → child registries/scopes → destroy map
+ *   → clear handle → scheduler/events → root scope → disposed
  */
 import { shallowRef, type ShallowRef } from "vue";
 import type { BMapClient } from "../../client/types";
 import type { MapHandle } from "../../driver/types/handles";
-import type { InitialMapOptions } from "../../driver/types/map";
+import type { InitialMapOptions, MapView } from "../../driver/types/map";
 import { BMapError } from "../errors/BMapError";
 import { ResourceScope } from "../lifecycle/ResourceScope";
 import { createMapEventBus, type MapEventBus, type InternalMapEvents } from "../events/MapEventBus";
 import { createFrameScheduler, type FrameScheduler } from "../scheduler/FrameScheduler";
 import { createOverlayRegistry, type OverlayRegistry } from "../overlays/OverlayRegistry";
 import { createPluginRegistry, type PluginRegistry } from "../plugins/PluginRegistry";
+import type { BMapClientContext } from "../context/client";
 import type { MapReadyContext, MapRuntimeStatus } from "../context/types";
 
 interface Waiter {
@@ -37,12 +38,17 @@ function createAbortError(reason?: unknown): BMapError {
 }
 
 export interface MapRuntimeOptions {
-  /** 创建 BMapClient 的工厂：SDK 加载 + Driver 组装在 Client 边界完成 */
-  clientFactory: (signal?: AbortSignal) => Promise<BMapClient>;
+  /** 新规范:经 ClientContext 加载(推荐) */
+  clientContext?: BMapClientContext;
+  /** 向后兼容:直接工厂(测试/旧调用) */
+  clientFactory?: (signal?: AbortSignal) => Promise<BMapClient>;
   /** 创建 map 的容器（mount 时回填） */
   container: HTMLElement;
+  initialView?: MapView;
   mapOptions?: InitialMapOptions;
 }
+
+export type KeepAliveBehavior = "suspend" | "dispose";
 
 export class MapRuntime {
   readonly id = Symbol("map-runtime");
@@ -50,21 +56,38 @@ export class MapRuntime {
   readonly client: ShallowRef<BMapClient | null> = shallowRef(null);
   readonly map: ShallowRef<MapHandle | null> = shallowRef(null);
   readonly error: ShallowRef<unknown> = shallowRef(null);
-  readonly resources = new ResourceScope();
+  /** Spec 别名:handle === map,scope === resources */
+  readonly handle: ShallowRef<MapHandle | null>;
+  readonly scope: ResourceScope;
+  readonly resources: ResourceScope;
   readonly events: MapEventBus = createMapEventBus();
   readonly scheduler: FrameScheduler = createFrameScheduler();
   readonly overlays: OverlayRegistry = createOverlayRegistry();
+  readonly layers: OverlayRegistry = createOverlayRegistry();
+  readonly controls: OverlayRegistry = createOverlayRegistry();
   readonly plugins: PluginRegistry;
 
   private waiters = new Set<Waiter>();
   private options: MapRuntimeOptions;
+  private mountPromise: Promise<MapReadyContext> | null = null;
+  private suspended = false;
+  private suspendReason: unknown = null;
 
   /** 可供外部在 setup 后回填的容器引用 */
   container: HTMLElement;
 
   constructor(options: MapRuntimeOptions) {
+    if (!options.clientContext && !options.clientFactory) {
+      throw new BMapError(
+        "BMAP_INVALID_ARGUMENT",
+        "MapRuntime requires clientContext or clientFactory",
+      );
+    }
     this.options = options;
     this.container = options.container;
+    this.resources = new ResourceScope({ label: "map-runtime" });
+    this.scope = this.resources;
+    this.handle = this.map;
     this.plugins = createPluginRegistry(
       // plugin context 动态读取当前 client/map,注册在 runtime 时已就绪
       () => ({
@@ -84,8 +107,20 @@ export class MapRuntime {
   }
 
   async mount(): Promise<MapReadyContext> {
-    if (this.status.value === "ready") return this.whenReady();
-    if (this.status.value === "loading") return this.whenReady();
+    if (this.status.value === "ready") {
+      return this.handle.value!
+        ? { client: this.client.value!, map: this.handle.value! }
+        : this.whenReady();
+    }
+    if (
+      this.status.value === "loading" ||
+      this.status.value === "waiting-client" ||
+      this.status.value === "creating" ||
+      this.status.value === "initializing"
+    ) {
+      if (this.mountPromise) return this.mountPromise;
+      return this.whenReady();
+    }
     if (this.status.value === "disposed" || this.status.value === "disposing") {
       throw new BMapError(
         "BMAP_RUNTIME_DISPOSED",
@@ -93,20 +128,61 @@ export class MapRuntime {
       );
     }
 
-    this.status.value = "loading";
+    this.mountPromise = this.doMount();
     try {
-      const client = await this.options.clientFactory(this.resources.signal);
+      return await this.mountPromise;
+    } finally {
+      this.mountPromise = null;
+    }
+  }
+
+  private async doMount(): Promise<MapReadyContext> {
+    this.status.value = "waiting-client";
+    try {
+      const client = this.options.clientContext
+        ? await this.options.clientContext.load(this.resources.signal)
+        : await this.options.clientFactory!(this.resources.signal);
       if (this.resources.isDisposed) {
         throw new BMapError("BMAP_RUNTIME_DISPOSED", "MapRuntime disposed during SDK load");
       }
-      const map = client.driver.map.create(this.container, this.options.mapOptions);
       this.client.value = client;
+      this.status.value = "creating";
+      const map = client.driver.map.create(this.container, this.options.mapOptions);
+      if (this.resources.isDisposed) {
+        try {
+          client.driver.map.destroy(map);
+        } catch {
+          /* ignore */
+        }
+        throw new BMapError("BMAP_RUNTIME_DISPOSED", "MapRuntime disposed during map create");
+      }
+      this.status.value = "initializing";
+      if (this.options.initialView) {
+        try {
+          client.driver.map.initializeView(map, this.options.initialView);
+        } catch (e) {
+          throw e instanceof BMapError
+            ? e
+            : new BMapError("BMAP_RESOURCE_CREATE_FAILED", `initializeView failed: ${(e as Error)?.message ?? e}`, { cause: e });
+        }
+      }
+      // 失败后确认旧部分创建资源已销毁:此处 create 成功才赋值,异常路径无残留
       this.map.value = map;
       this.status.value = "ready";
       const ctx: MapReadyContext = { client, map };
       this.flushWaiters(ctx);
       return ctx;
     } catch (err) {
+      if ((err as BMapError)?.code === "BMAP_RUNTIME_DISPOSED") {
+        const cur = this.status.value as string;
+        this.status.value =
+          cur === "disposing" || cur === "disposed"
+            ? (cur as MapRuntimeStatus)
+            : "error";
+        this.error.value = err;
+        this.flushWaitersError(err);
+        throw err;
+      }
       const bmapErr =
         err instanceof BMapError
           ? err
@@ -115,10 +191,59 @@ export class MapRuntime {
               `MapRuntime failed: ${(err as Error)?.message ?? err}`,
               { cause: err },
             );
+      // 部分创建的 map 若已挂载需销毁,避免泄漏
+      const partialMap = this.map.value;
+      const partialClient = this.client.value;
+      if (partialMap && partialClient && this.status.value === "initializing") {
+        try {
+          partialClient.driver.map.destroy(partialMap);
+        } catch {
+          /* ignore */
+        }
+        this.map.value = null;
+      }
       this.status.value = "error";
       this.error.value = bmapErr;
       this.flushWaitersError(bmapErr);
       throw bmapErr;
+    }
+  }
+
+  async retry(): Promise<MapReadyContext> {
+    if (this.status.value !== "error") {
+      return this.mount();
+    }
+    this.error.value = null;
+    return this.mount();
+  }
+
+  /** KeepAlive:暂停高频计算/动画/polling,不移除 Overlay 或销毁 Map */
+  suspend(reason: unknown = "keep-alive"): void {
+    if (this.status.value !== "ready") return;
+    this.suspended = true;
+    this.suspendReason = reason;
+  }
+
+  resume(reason: unknown = "keep-alive"): void {
+    void reason;
+    if (!this.suspended) return;
+    this.suspended = false;
+    this.suspendReason = null;
+    this.checkResize();
+  }
+
+  get isSuspended(): boolean {
+    return this.suspended;
+  }
+
+  checkResize(): void {
+    const map = this.map.value;
+    const client = this.client.value;
+    if (!map || !client || this.status.value !== "ready") return;
+    try {
+      client.driver.map.checkResize?.(map);
+    } catch {
+      /* 忽略 resize 错误 */
     }
   }
 
@@ -173,13 +298,28 @@ export class MapRuntime {
 
   dispose() {
     if (this.status.value === "disposed" || this.status.value === "disposing") return;
+    // 1. status = disposing
     this.status.value = "disposing";
-    // 未等待就绪的等待者统一报 disposed
+    // 2. reject waiters
     this.flushWaitersError(new BMapError("BMAP_RUNTIME_DISPOSED", "MapRuntime disposed"));
-    // 逆序释放:先插件/覆盖物,再 scheduler/bus/resources
-    this.plugins.dispose();
+    // 3. dispose child registries / child scopes (逆序:插件 → controls → layers → overlays)
+    try {
+      this.plugins.dispose();
+    } catch {
+      /* ignore */
+    }
+    try {
+      this.controls.dispose();
+    } catch {
+      /* ignore */
+    }
+    try {
+      this.layers.dispose();
+    } catch {
+      /* ignore */
+    }
     this.overlays.dispose();
-    // 销毁 SDK map(如 WebGL context 释放)
+    // 4. destroy map
     const currentClient = this.client.value;
     const currentMap = this.map.value;
     if (currentMap && currentClient) {
@@ -189,11 +329,16 @@ export class MapRuntime {
         // 忽略销毁错误
       }
     }
+    // 5. clear handle
     this.map.value = null;
     this.client.value = null;
+    // 6. dispose scheduler/event diagnostics
     this.scheduler.dispose();
     this.events.clear();
+    // 7. dispose root scope
     this.resources.dispose();
+    // 8. status = disposed
+    this.suspended = false;
     this.status.value = "disposed";
   }
 }
