@@ -41,3 +41,7 @@ test-results.json
 plans/
 vue3-baidu-map-gl-modernization-plan-v2.md
 milestone-docs/
+
+# DimChrome 本地调试 profile(不提交)
+.dimchrome
+.dimchrome-profile
