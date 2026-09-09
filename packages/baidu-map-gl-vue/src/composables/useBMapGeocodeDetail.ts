@@ -7,7 +7,8 @@
  */
 import { computed } from "vue";
 import { resolveMapContext } from "./resolveMapContext";
-import { useBMapAsyncTask } from "./useBMapAsyncTask";
+import { SERVICE_TIMEOUT_MS, useBMapAsyncTask, withServiceTimeout } from "./useBMapAsyncTask";
+import { captureJsonpServiceError } from "../driver/webgl-v1/services";
 import { BMapError } from "../core/errors/BMapError";
 
 export interface GeocodeDetailResult {
@@ -39,38 +40,66 @@ export function useBMapGeocodeDetail(map?: unknown) {
       const geocoder = ready.client.driver.services.createGeocoder();
       const raw = geocoder.raw as {
         getLocation(
-          p: { lng: number; lat: number },
+          p: unknown,
           cb: (r: Record<string, unknown> | null) => void,
         ): void;
       };
-      return new Promise<GeocodeDetailResult | null>((resolve) => {
-        raw.getLocation(point, (r) => {
-          if (!r) return resolve(null);
-          const g = r as unknown as {
-            point?: { lng: number; lat: number };
-            address?: string;
-            addressComponents?: GeocodeDetailResult["addressComponents"];
-            surroundingPois?: Array<{ title?: string; point?: { lng: number; lat: number } }>;
-            business?: string;
+      // 真机 SDK 的 getLocation 会校验 `point instanceof BMapGL.Point`,
+      // 裸 { lng, lat } 会被直接回 null；必须经 Driver 转为 raw Point。
+      const rawPoint = ready.client.driver.geometry.toRawPoint(point);
+      // 服务端错误(如配额 302)只回 null；经 _rd 嗅探还原错误码。
+      // 注意顺序:SDK 在调用内同步注册 _rd 回调，必须先调用、再 rescan 包装；
+      // JSONP 回包恒为异步，rescan 必定先于回包执行。
+      const capture = captureJsonpServiceError(ready.client.rawSdk);
+      return withServiceTimeout<GeocodeDetailResult | null>(
+        (done, fail) => {
+          const onResult = (r: Record<string, unknown> | null) => {
+            if (!r) {
+              const err = capture.getLastError();
+              if (err) {
+                fail(
+                  new BMapError(
+                    "BMAP_SERVICE_FAILED",
+                    `Geocoder.getLocation failed (${err.code}): ${err.message || "service error"}`,
+                  ),
+                );
+                return;
+              }
+              done(null);
+              return;
+            }
+            const g = r as unknown as {
+              point?: { lng: number; lat: number };
+              address?: string;
+              addressComponents?: GeocodeDetailResult["addressComponents"];
+              surroundingPois?: Array<{ title?: string; point?: { lng: number; lat: number } }>;
+              business?: string;
+            };
+            done({
+              point: g.point ? toPlainPoint(g.point) : { lng: point.lng, lat: point.lat },
+              address: g.address ?? "",
+              addressComponents: g.addressComponents ?? {
+                city: "",
+                district: "",
+                province: "",
+                street: "",
+                streetNumber: "",
+              },
+              surroundingPois: (g.surroundingPois ?? []).map((p) => ({
+                title: p.title ?? "",
+                point: p.point ? toPlainPoint(p.point) : { lng: 0, lat: 0 },
+              })),
+              business: g.business ?? "",
+            });
           };
-          resolve({
-            point: g.point ? toPlainPoint(g.point) : { lng: point.lng, lat: point.lat },
-            address: g.address ?? "",
-            addressComponents: g.addressComponents ?? {
-              city: "",
-              district: "",
-              province: "",
-              street: "",
-              streetNumber: "",
-            },
-            surroundingPois: (g.surroundingPois ?? []).map((p) => ({
-              title: p.title ?? "",
-              point: p.point ? toPlainPoint(p.point) : { lng: 0, lat: 0 },
-            })),
-            business: g.business ?? "",
-          });
-        });
-      });
+          raw.getLocation(rawPoint, onResult);
+          // SDK 在上式调用内同步注册 _rd 回调；此处 rescan 将其包装，
+          // JSONP 回包恒为异步，故包装必定先于回包执行。
+          capture.rescan();
+        },
+        SERVICE_TIMEOUT_MS,
+        "Geocoder.getLocation",
+      );
     },
   });
 

@@ -14,7 +14,18 @@ import type { ResourceScope } from "../lifecycle/ResourceScope";
 import type { MapEventBus } from "../events/MapEventBus";
 import type { FrameScheduler } from "../scheduler/FrameScheduler";
 
-export type MapRuntimeStatus = "idle" | "loading" | "ready" | "error" | "disposing" | "disposed";
+export type MapStatus =
+  | "idle"
+  | "waiting-client"
+  | "creating"
+  | "initializing"
+  | "ready"
+  | "error"
+  | "disposing"
+  | "disposed";
+
+/** 向后兼容:旧 "loading" 视为 "waiting-client" 别名 */
+export type MapRuntimeStatus = MapStatus | "loading";
 
 export interface MapReadyContext {
   readonly client: BMapClient;
@@ -26,18 +37,25 @@ export interface MapRuntimeShape {
   readonly status: ShallowRef<MapRuntimeStatus>;
   readonly client: ShallowRef<BMapClient | null>;
   readonly map: ShallowRef<MapHandle | null>;
+  /** Spec 别名:handle === map */
+  readonly handle?: ShallowRef<MapHandle | null>;
   readonly error: ShallowRef<unknown>;
   readonly resources: ResourceScope;
+  /** Spec 别名:scope === resources */
+  readonly scope?: ResourceScope;
   readonly events: MapEventBus;
   readonly scheduler: FrameScheduler;
 
   whenReady(signal?: AbortSignal): Promise<MapReadyContext>;
+  retry?(): Promise<MapReadyContext>;
   dispose(): void;
 }
 
-/** 供注入使用的 context 接口(带 overlay/plugin registry,后续实现) */
+/** 供注入使用的 context 接口 */
 export interface MapContext extends MapRuntimeShape {
   readonly overlays: unknown;
+  readonly layers?: unknown;
+  readonly controls?: unknown;
   readonly plugins: unknown;
 }
 

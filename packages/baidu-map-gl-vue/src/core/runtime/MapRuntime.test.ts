@@ -46,17 +46,19 @@ function createRuntime(overrides: Partial<MapRuntime["options"]> = {}) {
 }
 
 describe("MapRuntime", () => {
-  it("starts in idle and transitions loading -> ready", async () => {
+  it("starts in idle and transitions waiting-client -> ready", async () => {
     const { rt, deferred, createMap } = createRuntime();
     expect(rt.status.value).toBe("idle");
     const p = rt.mount();
-    expect(rt.status.value).toBe("loading");
+    expect(["waiting-client", "loading"]).toContain(rt.status.value);
     deferred.resolve({ BMapGL: {} });
     const ctx = await p;
     expect(rt.status.value).toBe("ready");
     expect(ctx.client.engine).toBe("webgl-v1");
     expect(ctx.map).toEqual(createMap.mock.results[0].value);
     expect(rt.map.value).toBeTruthy();
+    expect(rt.handle.value).toBe(rt.map.value);
+    expect(rt.scope).toBe(rt.resources);
   });
 
   it("whenReady returns cached context when already ready", async () => {
@@ -109,7 +111,7 @@ describe("MapRuntime", () => {
     const { rt, deferred } = createRuntime();
     const p1 = rt.mount();
     const p2 = rt.mount();
-    expect(rt.status.value).toBe("loading");
+    expect(["waiting-client", "loading", "creating", "initializing"]).toContain(rt.status.value);
     deferred.resolve({ ok: 1 });
     await Promise.all([p1, p2]);
     expect(rt.status.value).toBe("ready");

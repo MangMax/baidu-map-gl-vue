@@ -641,11 +641,35 @@ export class FakeGeocoder {
   pointHandler: ((address: string, city: string) => FakePoint | null) | null = null
   /** 测试辅助:记录调用 */
   calls: { address: string; city: string }[] = []
+  /** 测试辅助:记录 getLocation 调用入参(应为 Point 实例,裸对象会被真机 SDK 拒收) */
+  locationCalls: unknown[] = []
+  /** 测试辅助:设置 getLocation 行为 */
+  locationHandler: ((point: FakePoint) => Record<string, unknown> | null) | null = null
   constructor(private readonly opts?: Record<string, unknown>) {}
   getPoint(address: string, cb: (point: FakePoint | null) => void, city: string) {
     this.calls.push({ address, city })
     const point = this.pointHandler ? this.pointHandler(address, city) : { lng: 116.4, lat: 39.9 }
     cb(point as unknown as FakePoint)
+  }
+  getLocation(point: FakePoint, cb: (result: Record<string, unknown> | null) => void) {
+    this.locationCalls.push(point)
+    if (this.locationHandler) {
+      cb(this.locationHandler(point))
+      return
+    }
+    cb({
+      point: { lng: point.lng, lat: point.lat },
+      address: '北京市海淀区上地10街',
+      addressComponents: {
+        city: '北京市',
+        district: '海淀区',
+        province: '北京市',
+        street: '上地10街',
+        streetNumber: '',
+      },
+      surroundingPois: [{ title: '上地', point: { lng: point.lng, lat: point.lat } }],
+      business: '上地',
+    })
   }
 }
 

@@ -1,0 +1,76 @@
+---
+title: BMapProvider Client 上下文
+---
+
+# BMapProvider Client 上下文
+
+`<BMapProvider>` 为子树提供 SDK Client 上下文（加载状态 + `BMapClient`），无需地图实例即可使用服务类 hooks（如 `useBMapGeocoder`）。`<BMap>` 会优先复用最近的 Provider 上下文。
+
+```ts
+import { BMapProvider } from 'baidu-map-gl-vue'
+```
+
+## 基础用法
+
+```vue
+<template>
+  <BMapProvider :definition="definition" @ready="onReady" @error="onError">
+    <template #loading>SDK 加载中…</template>
+    <template #error="{ error, retry }">
+      <button @click="retry">加载失败：{{ error.message }}，点击重试</button>
+    </template>
+    <RouterView />
+  </BMapProvider>
+</template>
+
+<script setup lang="ts">
+import { BMapProvider, baiduCdnProvider } from 'baidu-map-gl-vue'
+
+const definition = {
+  provider: baiduCdnProvider(),
+  loadOptions: { ak: '百度地图ak' }
+}
+function onReady() {}
+function onError() {}
+</script>
+```
+
+## 静态组件 props
+
+| 属性       | 说明                                              | 类型                        | 默认值 |
+| ---------- | ------------------------------------------------- | --------------------------- | ------ |
+| client     | 已创建好的 `BMapClient`（最高优先级）             | `BMapClient`                | -      |
+| definition | 完整 Client 定义（覆盖默认定义）                  | `CreateBMapClientOptions`   | -      |
+| autoLoad   | 挂载后自动加载 SDK（`false` 时需手动 `load()`）   | `boolean`                   | `true` |
+| suspense   | 保留字段                                          | `boolean`                   | `false` |
+
+无 `definition` 时，Provider 复用 `app.use(createBMapPlugin(...))` 的默认定义或最近父 Provider 的上下文。
+
+## 插槽
+
+| 插槽名  | 说明                     | 参数                          |
+| ------- | ------------------------ | ----------------------------- |
+| default | 常驻内容（加载中也渲染） | `{ status }`                  |
+| loading | Client 加载中展示        | `{ status }`                  |
+| error   | Client 加载失败展示      | `{ error: BMapError, retry }` |
+
+服务端渲染时不执行 SDK 加载，只输出容器内容；客户端挂载后开始加载。
+
+## 组件事件
+
+| 事件名 | 说明             | 载荷         |
+| ------ | ---------------- | ------------ |
+| ready  | Client 加载完成  | `BMapClient` |
+| error  | Client 加载失败  | `BMapError`  |
+
+## 组件方法
+
+| 方法   | 说明             | 类型                                            |
+| ------ | ---------------- | ----------------------------------------------- |
+| load   | 手动加载 Client  | `(signal?: AbortSignal) => Promise<BMapClient>` |
+| retry  | 失败后重试       | `() => Promise<BMapClient>`                     |
+
+## 与 `app.use()` 的关系
+
+`app.use(createBMapPlugin({ ak }))` 只提供**默认** Client 定义；`<BMapProvider>` 可覆盖其子树的默认值。
+`<BMap>` 的查找顺序见[配置](../guide/config#client-查找顺序)。

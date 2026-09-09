@@ -9,7 +9,8 @@
  */
 import { computed } from "vue";
 import { resolveMapContext } from "./resolveMapContext";
-import { useBMapAsyncTask } from "./useBMapAsyncTask";
+import { SERVICE_TIMEOUT_MS, useBMapAsyncTask, withServiceTimeout } from "./useBMapAsyncTask";
+import { captureJsonpServiceError } from "../driver/webgl-v1/services";
 import { BMapError } from "../core/errors/BMapError";
 
 export interface GeoPoint {
@@ -42,9 +43,35 @@ export function useBMapGeocoder(map?: unknown) {
           city: string,
         ): void;
       };
-      const point = await new Promise<GeoPoint | null>((resolve) => {
-        raw.getPoint(address, (p) => resolve(p ? { lng: p.lng, lat: p.lat } : null), city);
-      });
+      // 服务端错误(如配额 302/Referer 限制)只回 null；经 _rd 嗅探还原错误码。
+      // 注意顺序:SDK 在调用内同步注册 _rd 回调，必须先调用、再 rescan 包装；
+      // JSONP 回包恒为异步，rescan 必定先于回包执行。
+      const capture = captureJsonpServiceError(ready.client.rawSdk);
+      const point = await withServiceTimeout<GeoPoint | null>(
+        (done, fail) => {
+          const onResult = (p: { lng: number; lat: number } | null) => {
+            if (p) {
+              done({ lng: p.lng, lat: p.lat });
+              return;
+            }
+            const err = capture.getLastError();
+            if (err) {
+              fail(
+                new BMapError(
+                  "BMAP_SERVICE_FAILED",
+                  `Geocoder.getPoint failed (${err.code}): ${err.message || "service error"}`,
+                ),
+              );
+              return;
+            }
+            done(null);
+          };
+          raw.getPoint(address, onResult, city);
+          capture.rescan();
+        },
+        SERVICE_TIMEOUT_MS,
+        "Geocoder.getPoint",
+      );
       return point;
     },
   });

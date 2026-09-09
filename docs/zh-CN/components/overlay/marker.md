@@ -21,12 +21,10 @@ overlay/dyynmicMaker
 
 ## 静态组件 Props
 
-| 属性           | 说明                                                                                                                     | 类型       | 默认值  |
-| -------------- | ------------------------------------------------------------------------------------------------------------------------ | ---------- | ------- |
-| title          | 鼠标移到 marker 上的显示内容                                                                                             | `string`   | -       |
-| draggingCursor | 拖拽标注时的鼠标指针样式。此属性值需遵循 CSS 的[cursor](https://developer.mozilla.org/en-US/docs/Web/CSS/cursor)属性规范 | `string`   | -       |
-| raiseOnDrag    | 拖拽标注时，标注是否开启离开地图表面效果                                                                                 | ` boolean` | `false` |
-| enableClicking | 是否响应点击事件                                                                                                         | ` boolean` | `true`  |
+| 属性           | 说明                         | 类型      | 默认值 |
+| -------------- | ---------------------------- | --------- | ------ |
+| title          | 鼠标移到 marker 上的显示内容 | `string`  | -      |
+| enableClicking | 是否响应点击事件（构造期属性，变化时重建） | `boolean` | `true` |
 
 ## 动态组件 Props
 
@@ -37,8 +35,7 @@ overlay/dyynmicMaker
 | offset          | 标注点的像素偏移                                            | ` {x: number, y: number }`    | -                             |            | -                                   |
 | icon            | 标注点的图标。可使用默认图标，也可[自定义图标](#自定义图标) | `string `                     | `simple_red / simple_blue...` | -          | -                                   |
 | rotation        | 旋转角度                                                    | `number `                     | -                             |            | -                                   |
-| enableDragging  | 是否启用拖拽                                                | `boolean `                    | -                             | ` true`    | -                                   |
-| enableMassClear | 是否在调用 `map.clearOverlays` 清除此覆盖物                 | `boolean `                    | -                             | `true `    | -                                   |
+| enableDragging  | 是否启用拖拽                                                | `boolean `                    | -                             | ` false`   | -                                   |
 | visible         | 是否显示                                                    | `boolean`                     | -                             | `true`     | <Badge type="tip" text="^2.2.0" />  |
 
 ## 默认图标可选值
@@ -66,23 +63,23 @@ simple_red , simple_blue , loc_red , loc_blue , start , end , location
 
 ## 组件事件
 
-| 事件名          | 说明                                                                               | 类型                        |
-| --------------- | ---------------------------------------------------------------------------------- | --------------------------- |
-| initd           | 组件初始化后，调用的方法，返回一个地图实例                                         | `{ map, BmapGL, instance }` |
-| unload          | 组件卸载时会调用此方法                                                             | -                           |
-| click           | 鼠标左键单击事件的回调函数。当双击时，产生的事件序列为：click -> click -> dblclick | `((e: Event) => void)`      |
-| dblclick        | 鼠标左键双击事件的回调函数                                                         | `((e: Event) => void)`      |
-| mousedown       | 鼠标左键在该覆盖物上按下的回调函数                                                 | `((e: Event) => void)`      |
-| mouseup         | 鼠标左键在该覆盖物上抬起的回调函数                                                 | `((e: Event) => void)`      |
-| mouseout        | 鼠标指针移出该覆盖物事件的回调函数                                                 | `((e: Event) => void)`      |
-| mouseover       | 鼠标指针移入该覆盖物事件的回调函数                                                 | `((e: Event) => void)`      |
-| remove          | 该覆盖物被移除的回调函数                                                           | `((e: Event) => void)`      |
-| infowindowclose | infowindow 关闭事件的回调函数                                                      | `((e: Event) => void)`      |
-| infowindowopen  | infowindow 打开事件的回调函数                                                      | `((e: Event) => void)`      |
-| dragstart       | 拖拽覆盖物开始事件的回调函数                                                       | `((e: Event) => void)`      |
-| dragging        | 覆盖物拖拽中事件的回调函数                                                         | `((e: Event) => void)`      |
-| dragend         | 拖拽覆盖物结束事件的回调函数                                                       | `((e: Event) => void)`      |
-| rightclick      | 鼠标右键单击事件的回调函数                                                         | `((e: Event) => void)`      |
+v3 子组件没有 `initd/unload` 事件；以下为 `BMarker` 实际发出的 typed emits：
+
+| 事件名           | 说明                                                                               | 类型                   |
+| ---------------- | ---------------------------------------------------------------------------------- | ---------------------- |
+| click            | 鼠标左键单击事件的回调函数。当双击时，产生的事件序列为：click -> click -> dblclick | `((e: unknown) => void)` |
+| dblclick         | 鼠标左键双击事件的回调函数                                                         | `((e: unknown) => void)` |
+| rightclick       | 鼠标右键单击事件的回调函数                                                         | `((e: unknown) => void)` |
+| mousedown        | 鼠标左键在该覆盖物上按下的回调函数                                                 | `((e: unknown) => void)` |
+| mouseup          | 鼠标左键在该覆盖物上抬起的回调函数                                                 | `((e: unknown) => void)` |
+| mouseout         | 鼠标指针移出该覆盖物事件的回调函数                                                 | `((e: unknown) => void)` |
+| mouseover        | 鼠标指针移入该覆盖物事件的回调函数                                                 | `((e: unknown) => void)` |
+| remove           | 该覆盖物被移除的回调函数                                                           | `((e: unknown) => void)` |
+| dragstart        | 拖拽覆盖物开始事件的回调函数                                                       | `((e: unknown) => void)` |
+| dragging         | 覆盖物拖拽中事件的回调函数                                                         | `((e: unknown) => void)` |
+| dragend          | 拖拽覆盖物结束事件的回调函数                                                       | `((e: unknown) => void)` |
+| drag-end         | `dragend` 的别名（同时触发）                                                       | `((e: unknown) => void)` |
+| update:position  | 拖拽结束回写位置                                                                   | `({ lng, lat })`       |
 
 ## v3 生命周期与更新行为
 

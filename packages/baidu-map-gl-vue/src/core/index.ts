@@ -3,7 +3,8 @@ export type { BMapErrorCode, BMapErrorOptions } from "./errors/BMapError";
 export { logger, redactAk, setAkForLogger } from "./logger";
 export type { Logger } from "./logger";
 export { ResourceScope } from "./lifecycle/ResourceScope";
-export type { Disposer } from "./lifecycle/ResourceScope";
+export type { Disposer, DisposeContext, ResourceScopeOptions } from "./lifecycle/ResourceScope";
+export { useResourceScope } from "./lifecycle/useResourceScope";
 export { createFrameScheduler } from "./scheduler/FrameScheduler";
 export type { FrameScheduler } from "./scheduler/FrameScheduler";
 export {
@@ -34,6 +35,13 @@ export { MapRuntime } from "./runtime/MapRuntime";
 export type { MapRuntimeOptions } from "./runtime/MapRuntime";
 export { useMapResource } from "./composables/useMapResource";
 export type { SdkResourceAdapter, UseMapResourceResult } from "./composables/useMapResource";
+export { useSdkResource } from "./composables/useSdkResource";
+export type {
+  SdkResourceSpec,
+  SdkResourceStatus,
+  UseSdkResourceOptions,
+  UseSdkResourceResult as UseUnifiedSdkResourceResult,
+} from "./composables/useSdkResource";
 export { useControlResource, buildControlOptions } from "./composables/useControlResource";
 export type {
   ControlResourceAdapter,
@@ -46,9 +54,20 @@ export type {
   MapReadyContext,
   MapRuntimeShape,
   MapRuntimeStatus,
+  MapStatus,
 } from "./context/types";
 export { mapContextKey, overlayContextKey } from "./context/types";
 export { useOptionalMapContext, useRequiredMapContext } from "./context/inject";
+export { targetContextKey, createStaticTarget, useResolvedTarget, useOptionalTargetContext, useParentOverlayHandle } from "./context/target";
+export type { TargetContext, TargetKind } from "./context/target";
+export {
+  bmapClientContextKey,
+  createClientContext,
+  defaultClientDefinitionKey,
+  useOptionalClientContext,
+  useRequiredClientContext,
+} from "./context/client";
+export type { BMapClientContext, ClientStatus, CreateClientContextOptions } from "./context/client";
 export { diffData, getItemKey, shouldFullReplace } from "./data/diffData";
 export type { DataDiff, ItemKeyFn } from "./data/diffData";
 export { gridCluster } from "./data/gridCluster";

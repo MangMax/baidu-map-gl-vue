@@ -5,7 +5,7 @@
         <BMarker :position="point"></BMarker>
         <BLabel
           :position="point"
-          style="color: #333; font-size: 9px"
+          :style="{ color: '#333', fontSize: '9px' }"
           content="转换后的百度标注（正确）"
         ></BLabel>
       </template>
@@ -13,7 +13,7 @@
     <BMarker :position="googlePoint"></BMarker>
     <BLabel
       :position="googlePoint"
-      style="color: #333; font-size: 9px"
+      :style="{ color: '#333', fontSize: '9px' }"
       content="未转换的谷歌标注（错误）"
     ></BLabel>
   </BMap>

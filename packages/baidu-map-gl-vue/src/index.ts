@@ -37,8 +37,33 @@ export type {
   BPolylineProps,
 } from "./types/components";
 // core 领域类型(供业务使用)
-export type { MapContext, MapReadyContext, MapRuntimeStatus } from "./core/context/types";
+export type { MapContext, MapReadyContext, MapRuntimeStatus, MapStatus } from "./core/context/types";
 export { useBMapContext, useMapReady, useBMap } from "./composables/useBMap";
+// Client Context(服务类 composable 默认依赖,无需 Map 即可使用)
+export {
+  bmapClientContextKey,
+  createClientContext,
+  defaultClientDefinitionKey,
+  useOptionalClientContext,
+  useRequiredClientContext,
+} from "./core/context/client";
+export type { BMapClientContext, ClientStatus } from "./core/context/client";
+// Target Context(嵌套挂载目标)
+export {
+  targetContextKey,
+  createStaticTarget,
+  useResolvedTarget,
+  useOptionalTargetContext,
+  useParentOverlayHandle,
+} from "./core/context/target";
+export type { TargetContext, TargetKind } from "./core/context/target";
+// 统一资源生命周期
+export { useSdkResource } from "./core/composables/useSdkResource";
+export type { SdkResourceSpec, SdkResourceStatus } from "./core/composables/useSdkResource";
+export { useResourceScope } from "./core/lifecycle/useResourceScope";
+export { ResourceScope } from "./core/lifecycle/ResourceScope";
+export type { Disposer, DisposeContext, ResourceScopeOptions } from "./core/lifecycle/ResourceScope";
+export type { BMapProviderProps } from "./components/provider/BMapProvider.vue";
 
 // Client/Driver 领域类型(稳定公开,raw SDK 只在 ./advanced)
 export { createBMapClientDefinition } from "./client";

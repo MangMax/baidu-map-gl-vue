@@ -25,10 +25,11 @@ autoComplete/index
 
 ## 组件事件
 
-| 事件名         | 说明                                                    | 类型                        |
-| -------------- | ------------------------------------------------------- | --------------------------- |
-| initd          | 组件初始化后，调用的方法，返回一个地图实例              | `{ map, BmapGL, instance }` |
-| unload         | 组件卸载时会调用此方法                                  | -                           |
-| searchComplete | 在 input 框中输入字符后，发起列表检索，完成后的回调函数 | ((e: Event) => void)        |
-| highlight      | 键盘或者鼠标移动，某条记录高亮之后                      | ((e: Event) => void)        |
-| confirm        | 鼠标点击或回车选中某条记录后触发                        | ((e: Event) => void)        |
+v3 子组件没有 `initd/unload` 事件。如需地图实例，请在 `<BMap>` 子树内用 `useBMap()` + `whenReady()`。
+
+| 事件名 | 说明 | 类型 |
+| --- | --- | --- |
+| searchComplete | 输入字符发起列表检索完成后触发 | `(e: unknown) => void` |
+| highlight | 键盘或鼠标移动使某条记录高亮后触发 | `(e: unknown) => void` |
+| confirm | 鼠标点击或回车选中某条记录后触发 | `(e: unknown) => void` |
+

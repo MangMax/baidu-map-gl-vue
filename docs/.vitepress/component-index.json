@@ -1,7 +1,8 @@
 {
   "version": "3.0.0-beta.0",
-  "generatedAt": "2026-09-08T08:00:15.187Z",
+  "generatedAt": "2026-09-09T07:10:49.232Z",
   "components": [
+    "BMapProvider",
     "BMap",
     "BMarker",
     "BInfoWindow",

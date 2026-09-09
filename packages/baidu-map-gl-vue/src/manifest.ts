@@ -7,6 +7,12 @@
  * - resolver 合法组件列表
  */
 export const componentManifest = [
+  {
+    name: "BMapProvider",
+    exportName: "BMapProvider",
+    category: "core",
+    source: "./components/provider/BMapProvider.vue",
+  },
   { name: "BMap", exportName: "BMap", category: "core", source: "./components/map/BMap.vue" },
   {
     name: "BMarker",

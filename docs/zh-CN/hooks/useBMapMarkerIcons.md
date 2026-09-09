@@ -32,18 +32,32 @@ const icons = useBMapMarkerIcons(client) // client 可在 ready 事件或 useBMa
 
 ## 代码示例
 
+composable 必须在 `setup` 内调用（内部使用 `inject`）。在 `<BMap>` 子树内可省略参数，
+否则请在 `ready` 载荷中拿到 `client` 后显式传入：
+
 ```vue
 <template>
-  <Map @initd="handleInitd"></Map>
+  <BMap @ready="handleReady">
+    <IconUser />
+  </BMap>
 </template>
 
 <script setup lang="ts">
-  import { useBMapMarkerIcons } from 'baidu-map-gl-vue'
+import { BMap, useBMapMarkerIcons, type BMapClient } from 'baidu-map-gl-vue'
+import { defineComponent, h } from 'vue'
 
-  function handleInitd() {
+// 子树内调用：省略参数
+const IconUser = defineComponent({
+  setup() {
     const icons = useBMapMarkerIcons()
-    // ...
+    return () => h('div')
   }
+})
+
+function handleReady({ client }: { client: BMapClient }) {
+  const icons = useBMapMarkerIcons(client)
+  // ...
+}
 </script>
 ```
 

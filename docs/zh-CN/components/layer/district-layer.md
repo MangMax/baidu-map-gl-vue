@@ -41,9 +41,11 @@ layer/districtLayer
 
 ## 组件事件
 
-| 事件名    | 说明                                       | 类型                        |
-| --------- | ------------------------------------------ | --------------------------- |
-| initd     | 组件初始化后，调用的方法，返回一个地图实例 | `{ map, BmapGL, instance }` |
-| unload    | 组件卸载时会调用此方法                     | -                           |
-| mouseover | 鼠标移入行政区域时触发此事件               | `{type, target}`            |
-| mouseout  | 鼠标移出行政区域时触发此事件               | `{type, target}`            |
+v3 子组件没有 `initd/unload` 事件。如需地图实例，请在 `<BMap>` 子树内用 `useBMap()` + `whenReady()`。
+
+| 事件名 | 说明 | 类型 |
+| --- | --- | --- |
+| click | 鼠标左键单击行政区域时触发 | `(e: unknown) => void` |
+| mouseover | 鼠标移入行政区域时触发 | `(e: unknown) => void` |
+| mouseout | 鼠标移出行政区域时触发 | `(e: unknown) => void` |
+

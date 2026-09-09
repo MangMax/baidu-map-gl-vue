@@ -9,6 +9,9 @@ import type { App } from "vue";
 import { baiduCdnProvider, type BMapProvider } from "../core/loader/Provider";
 import type { BMapLoadOptions } from "../core/loader/url";
 import { bmapConfigKey, type BMapPluginConfig } from "../core/context/pluginConfig";
+import { defaultClientDefinitionKey } from "../core/context/client";
+import type { CreateBMapClientOptions } from "../client/types";
+import BMapProviderComponent from "../components/provider/BMapProvider.vue";
 import BMap from "../components/map/BMap.vue";
 import BMarker from "../components/overlays/BMarker.vue";
 import BInfoWindow from "../components/overlays/BInfoWindow.vue";
@@ -43,10 +46,14 @@ export interface CreateBMapPluginOptions {
   version?: string;
   plugins?: string[];
   defaults?: Partial<BMapLoadOptions>;
+  /** 显式 opt-in 才允许读取 window.BMapGL(默认走 CDN);向后兼容保留 */
+  allowExistingGlobal?: boolean;
+  client?: CreateBMapClientOptions;
 }
 
 export { bmapConfigKey } from "../core/context/pluginConfig";
 export type { BMapPluginConfig } from "../core/context/pluginConfig";
+export { defaultClientDefinitionKey } from "../core/context/client";
 
 export function createBMapPlugin(options: CreateBMapPluginOptions = {}) {
   const provider = options.provider ?? baiduCdnProvider();
@@ -57,10 +64,16 @@ export function createBMapPlugin(options: CreateBMapPluginOptions = {}) {
     ...options.defaults,
   };
   const config: BMapPluginConfig = { provider, defaults };
+  const clientDefinition: CreateBMapClientOptions = options.client ?? {
+    provider,
+    loadOptions: defaults,
+  };
 
   return {
     install(app: App) {
       app.provide(bmapConfigKey, config);
+      // 新规范:app.use 只提供默认 Client Definition,可被 <BMapProvider> 覆盖
+      app.provide(defaultClientDefinitionKey, clientDefinition);
       // 注册全局组件(与 v2 app.use 行为保持兼容)
       for (const component of installableComponents) {
         if (!component) continue;
@@ -80,6 +93,7 @@ export function createBMapPlugin(options: CreateBMapPluginOptions = {}) {
 
 /** v3 组件清单:用于 app.use 全局注册 */
 const installableComponents = [
+  BMapProviderComponent,
   BMap,
   BMarker,
   BInfoWindow,

@@ -22,8 +22,18 @@ export interface FrameScheduler {
 }
 
 export function createFrameScheduler(
-  raf: (cb: FrameRequestCallback) => number = requestAnimationFrame,
+  raf?: (cb: FrameRequestCallback) => number,
 ): FrameScheduler {
+  // SSR-safe:服务端无 requestAnimationFrame 时降级为 setTimeout(调用时判断,不在模块顶层访问 window)
+  const requestFrame: (cb: FrameRequestCallback) => number =
+    raf ??
+    (typeof requestAnimationFrame === "function"
+      ? requestAnimationFrame
+      : ((cb) => setTimeout(() => cb(Date.now()), 16) as unknown as number));
+  const cancelFrame: (id: number) => void =
+    typeof cancelAnimationFrame === "function"
+      ? cancelAnimationFrame
+      : ((id) => clearTimeout(id));
   const pending = new Map<PropertyKey, () => void>();
   let frameId: number | null = null;
   let disposed = false;
@@ -47,18 +57,18 @@ export function createFrameScheduler(
       if (disposed) return;
       pending.set(key, task);
       if (frameId === null) {
-        frameId = raf(runFrame);
+        frameId = requestFrame(runFrame);
       }
     },
     cancel(key) {
       if (pending.delete(key) && pending.size === 0 && frameId !== null) {
-        cancelAnimationFrame(frameId);
+        cancelFrame(frameId);
         frameId = null;
       }
     },
     flush() {
       if (frameId !== null) {
-        cancelAnimationFrame(frameId);
+        cancelFrame(frameId);
         frameId = null;
       }
       runFrame();
@@ -67,7 +77,7 @@ export function createFrameScheduler(
       disposed = true;
       pending.clear();
       if (frameId !== null) {
-        cancelAnimationFrame(frameId);
+        cancelFrame(frameId);
         frameId = null;
       }
     },

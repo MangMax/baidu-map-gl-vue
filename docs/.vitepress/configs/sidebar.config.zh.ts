@@ -48,6 +48,10 @@ export const sidebarConfigZh: DefaultTheme.Sidebar = {
           text: "BMap 地图",
           link: "/zh-CN/components/map",
         },
+        {
+          text: "BMapProvider 上下文",
+          link: "/zh-CN/components/provider",
+        },
       ],
     },
     {

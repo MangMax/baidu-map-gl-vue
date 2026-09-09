@@ -10,6 +10,53 @@
  * - 卸载时取消 pending task；scope dispose 后不回写任何 ref
  */
 import { shallowRef, onScopeDispose, type ShallowRef } from "vue";
+import { BMapError } from "../core/errors/BMapError";
+
+/** 百度 callback 风格服务默认超时:SDK 失败时可能永不回掉,超时后转为明确错误 */
+export const SERVICE_TIMEOUT_MS = 15000;
+
+/**
+ * 把 callback 风格的 SDK 调用包装为 Promise,附带超时保护。
+ * settle 后清除 timer,避免泄漏;超时错误码为 BMAP_SERVICE_FAILED。
+ */
+export function withServiceTimeout<T>(
+  start: (done: (value: T) => void, fail: (err: unknown) => void) => void,
+  ms = SERVICE_TIMEOUT_MS,
+  label = "service",
+): Promise<T> {
+  let timer: ReturnType<typeof setTimeout> | null = null;
+  return new Promise<T>((resolve, reject) => {
+    let settled = false;
+    const clear = () => {
+      if (timer) clearTimeout(timer);
+      timer = null;
+    };
+    timer = setTimeout(() => {
+      if (settled) return;
+      settled = true;
+      timer = null;
+      reject(new BMapError("BMAP_SERVICE_FAILED", `${label} timed out after ${ms}ms`));
+    }, ms);
+    // setTimeout 返回值在测试 fake 计时器下也应可清理,此处不 unref 以兼容浏览器
+    const done = (value: T) => {
+      if (settled) return;
+      settled = true;
+      clear();
+      resolve(value);
+    };
+    const fail = (err: unknown) => {
+      if (settled) return;
+      settled = true;
+      clear();
+      reject(err);
+    };
+    try {
+      start(done, fail);
+    } catch (err) {
+      fail(err);
+    }
+  });
+}
 
 export interface AsyncTaskState<Result> {
   data: ShallowRef<Result | null>;

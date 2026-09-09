@@ -15,10 +15,11 @@ lang: zh-CN
 
 ```ts
 import { createApp } from 'vue'
-import Vue3BaiduMapGL from 'baidu-map-gl-vue'
+import { createBMapPlugin } from 'baidu-map-gl-vue'
 
 const app = createApp(App)
-app.use(Vue3BaiduMapGL)
+// 全局提供默认 Client 定义（ak 等），子树可被 <BMapProvider> 覆盖
+app.use(createBMapPlugin({ ak: '百度地图ak' }))
 ```
 
 #### Volar 支持 <Badge type="tip" text="^0.0.21" />
@@ -42,7 +43,8 @@ Vue3 BaiduMap GL 提供了基于 ES Module 开箱即用的 Tree Shaking 功能�
 <!-- prettier-ignore -->
 ```vue
 <template>
-  <BMap>
+  <!-- ak 可直接写在 BMap 上；也可由全局 createBMapPlugin 或上层 <BMapProvider> 提供 -->
+  <BMap ak="百度地图ak">
     <BZoom />
     <!-- ... -->
   </BMap>
@@ -52,6 +54,10 @@ Vue3 BaiduMap GL 提供了基于 ES Module 开箱即用的 Tree Shaking 功能�
   import { BMap, BZoom } from 'baidu-map-gl-vue'
 </script>
 ```
+
+::: tip Client 查找顺序
+`<BMap>` 按以下顺序解析 SDK Client：显式 `client` prop > 显式 `definition` > 显式 `provider/ak` > 最近的 `<BMapProvider>` > `app.use(createBMapPlugin(...))` 默认定义。无任何定义时将报错，请至少提供一种。
+:::
 
 ## 申请 ak 密钥
 

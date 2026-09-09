@@ -50,6 +50,12 @@ const { get, getBatch, result, isLoading, isEmpty } = useBMapGeocodeDetail(map)
 该 hooks 需要地图 ready 后才能执行解析；在 `<BMap>` 子树内调用时可省略 `map` 参数
 :::
 
+::: warning AK 域名白名单
+逆地址解析走百度服务端接口，受 AK 的 Referer 白名单限制：若当前页面域名不在白名单内，
+接口将返回空结果（表现为 `isEmpty`，无错误抛出）。本地开发遇到空结果时，请先到百度地图
+开放平台检查该 AK 的 Referer 白名单是否包含当前域名。
+:::
+
 ### 参数
 
 | 参数 | 描述                                         | 类型      | 默认值 |

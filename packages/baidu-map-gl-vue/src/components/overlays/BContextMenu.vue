@@ -1,8 +1,8 @@
 <script setup lang="ts">
-import { onMounted, onUnmounted, watch, inject } from "vue";
+import { onMounted, onUnmounted, watch } from "vue";
 import { useRequiredMapContext } from "../../core/context/inject";
 import { ResourceScope } from "../../core/lifecycle/ResourceScope";
-import { overlayContextKey } from "../../core/context/types";
+import { useParentOverlayHandle } from "../../core/context/target";
 import type { MapReadyContext } from "../../core/context/types";
 import type { OverlayHandle, SdkHandle } from "../../driver/types/handles";
 import type { BMapClient } from "../../client/types";
@@ -41,9 +41,10 @@ const emit = defineEmits<{
 }>();
 
 const ctx = useRequiredMapContext();
-const scope = new ResourceScope();
-// 最近父 Overlay 实例(从中注入;不在 overlay 下则为 null)
-const parentOverlay = inject(overlayContextKey, null) as (() => unknown) | null;
+const scope = new ResourceScope({ label: "context-menu" });
+// 最近父 Overlay 实例(优先 TargetContext,其次兼容旧 overlayContextKey;不在 overlay 下则为 null)
+// shallowRef 响应父 Marker 晚于自身就绪,watch immediate 自动原子挂载
+const parentOverlay = useParentOverlayHandle();
 
 let contextMenu: OverlayHandle | null = null;
 let currentTarget: SdkHandle<string> | null = null;
@@ -62,8 +63,15 @@ function buildMenu(client: BMapClient) {
       {
         text: i.text,
         callback: (point, pixel) => {
+          // point 解析失败（如 SDK 回调携带空点）不得阻断菜单动作本身
+          let normPoint: { lng: number; lat: number } | undefined;
+          try {
+            normPoint = client.driver.geometry.fromRawPoint(point);
+          } catch {
+            normPoint = undefined;
+          }
           i.callback({
-            point: client.driver.geometry.fromRawPoint(point),
+            point: normPoint,
             pixel: pixel ? client.driver.geometry.fromRawPixel(pixel) : undefined,
             map: ctx.map.value,
             target: currentTarget,
@@ -147,7 +155,7 @@ onMounted(async () => {
   bindMenuOpenClose(contextMenu);
   let disposeWatch: (() => void) | null = null;
   disposeWatch = watch(
-    () => (parentOverlay ? (parentOverlay() as SdkHandle<string> | null) : null),
+    () => parentOverlay.value,
     (overlay) => {
       if (scope.isDisposed) return;
       const next = overlay ?? (ready.map as SdkHandle<string>);

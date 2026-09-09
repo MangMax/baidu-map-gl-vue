@@ -10,7 +10,7 @@
         <template v-for="(item, index) in points">
           <BMarker :position="item"></BMarker>
           <BLabel
-            style="color: #333; font-size: 9px"
+            :style="{ color: '#333', fontSize: '9px' }"
             :position="item"
             :content="addressList[index]"
           ></BLabel>

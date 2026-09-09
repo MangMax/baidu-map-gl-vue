@@ -60,3 +60,8 @@ window.BMapGL.apiLoad = function () {
   </BMap>
 </template>
 ```
+
+::: tip v3 推荐写法
+`apiUrl` prop 仍可用；更明确的方式是用 `customScriptProvider(scriptSrc)` 构造 Provider，
+经 `createBMapPlugin({ provider })` 或 Client 定义传入，见[配置](../guide/config#更换插件资源链接)。
+:::

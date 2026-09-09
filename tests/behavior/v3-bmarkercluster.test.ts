@@ -40,6 +40,9 @@ function mountCluster(data: ref<readonly Pt[]>) {
               'item-key': 'id',
               getPosition: (i: Pt) => ({ lng: i.lng, lat: i.lat }),
               minClusterSize: 3,
+              // 显式聚合 zoom:Runtime 在 ready 前已完成 initializeView,
+              // 不依赖 map zoom 读取时序,避免 ready 竞态导致聚合结果漂移
+              zoom: 8,
             }),
           ])
       },

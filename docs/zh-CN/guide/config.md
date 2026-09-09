@@ -5,45 +5,84 @@ lang: zh-CN
 
 # 配置
 
-本章节将为你讲述如何配置 ak、apiUrl 与插件以及更换资源链接，并实现一个自定义插件
+本章节将为你讲述如何配置 ak、apiUrl 与插件。v3 通过 Client 定义表达 SDK 加载，
+只有 `app.use()`（默认定义）、`<BMapProvider>`（子树覆盖）与 `<BMap>` 自身 props 三处入口。
+
+## Client 查找顺序
+
+`<BMap>` 按以下顺序解析 SDK Client，命中即停：
+
+1. 显式 `client` prop（已创建好的 `BMapClient`）
+2. 显式 `definition` prop（`createBMapClientDefinition({ provider, loadOptions })`）
+3. 显式 `provider/ak/apiUrl` props（就地组装定义）
+4. 最近的 `<BMapProvider>` 提供的 Client 上下文
+5. `app.use(createBMapPlugin(...))` 提供的默认定义
+6. 否则报错（默认不再静默读取 `window.BMapGL`；离线/存量全局场景请显式使用 `existingGlobalProvider()` 或 `allowExistingGlobal`）
+
+服务类 hooks（如 `useBMapGeocoder`）只需要 Client，可在 `<BMap>` 或 `<BMapProvider>` 子树内直接使用，无需地图实例。
 
 ## 配置方式
 
-目前支持两种方式，全局配置和组件 props 传入
-::: tip
-如果你是**全局注册**使用方式，那么 `ak`、`apiUrl`、`plugins` 和 `pluginsSourceLink` 都支持两种来源 (全局注册配置和组件 `props` 提供)，当同时指定的时候，会优先就近原则，从组件 `props` 中获取。如果全局注册配置和组件 `props` 都提供了，则会尝试合并两个配置。
-
-如果你是**按需加载**使用方式，则只支持组件 `props` 方式
-:::
+目前支持三种方式：全局 `app.use` 默认定义、`<BMapProvider>` 子树覆盖、组件 props 传入。
+当同时指定时，按上面的查找顺序，就近优先。
 
 ### 1。通过全局注册配置 ak 与插件
 
-全局注册 Options
+全局注册 Options（`createBMapPlugin`）：
 
-| 属性              | 说明                                             | 类型                              | 可选值 | 默认值 | 版本                               |
-| ----------------- | ------------------------------------------------ | --------------------------------- | ------ | ------ | ---------------------------------- |
-| ak                | 百度地图 [ak](../guide/quick-start#申请-ak-密钥) | `string`                          | -      | -      | -                                  |
-| apiUrl            | 自建地图 api 资源地址（一般用于离线地图）        | `string`                          | -      | -      | <Badge type="tip" text="^2.3.0" /> |
-| plugins           | 需要注册的插件                                   | [`PluginId[]`](#扩展插件-plugins) | -      | -      | -                                  |
-| pluginsSourceLink | [自定义插件资源地址](#更换插件资源链接)          | `Record<PluginId, string>`        | -      | -      | -                                  |
+| 属性               | 说明                                             | 类型               | 默认值 |
+| ------------------ | ------------------------------------------------ | ------------------ | ------ |
+| ak                 | 百度地图 [ak](../guide/quick-start#申请-ak-密钥) | `string`           | -      |
+| apiUrl             | 自建地图 api 资源地址（一般用于离线地图）        | `string`           | -      |
+| version            | SDK 版本                                         | `string`           | `1.0`  |
+| provider           | 自定义加载器（默认百度 CDN）                     | `BMapProvider`     | -      |
+| plugins            | 需要注册的插件                                   | `string[]`         | -      |
+| defaults           | 透传的加载选项                                   | `BMapLoadOptions`  | -      |
+| allowExistingGlobal| 显式允许复用已存在的全局 `BMapGL`                | `boolean`          | -      |
+| client             | 完整自定义 Client 定义（覆盖以上组装）           | `CreateBMapClientOptions` | - |
 
-```ts{7,8}
+```ts
 import { createApp } from 'vue'
 import App from './App.vue'
-import baiduMap from 'baidu-map-gl-vue'
+import { createBMapPlugin } from 'baidu-map-gl-vue'
 
 const app = createApp(App)
-app.use(baiduMap, {
+app.use(createBMapPlugin({
   ak: '百度地图ak',
   plugins: ['TrackAnimation']
-})
+}))
 app.mount('#app')
 ```
 
-### 2。组件 `BMap` 传入 [`props`](/zh-CN/components/map#%E9%9D%99%E6%80%81%E7%BB%84%E4%BB%B6-props) 配置
+### 2。用 `<BMapProvider>` 覆盖子树默认
+
+```vue
+<template>
+  <BMapProvider :definition="definition" @ready="onReady" @error="onError">
+    <template #loading>SDK 加载中…</template>
+    <template #error="{ error, retry }">
+      <button @click="retry">加载失败：{{ error.message }}，点击重试</button>
+    </template>
+    <RouterView />
+  </BMapProvider>
+</template>
+
+<script setup lang="ts">
+import { BMapProvider, baiduCdnProvider } from 'baidu-map-gl-vue'
+
+const definition = {
+  provider: baiduCdnProvider(),
+  loadOptions: { ak: '百度地图ak' }
+}
+function onReady() {}
+function onError() {}
+</script>
+```
+
+### 3。组件 `BMap` 传入 [`props`](/zh-CN/components/map#%E9%9D%99%E6%80%81%E7%BB%84%E4%BB%B6-props) 配置
 
 <!-- prettier-ignore -->
-```html{2,3}
+```html
 <BMap
   ak='百度地图ak'
   :plugins="['TrackAnimation']"
@@ -52,7 +91,7 @@ app.mount('#app')
 
 ## 扩展插件 plugins
 
-配置插件后，地图实例 ready 不会等待插件加载。请通过 [BMap 组件的 `plugin-ready` 事件](../components/map#v3-行为说明) 获取单个已加载插件的名称；插件加载失败通过 `plugin-error` 处理。旧的 `pluginReady` 事件仍可作为兼容事件使用。
+配置插件后，地图实例 ready 不会等待插件加载。请通过 [BMap 组件的 `plugin-ready` 事件](../components/map#v3-行为说明) 获取单个已加载插件的名称（载荷即插件名字符串）；插件加载失败通过 `plugin-error` 处理。v2 的 `pluginReady` 事件在 v3 已移除，请改用 kebab 写法 `@plugin-ready`。
 
 | PluginId                                                                                 | 插件名称         | 描述                                                                               | 版本                               |
 | ---------------------------------------------------------------------------------------- | ---------------- | ---------------------------------------------------------------------------------- | ---------------------------------- |
@@ -68,63 +107,31 @@ app.mount('#app')
 
 ### 更换插件资源链接
 
-如果需要自建或其他地址的资源链接，则可以通过该方式自定义。同样，该方式也支持两种形式：
-
-```ts{3-6}
-// ...
-app.use(baiduMap, {
-  plugins: ['TrackAnimation'],
-  pluginsSourceLink: {
-    TrackAnimation: '自建或其他地址的资源链接'
-  }
-})
-// ...
-```
-
-或者
-
-<!-- prettier-ignore -->
-```html{2-5}
-<BMap
-  :plugins=['TrackAnimation']
-  :pluginsSourceLink="{
-    TrackAnimation: '自建或其他地址的资源链接'
-  }"
-/>
-```
-
-### 自定义资源加载插件
-
-除了提供的插件外，你还可以通过自定义插件扩展，自定义的插件将在地图加载完毕后执行与处理。
-
-自定义的方式也很简单，你只需定义一个返回 `Promise` 的函数即可
+如果需要自建或其他地址的资源链接，请使用 `customScriptProvider(scriptSrc)` 构造 Provider，
+再经 `createBMapPlugin({ provider })` 或 Client 定义传入：
 
 ```ts
-const customPlugin = () => {
-  return new Promise((resolve) => {
-    console.log('自定义插件')
-    // 加载相关资源
-    // 加载完成后可 resolve 一个对象, 插件名和插件所导出的类, 便于通过 pluginRead 更好的访问
-    resolve({
-      // [pluginName]: pluginClass
-    })
-  })
-}
+import { createBMapPlugin, customScriptProvider } from 'baidu-map-gl-vue'
+
+app.use(createBMapPlugin({
+  provider: customScriptProvider('https://self.hosted/bmapgl.js'),
+  defaults: { ak: '百度地图ak' }
+}))
 ```
 
-使用的方式同样也有两种：
-
-```ts
-// ...
-app.use(baiduMap, {
-  plugins: [customPlugin]
-})
-// ...
-```
-
-或者
+同样支持组件级覆盖：
 
 <!-- prettier-ignore -->
 ```html
-<BMap :plugins="[customPlugin]" />
+<BMap
+  :plugins="['TrackAnimation']"
+  apiUrl="https://self.hosted/bmapgl.js"
+/>
 ```
+
+### 自定义插件定义
+
+除了内置插件（`TrackAnimation` / `Mapvgl` / `DrawingManager`，经 `plugins: ['xxx']` 声明），
+你还可以通过插件定义扩展。插件定义 shape 见 `BMapPluginDefinition`（`name/scope/dependencies/required/load/setup/dispose`），
+用 `urlPluginDefinition` 或 `stringToPluginDefinitions` 构造，并在需要地图的组件内经 PluginRegistry 注册。
+插件加载结果通过 `plugin-ready` / `plugin-error` 事件回执。

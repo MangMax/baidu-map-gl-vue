@@ -5,6 +5,7 @@
  * 避免全局 BMapGL 依赖与模块级 icon 缓存)。
  */
 import { useOptionalMapContext } from "../core/context/inject";
+import { useOptionalClientContext } from "../core/context/client";
 
 export type MarkerIconName =
   | "simple_red"
@@ -76,7 +77,11 @@ const ICON_MAP: Record<MarkerIconName, [number, number, number, number]> = {
 export function useBMapMarkerIcons(
   client?: import("../client/types").BMapClient,
 ): Record<string, unknown> {
-  const resolved = client ?? useOptionalMapContext()?.client.value ?? undefined;
+  const resolved =
+    client ??
+    useOptionalMapContext()?.client.value ??
+    useOptionalClientContext()?.client.value ??
+    undefined;
   if (!resolved) {
     throw new Error(
       "BMap client is not ready. Call useBMapMarkerIcons(client) after map ready.",

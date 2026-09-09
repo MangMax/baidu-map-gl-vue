@@ -36,9 +36,10 @@ control/location
 
 ## 组件事件
 
-| 事件名          | 说明                                       | 类型                        | 版本                                |
-| --------------- | ------------------------------------------ | --------------------------- | ----------------------------------- |
-| initd           | 组件初始化后，调用的方法，返回一个地图实例 | `{ map, BmapGL, instance }` | -                                   |
-| unload          | 组件卸载时会调用此方法                     | -                           | -                                   |
-| locationSuccess | 定位成功时会调用此方法                     | `{Event}`                   | <Badge type="tip" text="^0.0.39" /> |
-| locationError   | 定位失败时会调用此方法                     | `{Event}`                   | <Badge type="tip" text="^0.0.39" /> |
+v3 子组件没有 `initd/unload` 事件。如需地图实例，请在 `<BMap>` 子树内用 `useBMap()` + `whenReady()`。
+
+| 事件名 | 说明 | 类型 |
+| --- | --- | --- |
+| locationSuccess | 定位成功时触发 | `(e: unknown) => void` |
+| locationError | 定位失败时触发 | `(e: unknown) => void` |
+
