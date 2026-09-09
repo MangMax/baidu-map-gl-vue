@@ -1,7 +1,7 @@
 /**
- * M2-08: SDK URL 构造(在线 Provider 的一部分)
+ * SDK URL 构造(在线 Provider 的一部分)
  *
- * 使用 URL API 构造参数,不再手工拼 `&callback=`(方案 §8.2)。
+ * 使用 URL API 构造参数,不再手工拼 `&callback=`。
  */
 
 export type BMapLoadOptions = {
@@ -35,7 +35,7 @@ export function resolveBrowserUrl(input: string): URL {
   return new URL(input, base);
 }
 
-/** 离线/私有 apiUrl 兼容:保留 callBack 追加(方案 §8.4 保留简单 apiUrl 兼容层) */
+/** 离线/私有 apiUrl 兼容:保留 callBack 追加 */
 export function appendCallback(url: string, callbackName: string): string {
   const u = resolveBrowserUrl(url);
   u.searchParams.set("callback", callbackName);

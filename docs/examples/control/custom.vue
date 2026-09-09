@@ -9,16 +9,19 @@
 
 <script setup lang="ts">
 import { ref } from "vue";
+import type { BMapClient, MapHandle } from "baidu-map-gl-vue";
 const zoom = ref(10);
-let _map: { getZoom(): number } | null = null;
-function handleInitd({ map }: { map: { getZoom(): number } }) {
+let _client: BMapClient | null = null;
+let _map: MapHandle | null = null;
+function handleInitd({ client, map }: { client: BMapClient; map: MapHandle }) {
+  _client = client;
   _map = map;
 }
 function handleZoomOut() {
-  if (_map) zoom.value = _map.getZoom() - 1;
+  if (_client && _map) zoom.value = _client.driver.map.getZoom(_map) - 1;
 }
 function handleZoomIn() {
-  if (_map) zoom.value = _map.getZoom() + 1;
+  if (_client && _map) zoom.value = _client.driver.map.getZoom(_map) + 1;
 }
 </script>
 

@@ -1,9 +1,10 @@
 /**
- * useBMapMarkerIcons —— 内置默认图标(方案 §13.2)
+ * useBMapMarkerIcons —— 内置默认图标
  *
- * 提供 BMapGL 官方默认 marker 图标集(经 map context ready 后创建,
+ * 提供 BMapGL 官方默认 marker 图标集(经 client.driver 构建,
  * 避免全局 BMapGL 依赖与模块级 icon 缓存)。
  */
+import { useOptionalMapContext } from "../core/context/inject";
 
 export type MarkerIconName =
   | "simple_red"
@@ -35,11 +36,6 @@ export type MarkerIconName =
   | "blue10";
 
 const DEFAULT_ICON_URL = "https://mapopen.bj.bcebos.com/cms/react-bmap/markers_new2x_fbb9e99.png";
-
-type IconCtor = {
-  Icon: new (url: string, size: unknown, opts?: Record<string, unknown>) => unknown;
-  Size: new (w: number, h: number) => unknown;
-};
 
 /** 图标布局(雪碧图 offset):name → [offsetX, offsetY, width, height] */
 const ICON_MAP: Record<MarkerIconName, [number, number, number, number]> = {
@@ -74,20 +70,25 @@ const ICON_MAP: Record<MarkerIconName, [number, number, number, number]> = {
 
 /**
  * 构建默认图标集合。
- * @param api SDK namespace(经 map context ready 获取)
+ * @param client BMapClient(经 map context ready 获取)
  * @returns 名称 → Icon 实例
  */
-export function useBMapMarkerIcons(api?: unknown): Record<string, unknown> {
-  const sdkApi =
-    api ??
-    (typeof window !== "undefined" ? (window as unknown as Record<string, unknown>).BMapGL : undefined);
-  if (!sdkApi) throw new Error("BMapGL is not ready. Call useBMapMarkerIcons after map ready.");
-  const { Icon, Size } = sdkApi as IconCtor;
+export function useBMapMarkerIcons(
+  client?: import("../client/types").BMapClient,
+): Record<string, unknown> {
+  const resolved = client ?? useOptionalMapContext()?.client.value ?? undefined;
+  if (!resolved) {
+    throw new Error(
+      "BMap client is not ready. Call useBMapMarkerIcons(client) after map ready.",
+    );
+  }
   const icons: Record<string, unknown> = {};
   for (const [name, [ox, oy, w, h]] of Object.entries(ICON_MAP)) {
-    icons[name] = new Icon(DEFAULT_ICON_URL, new Size(w / 2, h / 2), {
-      imageOffset: new Size(ox / 2, oy / 2),
-      imageSize: new Size(600 / 2, 600 / 2),
+    icons[name] = resolved.driver.overlays.buildIcon({
+      imageUrl: DEFAULT_ICON_URL,
+      size: { width: w / 2, height: h / 2 },
+      imageOffset: { x: ox / 2, y: oy / 2 },
+      imageSize: { width: 600 / 2, height: 600 / 2 },
     });
   }
   return icons;

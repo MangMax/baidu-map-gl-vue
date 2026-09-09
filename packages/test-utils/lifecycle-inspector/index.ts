@@ -1,5 +1,5 @@
 /**
- * M0-04: 生命周期 Inspector
+ * 生命周期 Inspector
  *
  * 统计当前 JS 运行时中:
  * - Map / Overlay / Control 数量(fake BMapGL 层面)

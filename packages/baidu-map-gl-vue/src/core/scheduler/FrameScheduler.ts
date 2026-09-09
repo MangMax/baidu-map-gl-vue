@@ -1,5 +1,5 @@
 /**
- * M2-03: FrameScheduler
+ * FrameScheduler
  *
  * 通过 key 合并同一帧内的多次任务调度,同 key 每帧只执行最后一次。
  * 用于:
@@ -8,7 +8,7 @@
  * - 批量 Overlay 更新
  * - InfoWindow redraw、resize
  *
- * 核心语义(方案 §12.5):
+ * 核心语义:
  * - `schedule(key, task)` 同一帧内同 key 只保留最后一次 task。
  * - `cancel(key)` 取消未执行的 key。
  * - `flush()` 立即执行本帧已排队的任务。

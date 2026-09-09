@@ -1,5 +1,5 @@
 /**
- * M2-10: PluginRegistry
+ * PluginRegistry
  *
  * 每地图实例的插件注册表:
  * - 插件名称去重
@@ -12,15 +12,24 @@
  */
 import { ResourceScope, type Disposer } from "../lifecycle/ResourceScope";
 import { BMapError } from "../errors/BMapError";
+import type { BMapClient } from "../../client/types";
+import type { MapHandle } from "../../driver/types/handles";
 
 export type PluginStatus = "idle" | "loading" | "ready" | "error" | "disposed";
+
+/** 插件加载上下文：raw `api` 仅供内置/高级插件使用 */
+export interface PluginContext {
+  readonly client: BMapClient | null;
+  readonly map: MapHandle | null;
+  readonly api: unknown;
+}
 
 export interface BMapPluginDefinition<Resource = unknown> {
   readonly name: string;
   readonly scope?: "global" | "map";
   readonly dependencies?: readonly string[];
   readonly required?: boolean;
-  load(context: { api: unknown; map: unknown }, signal: AbortSignal): Promise<Resource>;
+  load(context: PluginContext, signal: AbortSignal): Promise<Resource>;
   setup?(resource: Resource, runtime: unknown): void | Disposer;
   dispose?(resource: Resource, runtime: unknown): void;
 }
@@ -41,7 +50,7 @@ export interface PluginRegistry {
 }
 
 export function createPluginRegistry(
-  context: { api: unknown; map: unknown } | (() => { api: unknown; map: unknown }),
+  context: PluginContext | (() => PluginContext),
   events: { emit: (type: string, payload: unknown) => void },
   scope: ResourceScope,
 ): PluginRegistry {
@@ -51,8 +60,8 @@ export function createPluginRegistry(
 
   const getContext =
     typeof context === "function"
-      ? (context as () => { api: unknown; map: unknown })
-      : () => context as { api: unknown; map: unknown };
+      ? (context as () => PluginContext)
+      : () => context as PluginContext;
 
   // 收集目标插件及其全部传递依赖(带循环防护)
   function collectDeps(

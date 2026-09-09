@@ -1,5 +1,5 @@
 /**
- * M7-01: 组件 manifest(单一事实源)
+ * 组件 manifest(单一事实源)
  *
  * 由 scripts/generate-manifest-artifacts.mts 读取此清单,生成
  * - components/index.ts(可选)

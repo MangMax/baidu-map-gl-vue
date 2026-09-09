@@ -1,7 +1,7 @@
 /**
- * M2-07: BMapProvider
+ * BMapProvider
  *
- * Provider 是唯一允许处理 `window.BMapGL` 的边界(方案 §3.3)。
+ * Provider 是唯一允许处理 `window.BMapGL` 的边界。
  * 内置实现:
  * - BaiduCdnProvider:在线 CDN 加载
  * - ExistingGlobalProvider:使用已存在的全局 BMapGL
@@ -56,7 +56,7 @@ export class BaiduCdnProvider implements BMapProvider {
         throw new BMapError("BMAP_SDK_LOAD_FAILED", "BMap SDK did not expose window.BMapGL");
       return api;
     };
-    // P0-09: 同 realm 进程级共享 registry（显式注入优先）
+    // 同 realm 进程级共享 registry（显式注入优先）
     this.registry = getProcessSdkRegistry("baidu-cdn", sdkLoader, fingerprintConfig);
   }
 
@@ -123,7 +123,7 @@ export class CustomScriptProvider implements BMapProvider {
         throw new BMapError("BMAP_SDK_LOAD_FAILED", "Custom SDK did not expose window.BMapGL");
       return api;
     };
-    // P0-09: custom-script 按 scriptSrc 命名空间共享，避免与 cdn loader 混用
+    // custom-script 按 scriptSrc 命名空间共享，避免与 cdn loader 混用
     this.registry = getProcessSdkRegistry(
       `custom-script:${this.scriptSrc}`,
       sdkLoader,

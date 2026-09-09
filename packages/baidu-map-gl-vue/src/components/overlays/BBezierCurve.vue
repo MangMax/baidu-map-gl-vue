@@ -3,13 +3,13 @@ import { watch } from "vue";
 import { useOverlayResource, removeOverlay } from "../../core/composables/useOverlayResource";
 import type { MapReadyContext } from "../../core/context/types";
 import type { ResourceScope } from "../../core/lifecycle/ResourceScope";
-import { toSdkPoints } from "../../core/utils/geometry";
+import type { OverlayHandle } from "../../driver/types/handles";
 
 /**
- * M4-08: BBezierCurve 迁移(adapter 模式)
+ * BBezierCurve 迁移(adapter 模式)
  *
  * path/controlPoints 视为不可变值,更新后替换根引用触发;支持 pathVersion 强制刷新。
- * 大 path 默认不 deep watch(§11.5)。
+ * 大 path 默认不 deep watch。
  */
 export interface BBezierCurveProps {
   path: { lng: number; lat: number }[];
@@ -44,43 +44,21 @@ const emit = defineEmits<{
   lineupdate: [e: unknown];
 }>();
 
-type SdkBezierCurve = {
-  setPath(p: unknown[]): void;
-  setControlPoints(points: unknown[][]): void;
-  setStrokeColor(c: string): void;
-  setStrokeWeight(w: number): void;
-  setStrokeOpacity(o: number): void;
-  setStrokeStyle(s: string): void;
-  enableMassClear(): void;
-  disableMassClear(): void;
-};
-
-const { resource } = useOverlayResource<BBezierCurveProps, SdkBezierCurve>(
+const { resource } = useOverlayResource<BBezierCurveProps, OverlayHandle>(
   props,
   {
-    create: (ctx, p) => {
-      const BMapGL = ctx.api as {
-        BezierCurve: new (pts: unknown[], cp: unknown[][], o?: Record<string, unknown>) => unknown;
-      };
-      return new BMapGL.BezierCurve(
-        toSdkPoints(ctx.api, p.path),
-        p.controlPoints.map((c) => toSdkPoints(ctx.api, c)),
-        {
-          strokeColor: p.strokeColor,
-          strokeWeight: p.strokeWeight,
-          strokeOpacity: p.strokeOpacity,
-          strokeStyle: p.strokeStyle,
-          enableMassClear: p.enableMassClear,
-        },
-      ) as unknown as SdkBezierCurve;
-    },
+    create: (ctx, p) =>
+      ctx.client.driver.overlays.createBezierCurve(p.path, p.controlPoints, {
+        strokeColor: p.strokeColor,
+        strokeWeight: p.strokeWeight,
+        strokeOpacity: p.strokeOpacity,
+        strokeStyle: p.strokeStyle,
+        enableMassClear: p.enableMassClear,
+      }),
     addToMap: (res, ctx, p, scope: ResourceScope) => {
-      const map = ctx.map as { addOverlay: (o: unknown) => void };
-      if (props.visible) map.addOverlay(res);
-      (ctx as any).overlays?.register?.("bezier", res);
+      if (props.visible) ctx.client.driver.overlays.add({ kind: "map", handle: ctx.map }, res);
       const on = (name: string, h: (e: unknown) => void) => {
-        (res as any).addEventListener?.(name, h);
-        scope.add(() => (res as any).removeEventListener?.(name, h));
+        scope.add(ctx.client.driver.events.on(res, name, h));
       };
       on("click", (e) => emit("click", e));
       on("dblclick", (e) => emit("dblclick", e));
@@ -99,7 +77,7 @@ const { resource } = useOverlayResource<BBezierCurveProps, SdkBezierCurve>(
             const res = getResource();
             const ctx = getCtx();
             if (!res || !ctx) return;
-            if (path && path.length > 0) res.setPath(toSdkPoints(ctx.api, path));
+            if (path && path.length > 0) ctx.client.driver.overlays.setPath(res, path);
           },
           { flush: "sync" },
         ),
@@ -111,7 +89,7 @@ const { resource } = useOverlayResource<BBezierCurveProps, SdkBezierCurve>(
             const res = getResource();
             const ctx = getCtx();
             if (!res || !ctx) return;
-            if (cps && cps.length > 0) res.setControlPoints(cps.map((c) => toSdkPoints(ctx.api, c)));
+            if (cps && cps.length > 0) ctx.client.driver.overlays.setOptions(res, { controlPoints: cps });
           },
           { flush: "sync" },
         ),
@@ -121,7 +99,11 @@ const { resource } = useOverlayResource<BBezierCurveProps, SdkBezierCurve>(
           () => p.strokeColor,
           (c) => {
             const _v = c;
-            if (_v !== undefined) getResource()?.setStrokeColor(_v);
+            if (_v !== undefined) {
+              const x = getResource();
+              const ctx = getCtx();
+              if (x && ctx) ctx.client.driver.overlays.setOptions(x, { strokeColor: _v });
+            }
           },
         ),
       );
@@ -130,7 +112,11 @@ const { resource } = useOverlayResource<BBezierCurveProps, SdkBezierCurve>(
           () => p.strokeWeight,
           (w) => {
             const _v = w;
-            if (_v !== undefined) getResource()?.setStrokeWeight(_v);
+            if (_v !== undefined) {
+              const x = getResource();
+              const ctx = getCtx();
+              if (x && ctx) ctx.client.driver.overlays.setOptions(x, { strokeWeight: _v });
+            }
           },
         ),
       );
@@ -139,7 +125,11 @@ const { resource } = useOverlayResource<BBezierCurveProps, SdkBezierCurve>(
           () => p.strokeOpacity,
           (o) => {
             const _v = o;
-            if (_v !== undefined) getResource()?.setStrokeOpacity(_v);
+            if (_v !== undefined) {
+              const x = getResource();
+              const ctx = getCtx();
+              if (x && ctx) ctx.client.driver.overlays.setOptions(x, { strokeOpacity: _v });
+            }
           },
         ),
       );
@@ -148,7 +138,11 @@ const { resource } = useOverlayResource<BBezierCurveProps, SdkBezierCurve>(
           () => p.strokeStyle,
           (s) => {
             const _v = s;
-            if (_v !== undefined) getResource()?.setStrokeStyle(_v);
+            if (_v !== undefined) {
+              const x = getResource();
+              const ctx = getCtx();
+              if (x && ctx) ctx.client.driver.overlays.setOptions(x, { strokeStyle: _v });
+            }
           },
         ),
       );
@@ -157,7 +151,8 @@ const { resource } = useOverlayResource<BBezierCurveProps, SdkBezierCurve>(
           () => p.enableMassClear,
           (en) => {
             const r = getResource();
-            if (r) en ? r.enableMassClear() : r.disableMassClear();
+            const ctx = getCtx();
+            if (r && ctx) ctx.client.driver.overlays.setOptions(r, { enableMassClear: en });
           },
         ),
       );
@@ -168,12 +163,10 @@ const { resource } = useOverlayResource<BBezierCurveProps, SdkBezierCurve>(
             const res = getResource();
             const ctx = getCtx();
             if (!res || !ctx) return;
-            const map = ctx.map as {
-              addOverlay: (o: unknown) => void;
-              removeOverlay: (o: unknown) => void;
-            };
-            if (visible) map.addOverlay(res);
-            else map.removeOverlay(res);
+            const overlays = ctx.client.driver.overlays;
+            const target = { kind: "map" as const, handle: ctx.map };
+            if (visible) overlays.add(target, res);
+            else overlays.remove(target, res);
           },
         ),
       );

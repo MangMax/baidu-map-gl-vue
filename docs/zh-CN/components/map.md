@@ -190,10 +190,10 @@ map/theme2
 
 | 事件 | 说明 | 参数 |
 | --- | --- | --- |
-| `ready` | 地图实例创建并完成初始配置后触发 | `{ map, api, container }` |
+| `ready` | 地图实例创建并完成初始配置后触发 | `{ client, map, container }`（`map` 为 `MapHandle`；raw SDK 仅经 `./advanced` 的 `unwrapRaw` 获取） |
 | `plugin-ready` | 单个插件加载完成后触发 | `name: string` |
 | `plugin-error` | 单个插件加载失败；不会改变已经 ready 的地图状态 | `{ name, error }` |
-| `initd` | `ready` 的兼容事件，建议迁移到 `ready` | `{ map, api, container }` |
+| `initd` | `ready` 的兼容事件，建议迁移到 `ready` | `{ client, map, container }` |
 
 ## 地图类型
 
@@ -225,29 +225,26 @@ map/theme2
 
 | 方法              | 说明                             | 类型                               |
 | ----------------- | -------------------------------- | ---------------------------------- |
-| getMapInstance    | 父组件获取 map 实例方法          | `() => void`                       |
-| getBaseMapOptions | 父组件/外部获取 map 组件 options | `() => void`                       |
-| resetCenter       | 重置地图中心                     | `() => void`                       |
+| getMapInstance    | 父组件获取 map 句柄（`MapHandle`，非 raw SDK 地图） | `() => MapHandle \| null` |
+| getContainer      | 获取地图容器 DOM                 | `() => HTMLElement \| null`        |
+| whenReady         | 地图 ready 后 resolve             | `(signal?: AbortSignal) => Promise<MapReadyContext>` |
+| resetCenter       | 重置地图中心（deprecated）       | `() => void`                       |
 | resetView         | 恢复首次初始化时的 center、zoom、heading 和 tilt | `() => void` |
-| setDragging       | 设置地图是否可拖动               | `(nableDragging: boolean) => void` |
+| setDragging       | 设置地图是否可拖动               | `(enabled: boolean) => void` |
 
-`resetCenter` 已 deprecated，不再返回 map 实例；新代码请使用 `resetView`。
+`resetCenter` 已 deprecated，不再返回 map 实例；新代码请使用 `resetView`。需要 raw SDK 地图时，用 `./advanced` 的 `unwrapRaw(mapHandle)` 获取。
 
 ## 组件事件
 
 | 事件名          | 说明                                                                                        | 类型                                     |
 | --------------- | ------------------------------------------------------------------------------------------- | ---------------------------------------- |
-| initd           | 组件初始化后会触发此事件，返回一个地图实例                                                  | `{ map, BmapGL, instance }`              |
+| ready           | 地图实例创建并完成初始配置后触发                                                            | `{ client, map, container }`             |
+| initd           | `ready` 的兼容事件，建议迁移到 `ready`                                                      | `{ client, map, container }`             |
 | unload          | 组件卸载时会触发此事件                                                                      | -                                        |
-| pluginReady     | 插件加载完毕会触发此事件                                                                    | `{map, pluginRecord}`                                  |
-| click           | 左键单击地图时触发此事件。 当双击时，产生的事件序列为： click click dblclick                | `{type, target, latlng, pixel, overlay}` |
-| dblclick        | 鼠标双击地图时会触发此事件                                                                  | `{type, target, pixel, point}`           |
-| rightclick      | 右键单击地图时触发此事件。 当双击时，产生的事件序列为： rightclick rightclick rightdblclick | `{type, target, latlng, pixel, overlay}` |
-| rightdblclick   | 右键双击地图时触发此事件                                                                    | `{type, target, latlng, pixel, overlay}` |
-| maptypechange   | 地图类型发生变化时触发此事件                                                                | `{type, target}`                         |
-| mousemove       | 鼠标在地图区域移动过程中触发此事件                                                          | `{type, target, latlng, pixel, overlay}` |
-| mouseover       | 鼠标移入地图区域时触发此事件                                                                | `{type, target}`                         |
-| mouseout        | 鼠标移出地图区域时触发此事件                                                                | `{type, target}`                         |
+| plugin-ready    | 单个插件加载完成后触发（`@pluginReady` 为其别名，载荷相同）                                 | `name: string`                           |
+| plugin-error    | 单个插件加载失败；不会改变已经 ready 的地图状态                                             | `{ name, error }`                        |
+| error           | 地图创建失败时触发                                                                          | `BMapError`                              |
+| click           | 左键单击地图时触发，事件经归一化（`point/pixel/domEvent/raw`）                               | `MapMouseEvent`                          |
 | movestart       | 地图移动开始时触发此事件                                                                    | `{type, target}`                         |
 | moving          | 地图移动过程中触发此事件                                                                    | `{type, target}`                         |
 | moveend         | 地图移动结束时触发此事件                                                                    | `{type, target}`                         |

@@ -3,6 +3,7 @@ import { watch } from "vue";
 import { useOverlayResource, removeOverlay } from "../../core/composables/useOverlayResource";
 import type { MapReadyContext } from "../../core/context/types";
 import type { ResourceScope } from "../../core/lifecycle/ResourceScope";
+import type { OverlayHandle } from "../../driver/types/handles";
 
 export type GroundOverlayType = "video" | "canvas" | "image";
 
@@ -29,71 +30,45 @@ const emit = defineEmits<{
   mouseout: [e: unknown];
 }>();
 
-type SdkGroundOverlay = {
-  setOpacity(o: number): void;
-  setBounds(b: unknown): void;
-  setUrl(u: unknown): void;
-};
-
 function resolveUrl(url: BGroundOverlayProps["url"]): string | HTMLCanvasElement {
   return typeof url === "function" ? url() : url;
 }
 
 function makeBounds(
-  api: unknown,
   start: { lng: number; lat: number },
   end: { lng: number; lat: number },
 ) {
-  const BMapGL = api as {
-    Point: new (l: number, t: number) => unknown;
-    Bounds: new (sw: unknown, ne: unknown) => unknown;
+  return {
+    southwest: { lng: start.lng, lat: start.lat },
+    northeast: { lng: end.lng, lat: end.lat },
   };
-  return new BMapGL.Bounds(
-    new BMapGL.Point(start.lng, start.lat),
-    new BMapGL.Point(end.lng, end.lat),
-  );
 }
 
-const { resource, rebuild } = useOverlayResource<BGroundOverlayProps, SdkGroundOverlay>(
+const { resource, rebuild } = useOverlayResource<BGroundOverlayProps, OverlayHandle>(
   props,
   {
     create: (ctx, p) => {
-      const BMapGL = ctx.api as {
-        GroundOverlay: new (b: unknown, o?: Record<string, unknown>) => unknown;
-      };
-      const bounds = makeBounds(ctx.api, p.startPoint, p.endPoint);
+      const bounds = makeBounds(p.startPoint, p.endPoint);
       const url = resolveUrl(p.url);
       if (!url) throw new Error("GroundOverlay url is required");
-      return new BMapGL.GroundOverlay(bounds, {
+      return ctx.client.driver.overlays.createGroundOverlay(bounds, {
         opacity: p.opacity,
-         type: p.type,
-         url,
-         autoCenter: p.autoCenter,
-      }) as unknown as SdkGroundOverlay;
+        type: p.type,
+        url,
+        autoCenter: p.autoCenter,
+      });
     },
     addToMap: (res, ctx, p, scope: ResourceScope) => {
-      const map = ctx.map as {
-        addOverlay: (o: unknown) => void;
-        centerAndZoom?: (center: unknown, zoom: number) => void;
-        getViewport?: (points: unknown[]) => unknown;
-        setViewport?: (viewport: unknown, options?: unknown) => void;
-      };
-      if (props.visible) map.addOverlay(res);
-      if (p.autoCenter && map.getViewport && map.setViewport) {
-        const Point = (ctx.api as { Point: new (lng: number, lat: number) => unknown }).Point;
-        const viewport = map.getViewport([
-          new Point(p.startPoint.lng, p.startPoint.lat),
-          new Point(p.endPoint.lng, p.endPoint.lat),
-        ]);
-        if (viewport) map.setViewport(viewport, { margins: [20, 20, 20, 20] });
-      } else if (p.autoCenter && map.centerAndZoom) {
-        const center = (makeBounds(ctx.api, p.startPoint, p.endPoint) as { getCenter?: () => unknown }).getCenter?.();
-        if (center) map.centerAndZoom(center, 16);
+      if (props.visible) ctx.client.driver.overlays.add({ kind: "map", handle: ctx.map }, res);
+      if (p.autoCenter) {
+        ctx.client.driver.map.setViewport(
+          ctx.map,
+          [p.startPoint, p.endPoint],
+          { margins: [20, 20, 20, 20] },
+        );
       }
-      (ctx as any).overlays?.register?.("ground-overlay", res);
       const on = (name: string, h: (e: unknown) => void) => {
-        (res as any).addEventListener?.(name, h);
-        scope.add(() => (res as any).removeEventListener?.(name, h));
+        scope.add(ctx.client.driver.events.on(res, name, h));
       };
       on("click", (e) => emit("click", e));
       on("dblclick", (e) => emit("dblclick", e));
@@ -113,7 +88,7 @@ const { resource, rebuild } = useOverlayResource<BGroundOverlayProps, SdkGroundO
             const res = getResource();
             const ctx = getCtx();
             if (!res || !ctx) return;
-            res.setBounds(makeBounds(ctx.api, p.startPoint, p.endPoint));
+            ctx.client.driver.overlays.setOptions(res, { bounds: makeBounds(p.startPoint, p.endPoint) });
           },
         ),
       );
@@ -122,7 +97,11 @@ const { resource, rebuild } = useOverlayResource<BGroundOverlayProps, SdkGroundO
           () => p.opacity,
           (o) => {
             const _v = o;
-            if (_v !== undefined) getResource()?.setOpacity(_v);
+            if (_v !== undefined) {
+              const x = getResource();
+              const ctx = getCtx();
+              if (x && ctx) ctx.client.driver.overlays.setOptions(x, { opacity: _v });
+            }
           },
         ),
       );
@@ -137,7 +116,11 @@ const { resource, rebuild } = useOverlayResource<BGroundOverlayProps, SdkGroundO
       addDisposer(
         watch(
           () => p.url,
-          (u) => getResource()?.setUrl(resolveUrl(u)),
+          (u) => {
+            const x = getResource();
+            const ctx = getCtx();
+            if (x && ctx) ctx.client.driver.overlays.setOptions(x, { url: resolveUrl(u) });
+          },
         ),
       );
       addDisposer(
@@ -147,12 +130,10 @@ const { resource, rebuild } = useOverlayResource<BGroundOverlayProps, SdkGroundO
             const res = getResource();
             const ctx = getCtx();
             if (!res || !ctx) return;
-            const map = ctx.map as {
-              addOverlay: (o: unknown) => void;
-              removeOverlay: (o: unknown) => void;
-            };
-            if (visible) map.addOverlay(res);
-            else map.removeOverlay(res);
+            const overlays = ctx.client.driver.overlays;
+            const target = { kind: "map" as const, handle: ctx.map };
+            if (visible) overlays.add(target, res);
+            else overlays.remove(target, res);
           },
         ),
       );

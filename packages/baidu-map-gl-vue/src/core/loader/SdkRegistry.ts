@@ -1,5 +1,5 @@
 /**
- * M2-09: 进程级 SDK Registry
+ * 进程级 SDK Registry
  *
  * `window.BMapGL` 是全局资源,由 registry 统一管理:
  * - 相同 fingerprint 并发调用共用同一个 Promise。

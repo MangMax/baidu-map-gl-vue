@@ -13,14 +13,18 @@
     mapStyleId="980161f3645989feac25a0da15da4178"
     enableScrollWheelZoom
     :plugins="['Mapvgl']"
-    @pluginReady="handlePluginReady"
+    ref="bmapRef"
+    @plugin-ready="handlePluginReady"
   />
 </template>
 
 <script setup>
-function handlePluginReady(map) {
+import { ref } from "vue";
+const bmapRef = ref();
+function handlePluginReady() {
+  const map = bmapRef.value?.getMapInstance?.();
   let view = new mapvgl.View({
-    map: map,
+    map: map?.raw,
   });
 
   let grid = new mapvgl.HeatGridLayer({

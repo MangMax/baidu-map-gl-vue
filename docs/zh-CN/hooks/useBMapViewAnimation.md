@@ -22,19 +22,19 @@ hooks/useBMapViewAnimation
 ## 用法
 
 ```ts
-const { setKeyFrames, start, cancel, stop, proceed, status } = useBMapViewAnimation(options, map)
+const { viewAnimation, setKeyFrames, start, cancel, stop, proceed, status, ready } = useBMapViewAnimation(options, map)
 ```
 
 :::tip
-该 hooks 依赖于 `BMapGL`，所以需要在 `Map` 组件初始化完毕调用 `setKeyFrames` 方法后其他方法和数据才可用
+该 hooks 需要地图 ready（`BMapClient` 就绪）后才能创建动画实例；在 `<BMap>` 子树内调用时可省略 `map` 参数
 :::
 
 ### 参数
 
-| 参数    | 描述                   | 类型                                            | 默认值     |
-| ------- | ---------------------- | ----------------------------------------------- | ---------- |
-| map     | `Map`地图组件`ref`引用 | `Ref<Map>`                                      | `required` |
-| options | 地图视角动画的配置     | [`ViewAnimationOptions`](#viewanimationoptions) | -          |
+| 参数    | 描述                   | 类型                                            | 默认值 |
+| ------- | ---------------------- | ----------------------------------------------- | ------ |
+| options | 地图视角动画的配置     | [`ViewAnimationOptions`](#viewanimationoptions) | -      |
+| map     | `Map`地图组件`ref`引用 | `Ref<Map>`                                      | -      |
 
 #### ViewAnimationOptions
 
@@ -47,15 +47,16 @@ const { setKeyFrames, start, cancel, stop, proceed, status } = useBMapViewAnimat
 
 ### 返回值
 
-| 返回值        | 描述                                                                     | 类型                                                                  |
-| ------------- | ------------------------------------------------------------------------ | --------------------------------------------------------------------- |
-| viewAnimation | 视角动画实例                                                             | `BMapGL.ViewAnimation`                                                |
-| setKeyFrames  | 设置动画关键帧函数，需要在`Map`组件`initd`事件触发后才可调用             | [`(path: ViewAnimationKeyFrames[]) => void`](#viewanimationkeyframes) |
-| start         | 开始动画函数，`setKeyFrames` 设置路径后且 `status` 为 `INITIAL` 才可调用 | `() => void`                                                          |
-| stop          | 暂停动画函数                                                             | `() => void`                                                          |
-| cancel        | 取消动画函数                                                             | `() => void`                                                          |
-| proceed       | 继续播放动画函数                                                         | `() => void`                                                          |
-| status        | 动画状态                                                                 | [`Ref<AnimationStatus>`](#animationstatus)                            |
+| 返回值        | 描述                                                                     | 类型                                                                        |
+| ------------- | ------------------------------------------------------------------------ | --------------------------------------------------------------------------- |
+| viewAnimation | 视角动画句柄（`Ref`，值为 `ServiceHandle`；raw 实例仅经 `./advanced` 获取） | `Ref<ServiceHandle<'service:view-animation'> \| null>`                      |
+| setKeyFrames  | 设置动画关键帧函数，需要在`Map`组件`ready`事件触发后才可调用             | [`(path: ViewAnimationKeyFrames[]) => void`](#viewanimationkeyframes)       |
+| start         | 开始动画函数，`setKeyFrames` 设置路径后且 `status` 为 `INITIAL` 才可调用 | `() => void`                                                                |
+| stop          | 暂停动画函数                                                             | `() => void`                                                                |
+| cancel        | 取消动画函数                                                             | `() => void`                                                                |
+| proceed       | 继续播放动画函数                                                         | `() => void`                                                                |
+| status        | 动画状态                                                                 | [`Ref<ViewAnimationStatus>`](#viewanimationstatus)                          |
+| ready         | 地图 ready 后 resolve 的 `MapReadyContext`                               | `Promise<MapReadyContext>`                                                  |
 
 #### ViewAnimationKeyFrames
 
@@ -85,18 +86,24 @@ interface ViewAnimationKeyFrames {
 }
 ```
 
-#### AnimationStatus
+#### ViewAnimationStatus
 
 ```ts
 // PLAYING 播放中
 // STOPPING 暂停中
 // INITIAL 默认状态
-type AnimationStatus = 'PLAYING' | 'STOPPING' | 'INITIAL'
+type ViewAnimationStatus = 'PLAYING' | 'STOPPING' | 'INITIAL'
 ```
 
 ### 事件监听
 
-调用 `useBMapViewAnimation` 后，即可通过 `viewAnimation` 返回值来添加事件监听，无需等待 `setKeyFrames` 方法调用
+hooks 内部已把 `animationstart` / `animationend` / `animationcancel` 同步到 `status`，无需手动绑定。如需自定义监听，可在 `ready` 后通过 `client.driver.events` 绑定动画句柄：
+
+```ts
+const { ready } = useBMapViewAnimation()
+const { client } = await ready
+client.driver.events.on(viewAnimation.value!, 'animationiterations', () => {})
+```
 
 | 事件                | 参数 | 描述                                                                          |
 | ------------------- | ---- | ----------------------------------------------------------------------------- |
@@ -104,14 +111,6 @@ type AnimationStatus = 'PLAYING' | 'STOPPING' | 'INITIAL'
 | animationiterations | -    | 当动画循环大于 1 次时，上一次结束既下一次开始时触发。最后一次循环结束时不触发 |
 | animationend        | -    | 动画结束时触发，如果动画中途被终止，则不会触发                                |
 | animationcancel     | -    | 动画中途被终止时触发                                                          |
-
-## FAQ
-
-### 为什么事件监听可以同步，而其他方法需要等到 `setKeyFrames` 方法调用后才可以使用？
-
-之所以事件监听可以同步，是因为 `useBMapViewAnimation` hooks 内部做了处理，先缓存了视角动画初始化前的事件监听，等到 `setKeyFrames` 方法调用后，再由内部添加监听到视角动画实例上。
-
-这只是为了使用开发者使用体验更好，这和你等到 `setKeyFrames` 调用时，在后面添加监听，是一样的效果。
 
 ## TS 类型定义参考
 
@@ -158,21 +157,18 @@ export interface UseViewAnimationOptions {
    */
   disableDragging: boolean
 }
-declare type AnimationListenerType = 'animationstart' | 'animationiterations' | 'animationend' | 'animationcancel'
-declare type AnimationStatus = 'PLAYING' | 'STOPPING' | 'INITIAL'
+export type ViewAnimationStatus = 'INITIAL' | 'PLAYING' | 'STOPPING'
 export declare function useBMapViewAnimation(
-  map: any,
-  options: UseViewAnimationOptions
+  options?: UseViewAnimationOptions,
+  map?: unknown
 ): {
-  viewAnimation: {
-    addEventListener(event: AnimationListenerType, cal: BMapGL.Callback): void
-    removeEventListener(event: AnimationListenerType, cal: BMapGL.Callback): void
-  }
+  viewAnimation: Ref<unknown>
   start: () => void
   cancel: () => void
   stop: () => void
   proceed: () => void
-  status: Ref<AnimationStatus>
+  status: Ref<ViewAnimationStatus>
   setKeyFrames: (keyFrames: ViewAnimationKeyFrames[]) => void
+  ready: Promise<MapReadyContext>
 }
 ```

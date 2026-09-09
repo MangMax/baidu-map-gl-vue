@@ -1,5 +1,5 @@
 /**
- * M5-02: BMarkerCluster 聚合组件验证
+ * BMarkerCluster 聚合组件验证
  */
 import { describe, it, expect, beforeEach } from 'vitest'
 import { mount, flushPromises } from '@vue/test-utils'

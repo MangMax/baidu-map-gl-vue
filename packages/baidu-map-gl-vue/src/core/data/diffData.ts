@@ -1,7 +1,7 @@
 /**
- * M5-01: 通用 data diff
+ * 通用 data diff
  *
- * 用 key 对海量数据做过增删改 diff(方案 §12.4):
+ * 用 key 对海量数据做过增删改 diff:
  * - 使用 Map<PropertyKey, Record> 建索引
  * - 默认以根数组引用 + item key 比较
  * - 支持 dataVersion 快速判定(整批替换)
@@ -71,7 +71,7 @@ export function diffData<Item>(
 
 /**
  * 快速判定是否整批替换(dataVersion 变化 或 根引用相同但数组长度变化)。
- * 方案 §12.4:支持 dataVersion 快速判定。
+ * 支持 dataVersion 快速判定。
  */
 export function shouldFullReplace<Item>(
   prevVersion: PropertyKey | undefined,

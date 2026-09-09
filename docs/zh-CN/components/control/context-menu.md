@@ -30,7 +30,7 @@ context-menu/index
 | 属性     | 说明                     | 类型                                            | 可选值  | 默认值     |
 | -------- | ------------------------ | ----------------------------------------------- | ------- | ---------- |
 | text     | 菜单项文字               | `string`                                        | -       | `required` |
-| callback | 菜单项点击触发的回调函数 | `({point, pixel, map, BMapGL, target}) => void` | -       | `required` |
+| callback | 菜单项点击触发的回调函数 | `({point, pixel, map, target}) => void`（`map` 为 `MapHandle`） | -       | `required` |
 | disabled | 是否禁用该菜单项         | `boolean`                                       | `false` | -          |
 
 ## 组件事件

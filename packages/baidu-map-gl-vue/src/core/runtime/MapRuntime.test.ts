@@ -1,6 +1,9 @@
 import { describe, it, expect, vi } from "vitest";
 import { MapRuntime } from "./MapRuntime";
 import { BMapError } from "../errors/BMapError";
+import type { BMapClient } from "../../client/types";
+import type { BMapDriver } from "../../driver/types/bmap";
+import type { MapHandle } from "../../driver/types/handles";
 
 function createDeferred<T>() {
   let resolve!: (v: T) => void;
@@ -12,31 +15,47 @@ function createDeferred<T>() {
   return { promise, resolve, reject };
 }
 
-function createRuntime(overrides: Partial<MapRuntime["options"]> = {}) {
-  const deferred = createDeferred<any>();
-  const provider = {
-    load: vi.fn(() => deferred.promise),
+function createFakeClient(driverMap: unknown): BMapClient {
+  const driver = {
+    map: driverMap,
+    capabilities: { supports: () => true, require: () => {}, list: () => [], explain: () => ({}) },
+  } as unknown as BMapDriver;
+  return {
+    id: Symbol("fake-client"),
+    engine: "webgl-v1",
+    version: "test",
+    driver,
+    capabilities: driver.capabilities,
+    rawSdk: {},
   };
-  const createMap = vi.fn((api: unknown) => ({ api }));
+}
+
+function createRuntime(overrides: Partial<MapRuntime["options"]> = {}) {
+  const deferred = createDeferred<unknown>();
+  const createMap = vi.fn((container: HTMLElement) => ({ id: "map-1", container }));
+  const destroyMap = vi.fn((map: MapHandle) => map);
+  const initializeView = vi.fn();
+  const mapDriver = { create: createMap, destroy: destroyMap, initializeView };
+  const clientFactory = vi.fn(() => deferred.promise.then((loaded) => createFakeClient(mapDriver)));
   const rt = new MapRuntime({
-    provider: provider as any,
+    clientFactory: clientFactory as never,
     container: document.createElement("div"),
-    createMap,
     ...overrides,
   });
-  return { rt, deferred, provider, createMap };
+  return { rt, deferred, clientFactory, mapDriver, createMap, destroyMap };
 }
 
 describe("MapRuntime", () => {
   it("starts in idle and transitions loading -> ready", async () => {
-    const { rt, deferred } = createRuntime();
+    const { rt, deferred, createMap } = createRuntime();
     expect(rt.status.value).toBe("idle");
     const p = rt.mount();
     expect(rt.status.value).toBe("loading");
     deferred.resolve({ BMapGL: {} });
     const ctx = await p;
     expect(rt.status.value).toBe("ready");
-    expect(ctx.api).toEqual({ BMapGL: {} });
+    expect(ctx.client.engine).toBe("webgl-v1");
+    expect(ctx.map).toEqual(createMap.mock.results[0].value);
     expect(rt.map.value).toBeTruthy();
   });
 
@@ -46,18 +65,17 @@ describe("MapRuntime", () => {
     deferred.resolve({ api: "x" });
     await p;
     const ctx = await rt.whenReady();
-    expect(ctx.api).toEqual({ api: "x" });
     expect(ctx.map).toEqual(createMap.mock.results[0].value);
   });
 
   it("whenReady before mount resolves after ready (回放 + 等待)", async () => {
-    const { rt, deferred } = createRuntime();
+    const { rt, deferred, createMap } = createRuntime();
     const before = rt.whenReady();
     const mount = rt.mount();
     deferred.resolve({ api: "x" });
     const ctx = await before;
     await mount;
-    expect(ctx.api).toEqual({ api: "x" });
+    expect(ctx.map).toEqual(createMap.mock.results[0].value);
   });
 
   it("error status rejects waiters", async () => {
@@ -95,5 +113,14 @@ describe("MapRuntime", () => {
     deferred.resolve({ ok: 1 });
     await Promise.all([p1, p2]);
     expect(rt.status.value).toBe("ready");
+  });
+
+  it("destroys the map via driver on dispose", async () => {
+    const { rt, deferred, destroyMap, createMap } = createRuntime();
+    const p = rt.mount();
+    deferred.resolve({ ok: 1 });
+    await p;
+    rt.dispose();
+    expect(destroyMap).toHaveBeenCalledWith(createMap.mock.results[0].value);
   });
 });

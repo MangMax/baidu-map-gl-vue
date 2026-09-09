@@ -1,5 +1,5 @@
 /**
- * M6-01/02: BZoom/BScale 迁移验证
+ * BZoom/BScale 迁移验证
  */
 import { describe, it, expect, beforeEach } from 'vitest'
 import { mount, flushPromises } from '@vue/test-utils'

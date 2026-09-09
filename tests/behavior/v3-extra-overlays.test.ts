@@ -1,5 +1,5 @@
 /**
- * M6-02/M4-08: BPanoramaControl / BBezierCurve / BMapMask / BMarker3d 迁移验证
+ * BPanoramaControl / BBezierCurve / BMapMask / BMarker3d 迁移验证
  */
 import { describe, it, expect, beforeEach } from 'vitest'
 import { mount, flushPromises } from '@vue/test-utils'

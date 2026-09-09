@@ -1,5 +1,5 @@
 /**
- * M4-08: BPrism 迁移验证
+ * BPrism 迁移验证
  */
 import { describe, it, expect, beforeEach } from 'vitest'
 import { mount, flushPromises } from '@vue/test-utils'

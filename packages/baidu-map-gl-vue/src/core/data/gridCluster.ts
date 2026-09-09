@@ -1,7 +1,7 @@
 /**
- * M5-02: 网格聚合算法(纯函数,可单测)
+ * 网格聚合算法(纯函数,可单测)
  *
- * P0-17: 像素网格聚合——按 zoom + project 将经纬度投影到像素坐标，
+ * 像素网格聚合——按 zoom + project 将经纬度投影到像素坐标，
  * 以 gridSize 为网格边长聚合；低于 minClusterSize 的桶必须展开为单点，
  * 不得丢点；禁止固定 `lng * 10` 网格。
  */
@@ -62,7 +62,7 @@ function defaultUnproject(point: { x: number; y: number }, zoom: number): PointL
 }
 
 /**
- * P0-17 推荐签名：像素网格聚合，返回 item/cluster 特征数组。
+ * 像素网格聚合，返回 item/cluster 特征数组。
  * 低于 minClusterSize 的桶展开为单点特征，不丢点。
  */
 export function cluster<Item>(
@@ -100,7 +100,7 @@ export function cluster<Item>(
   const features: ClusterFeature<Item>[] = [];
   for (const [key, bucket] of buckets) {
     if (bucket.items.length < minClusterSize) {
-      // P0-17: 低于阈值必须展开为单点
+      // 低于阈值必须展开为单点
       bucket.items.forEach((item, i) => {
         features.push({
           kind: "item",

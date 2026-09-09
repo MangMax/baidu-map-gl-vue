@@ -1,11 +1,11 @@
 /**
- * M2-02: ResourceScope
+ * ResourceScope
  *
  * 统一管理 Vue 副作用(watch/computed)、SDK 事件、Observer、RAF、timer、
  * Overlay、plugin 和 AbortSignal。所有副作用必须进入 scope,禁止
  * "创建后由组件作者记得清理" 的松散模式。
  *
- * 原则(与方案 §7.1 一致):
+ * 原则:
  * - `run(factory)` 在受控 effectScope 中执行,管理 Vue watcher/computed。
  * - `add(disposer)` 注册非 Vue 资源的释放函数。
  * - `dispose()` 先停 effectScope,再按注册逆序释放 disposer。

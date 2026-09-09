@@ -66,7 +66,7 @@ export type {
   PluginRegistry,
   PluginStatus,
 } from "./plugins/PluginRegistry";
-// 工具函数(方案 §13:v3 独立 utils,api 参数化,无全局 BMapGL)
+// 工具函数(v3 独立 utils,api 参数化,无全局 BMapGL)
 export {
   toSdkPoints,
   toSdkPoint,

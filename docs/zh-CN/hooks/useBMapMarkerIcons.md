@@ -11,16 +11,18 @@ import { useBMapMarkerIcons } from 'baidu-map-gl-vue'
 ## 用法
 
 ```ts
-const icons = useBMapMarkerIcons()
+const icons = useBMapMarkerIcons(client) // client 可在 ready 事件或 useBMap().client 获取
 ```
 
 :::tip
-该 hooks 依赖于 `BMapGL`，所以需要在 `Map` 组件初始化完毕调用 `set` 方法后数据才可用
+图标经 `client.driver.overlays.buildIcon` 构建，不依赖全局 `BMapGL`；在 `<BMap>` 子树内调用时可省略参数
 :::
 
 ### 参数
 
-无
+| 参数 | 描述 | 类型 |
+| --- | --- | --- |
+| client | BMapClient（map ready 后可用） | `BMapClient`（可选） |
 
 ### 返回值
 
@@ -76,5 +78,5 @@ export declare type DefaultMarkerIcons =
   | 'blue8'
   | 'blue9'
   | 'blue10'
-export declare function useBMapMarkerIcons(api?: unknown): Record<string, unknown>
+export declare function useBMapMarkerIcons(client?: BMapClient): Record<string, unknown>
 ```

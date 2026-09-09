@@ -79,6 +79,8 @@ pnpm typecheck:v3
 
 从 v2 迁移请先阅读 `scripts/migrate-v2-to-v3.mts` 及文档站的 v3 迁移说明。v3 组件使用 `BMap`、`BMarker` 等 Vue 3 组件，SDK 加载通过 provider/client 管理；`BPointLayer` 已标记为 deprecated，新的列表组件名为 `BMarkerList`。
 
+v3 架构：所有 raw `BMapGL` 调用收进 `src/driver`（geometry/map/overlays/controls/layers/services/events）与 `src/client`（`createBMapClient`）。组件与业务 composable 只依赖 `client + MapHandle` 领域接口，raw SDK 仅通过 `baidu-map-gl-vue/advanced`（`unwrapRaw`/`createDriver`）提供逃生口；能力支持度经 `CapabilityRegistry` 运行时解释，`unsupported` 策略可选 `throw/warn/silent`。仓库门禁 `pnpm check:raw-sdk` 保证 `src/components`、`src/composables`、`src/core/runtime` 不出现 `window.BMapGL`/`new BMapGL.*`。
+
 ## <img src="https://raw.githubusercontent.com/Tarikul-Islam-Anik/Animated-Fluent-Emojis/master/Emojis/Objects/Open%20Book.png" alt="Open Book" width="25" height="25" /> 文档
 
 [中文](https://MangMax.github.io/baidu-map-gl-vue/)

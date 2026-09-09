@@ -6,9 +6,10 @@ import { DataLayerManager } from "../../core/data/DataLayerManager";
 import { gridCluster, type Cluster } from "../../core/data/gridCluster";
 import type { PointLike } from "../../core/utils/geometry";
 import type { MapReadyContext } from "../../core/context/types";
+import type { MarkerHandle } from "../../driver/types/handles";
 
 /**
- * M5-02: BMarkerCluster —— 声明式聚合组件
+ * BMarkerCluster —— 声明式聚合组件
  *
  * 数据驱动:一个组件管理整批点,用内置网格聚合生成簇 marker,
  * 不做逐点 Vue 组件。事件经簇级委托回传 item-cluster / item-click。
@@ -37,49 +38,46 @@ const scope = new ResourceScope();
 let manager: DataLayerManager<any, any> | null = null;
 let readyCtx: MapReadyContext | null = null;
 
+// 事件委托 disposer 以 WeakMap 存储(Handle 被 freeze,不可附加属性)
+const clickDisposers = new WeakMap<object, () => void>();
+
 function buildHost(c: MapReadyContext) {
+  const driver = c.client.driver;
+  const target = { kind: "map" as const, handle: c.map };
   return {
     createMarker: (cluster: Cluster<any>) => {
-      const BMapGL = c.api as {
-        Point: new (l: number, t: number) => unknown;
-        Marker: new (p: unknown, o?: Record<string, unknown>) => unknown;
-        Icon: new (url: string, size: unknown, opts?: Record<string, unknown>) => unknown;
-        Size: new (w: number, h: number) => unknown;
-      };
       const pos = cluster.position;
       // 簇 marker 带计数 label
-      const m = new BMapGL.Marker(new BMapGL.Point(pos.lng, pos.lat), {
+      const marker = driver.overlays.createMarker(pos, {
         title: `${cluster.size}`,
       });
-      (c.map as { addOverlay: (o: unknown) => void }).addOverlay(m);
+      driver.overlays.add(target, marker);
       const clickHandler = () => {
         if (cluster.size >= (props.minClusterSize ?? 3)) emit("cluster-click", cluster);
         else emit("item-click", cluster.points[0]);
       };
-      (m as any).addEventListener?.("click", clickHandler);
-      (m as any).__clickHandler = clickHandler;
-      return m;
+      clickDisposers.set(
+        marker as object,
+        driver.events.on(marker, "click", clickHandler),
+      );
+      return marker;
     },
-    removeMarker: (m: any) => {
-      if ((m as any).__clickHandler) {
-        (m as any).removeEventListener?.("click", (m as any).__clickHandler);
-        delete (m as any).__clickHandler;
-      }
-      (c.map as { removeOverlay: (o: unknown) => void }).removeOverlay(m);
+    removeMarker: (m: MarkerHandle) => {
+      clickDisposers.get(m as object)?.();
+      clickDisposers.delete(m as object);
+      driver.overlays.remove(target, m);
     },
-    updatePosition: (m: any, cluster: Cluster<any>) => {
-      const BMapGL = c.api as { Point: new (l: number, t: number) => unknown };
-      (m as any).setPosition?.(new BMapGL.Point(cluster.position.lng, cluster.position.lat));
+    updatePosition: (m: MarkerHandle, cluster: Cluster<any>) => {
+      driver.overlays.setPosition(m, cluster.position);
     },
   };
 }
 
 function resolveZoom(c: MapReadyContext): number {
   if (props.zoom != null) return props.zoom;
-  const map = c.map as { getZoom?: () => number; zoom?: number } | null;
   try {
-    if (typeof map?.getZoom === "function") return map.getZoom();
-    if (typeof map?.zoom === "number") return map.zoom;
+    const zoom = c.client.driver.map.getZoom(c.map);
+    if (typeof zoom === "number") return zoom;
   } catch {
     /* 忽略 */
   }
@@ -88,7 +86,7 @@ function resolveZoom(c: MapReadyContext): number {
 
 function applyData() {
   if (!manager || !readyCtx) return;
-  // P0-17: gridSize/zoom 参与像素网格聚合；低于阈值的桶展开为单点，不丢点
+  // gridSize/zoom 参与像素网格聚合；低于阈值的桶展开为单点，不丢点
   const clustered = gridCluster(props.data, props.getPosition, {
     minClusterSize: props.minClusterSize ?? 3,
     gridSize: props.gridSize ?? 128,

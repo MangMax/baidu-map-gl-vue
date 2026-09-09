@@ -22,19 +22,19 @@ hooks/useBMapTrackAnimation
 ## 用法
 
 ```ts
-const { setPath, start, cancel, stop, proceed, status } = useBMapTrackAnimation(options, map)
+const { setPath, start, pause, resume, stop, cancel, proceed, status } = useBMapTrackAnimation(options, map)
 ```
 
 :::tip
-该 hooks 依赖于 `BMapGL`，所以需要在 `Map` 组件初始化完毕调用 `setPath` 初始化路径后，方法和数据才可用
+该 hooks 需要地图 ready 后才能创建动画实例；在 `<BMap>` 子树内调用时可省略 `map` 参数；`options` 与 `map` 位置可互换
 :::
 
 ### 参数
 
-| 参数    | 描述                   | 类型                                              | 默认值     |
-| ------- | ---------------------- | ------------------------------------------------- | ---------- |
-| map     | `Map`地图组件`ref`引用 | `Ref<Map>`                                        | `required` |
-| options | 地图视角动画的配置     | [`TrackAnimationOptions`](#trackanimationoptions) | -          |
+| 参数    | 描述                   | 类型                                              | 默认值 |
+| ------- | ---------------------- | ------------------------------------------------- | ------ |
+| options | 地图视角动画的配置     | [`TrackAnimationOptions`](#trackanimationoptions) | -      |
+| map     | `Map`地图组件`ref`引用 | `Ref<Map>`                                        | -      |
 
 #### TrackAnimationOptions
 
@@ -48,28 +48,28 @@ const { setPath, start, cancel, stop, proceed, status } = useBMapTrackAnimation(
 
 ### 返回值
 
-| 返回值  | 描述                                                            | 类型                                        |
-| ------- | --------------------------------------------------------------- | ------------------------------------------- |
-| setPath | 设置路径动画路径，需要在`Map`组件`initd`事件触发后才可调用      | [`(path: PathPoint[]) => void`](#pathpoint) |
-| start   | 开始动画，`setPath` 设置路径后且 `status` 为 `INITIAL` 才可调用 | `() => void`                                |
-| stop    | 暂停动画函数                                                    | `() => void`                                |
-| cancel  | 取消动画函数                                                    | `() => void`                                |
-| proceed | 继续播放动画函数                                                | `() => void`                                |
-| status  | 动画状态                                                        | [`Ref<AnimationStatus>`](#animationstatus)  |
+| 返回值  | 描述                                                       | 类型                                                          |
+| ------- | ---------------------------------------------------------- | ------------------------------------------------------------- |
+| setPath | 设置路径动画路径（至少两个点），需要在`Map`组件`ready`后调用 | [`(path: PathPoint[]) => Promise<void>`](#pathpoint)          |
+| start   | 开始动画，`setPath` 设置路径后调用                         | `() => Promise<void>`                                         |
+| pause   | 暂停动画                                                   | `() => void`                                                  |
+| resume  | 继续播放动画（`proceed` 别名）                             | `() => void`                                                  |
+| stop    | 停止动画并回到初始状态                                     | `() => void`                                                  |
+| cancel  | 取消动画并释放实例                                         | `() => void`                                                  |
+| proceed | 继续播放动画函数                                           | `() => void`                                                  |
+| status  | 动画状态（自有状态机，不读 SDK 私有状态）                  | [`Ref<TrackAnimationStatus>`](#trackanimationstatus)          |
 
 #### PathPoint
 
 ```ts
-type PathPoint = { lng: number lat: number }
+type PathPoint = { lng: number; lat: number }
 ```
 
-#### AnimationStatus
+#### TrackAnimationStatus
 
 ```ts
-// PLAYING 播放中
-// STOPPING 暂停中
-// INITIAL 默认状态
-type AnimationStatus = 'PLAYING' | 'STOPPING' | 'INITIAL'
+// idle 空闲 / playing 播放中 / paused 已暂停 / stopped 已停止 / disposed 已释放
+type TrackAnimationStatus = 'idle' | 'playing' | 'paused' | 'stopped' | 'disposed'
 ```
 
 ## TS 类型定义参考
@@ -107,27 +107,34 @@ export declare type UseTrackAnimationOptions = {
    */
   zoom?: number
 }
-declare type AnimationStatus = 'PLAYING' | 'STOPPING' | 'INITIAL'
+export type TrackAnimationStatus = 'idle' | 'playing' | 'paused' | 'stopped' | 'disposed'
 /**
  * 轨迹动画
- * @param {any} map 地图组件实例返回值
- * @param {TrackAnimationOptions} options 轨迹动画配置
- * @returns { setPath, start, stop}
+ * @param optionsOrMap 轨迹动画配置，或地图组件实例（位置可互换）
+ * @param mapOrOptions 地图组件实例，或轨迹动画配置
  */
 export declare function useBMapTrackAnimation(
-  map: any,
-  options: UseTrackAnimationOptions
+  optionsOrMap?: UseTrackAnimationOptions | unknown,
+  mapOrOptions?: unknown
 ): {
   /**
    * 设置路径动画路径
    */
-  setPath: (path: PathPoint[]) => void
+  setPath: (path: PathPoint[]) => Promise<void>
   /**
    * 开始动画
    */
-  start: () => void
+  start: () => Promise<void>
   /**
    * 暂停动画
+   */
+  pause: () => void
+  /**
+   * 继续播放动画
+   */
+  resume: () => void
+  /**
+   * 停止动画
    */
   stop: () => void
   /**
@@ -135,12 +142,12 @@ export declare function useBMapTrackAnimation(
    */
   cancel: () => void
   /**
-   * 继续播放动画
+   * 继续播放动画（resume 别名）
    */
   proceed: () => void
   /**
    * 动画状态
    */
-  status: Ref<AnimationStatus>
+  status: Ref<TrackAnimationStatus>
 }
 ```

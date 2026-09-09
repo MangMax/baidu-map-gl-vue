@@ -3,10 +3,11 @@ import { watch } from "vue";
 import { useOverlayResource, removeOverlay } from "../../core/composables/useOverlayResource";
 import type { MapReadyContext } from "../../core/context/types";
 import type { ResourceScope } from "../../core/lifecycle/ResourceScope";
+import type { CircleHandle } from "../../driver/types/handles";
 import type { BCircleProps } from "../../types/components";
 
 /**
- * M4-07: BCircle 迁移(adapter 模式,center/radius 字段级更新,无 deep watch)
+ * BCircle 迁移(adapter 模式,center/radius 字段级更新,无 deep watch)
  */
 export type { BCircleProps };
 
@@ -28,44 +29,24 @@ const emit = defineEmits<{
   dblclick: [e: unknown];
 }>();
 
-type SdkCircle = {
-  setCenter(p: unknown): void;
-  setRadius(r: number): void;
-  setStrokeColor(c: string): void;
-  setFillColor(c: string): void;
-  setStrokeOpacity(o: number): void;
-  setFillOpacity(o: number): void;
-  setStrokeWeight(w: number): void;
-  setStrokeStyle(s: string): void;
-  enableMassClear(): void;
-  disableMassClear(): void;
-  enableEditing(): void;
-  disableEditing(): void;
-};
-
-const { resource } = useOverlayResource<BCircleProps, SdkCircle>(
+const { resource } = useOverlayResource<BCircleProps, CircleHandle>(
   props,
   {
-    create: (ctx, p) => {
-      const BMapGL = ctx.api as {
-        Circle: new (c: unknown, r: number, o?: Record<string, unknown>) => unknown;
-        Point: new (l: number, t: number) => unknown;
-      };
-      const point = new BMapGL.Point(p.center.lng, p.center.lat);
-      return new BMapGL.Circle(point, p.radius, {
+    create: (ctx, p) =>
+      ctx.client.driver.overlays.createCircle(p.center, p.radius, {
         strokeColor: p.strokeColor,
         strokeWeight: p.strokeWeight,
         strokeOpacity: p.strokeOpacity,
         strokeStyle: p.strokeStyle,
         fillOpacity: p.fillOpacity,
         fillColor: p.fillColor,
-      }) as unknown as SdkCircle;
-    },
+        enableMassClear: p.enableMassClear,
+        enableEditing: p.enableEditing,
+        enableClicking: p.enableClicking,
+      }),
     addToMap: (res, ctx, p, scope: ResourceScope) => {
-      const map = ctx.map as { addOverlay: (o: unknown) => void };
-      if (props.visible) map.addOverlay(res);
-      (ctx as any).overlays?.register?.("circle", res);
-      bindSdkEvents(res as any, ctx, scope);
+      if (props.visible) ctx.client.driver.overlays.add({ kind: "map", handle: ctx.map }, res);
+      bindSdkEvents(ctx, res, scope);
     },
     createWatchers(getCtx, getResource, p, addDisposer) {
       addDisposer(
@@ -75,8 +56,7 @@ const { resource } = useOverlayResource<BCircleProps, SdkCircle>(
           const res = getResource();
           const ctx = getCtx();
           if (!res || !ctx) return;
-          const Point = (ctx.api as { Point: new (l: number, t: number) => unknown }).Point;
-          res.setCenter(new Point(lng, lat));
+          ctx.client.driver.overlays.setPosition(res, { lng, lat });
         }),
       );
       addDisposer(
@@ -84,7 +64,8 @@ const { resource } = useOverlayResource<BCircleProps, SdkCircle>(
           () => p.radius,
           (r) => {
             const x = getResource();
-            if (x) x.setRadius(r);
+            const ctx = getCtx();
+            if (x && ctx) ctx.client.driver.overlays.setOptions(x, { radius: r });
           },
         ),
       );
@@ -93,7 +74,11 @@ const { resource } = useOverlayResource<BCircleProps, SdkCircle>(
           () => p.strokeColor,
           (c) => {
             const _v = c;
-            if (_v !== undefined) getResource()?.setStrokeColor(_v);
+            if (_v !== undefined) {
+              const x = getResource();
+              const ctx = getCtx();
+              if (x && ctx) ctx.client.driver.overlays.setOptions(x, { strokeColor: _v });
+            }
           },
         ),
       );
@@ -102,7 +87,11 @@ const { resource } = useOverlayResource<BCircleProps, SdkCircle>(
           () => p.fillColor,
           (c) => {
             const _v = c;
-            if (_v !== undefined) getResource()?.setFillColor(_v);
+            if (_v !== undefined) {
+              const x = getResource();
+              const ctx = getCtx();
+              if (x && ctx) ctx.client.driver.overlays.setOptions(x, { fillColor: _v });
+            }
           },
         ),
       );
@@ -111,7 +100,11 @@ const { resource } = useOverlayResource<BCircleProps, SdkCircle>(
           () => p.strokeOpacity,
           (o) => {
             const _v = o;
-            if (_v !== undefined) getResource()?.setStrokeOpacity(_v);
+            if (_v !== undefined) {
+              const x = getResource();
+              const ctx = getCtx();
+              if (x && ctx) ctx.client.driver.overlays.setOptions(x, { strokeOpacity: _v });
+            }
           },
         ),
       );
@@ -120,7 +113,11 @@ const { resource } = useOverlayResource<BCircleProps, SdkCircle>(
           () => p.fillOpacity,
           (o) => {
             const _v = o;
-            if (_v !== undefined) getResource()?.setFillOpacity(_v);
+            if (_v !== undefined) {
+              const x = getResource();
+              const ctx = getCtx();
+              if (x && ctx) ctx.client.driver.overlays.setOptions(x, { fillOpacity: _v });
+            }
           },
         ),
       );
@@ -129,7 +126,11 @@ const { resource } = useOverlayResource<BCircleProps, SdkCircle>(
           () => p.strokeWeight,
           (w) => {
             const _v = w;
-            if (_v !== undefined) getResource()?.setStrokeWeight(_v);
+            if (_v !== undefined) {
+              const x = getResource();
+              const ctx = getCtx();
+              if (x && ctx) ctx.client.driver.overlays.setOptions(x, { strokeWeight: _v });
+            }
           },
         ),
       );
@@ -138,7 +139,11 @@ const { resource } = useOverlayResource<BCircleProps, SdkCircle>(
           () => p.strokeStyle,
           (s) => {
             const _v = s;
-            if (_v !== undefined) getResource()?.setStrokeStyle(_v);
+            if (_v !== undefined) {
+              const x = getResource();
+              const ctx = getCtx();
+              if (x && ctx) ctx.client.driver.overlays.setOptions(x, { strokeStyle: _v });
+            }
           },
         ),
       );
@@ -147,7 +152,8 @@ const { resource } = useOverlayResource<BCircleProps, SdkCircle>(
           () => p.enableMassClear,
           (en) => {
             const r = getResource();
-            if (r) en ? r.enableMassClear() : r.disableMassClear();
+            const ctx = getCtx();
+            if (r && ctx) ctx.client.driver.overlays.setOptions(r, { enableMassClear: en });
           },
         ),
       );
@@ -156,7 +162,8 @@ const { resource } = useOverlayResource<BCircleProps, SdkCircle>(
           () => p.enableEditing,
           (en) => {
             const r = getResource();
-            if (r) en ? r.enableEditing() : r.disableEditing();
+            const ctx = getCtx();
+            if (r && ctx) ctx.client.driver.overlays.setOptions(r, { enableEditing: en });
           },
         ),
       );
@@ -167,12 +174,10 @@ const { resource } = useOverlayResource<BCircleProps, SdkCircle>(
             const res = getResource();
             const ctx = getCtx();
             if (!res || !ctx) return;
-            const map = ctx.map as {
-              addOverlay: (o: unknown) => void;
-              removeOverlay: (o: unknown) => void;
-            };
-            if (visible) map.addOverlay(res);
-            else map.removeOverlay(res);
+            const overlays = ctx.client.driver.overlays;
+            const target = { kind: "map" as const, handle: ctx.map };
+            if (visible) overlays.add(target, res);
+            else overlays.remove(target, res);
           },
         ),
       );
@@ -183,13 +188,9 @@ const { resource } = useOverlayResource<BCircleProps, SdkCircle>(
 );
 
 // SDK 事件绑定(ready 后),注册到 scope
-function bindSdkEvents(res: any, ctx: MapReadyContext, scope: ResourceScope) {
-  const on = (name: string, h: (e: unknown) => void) => {
-    res.addEventListener?.(name, h);
-    scope.add(() => res.removeEventListener?.(name, h));
-  };
-  on("click", (e) => emit("click", e));
-  on("dblclick", (e) => emit("dblclick", e));
+function bindSdkEvents(ctx: MapReadyContext, res: CircleHandle, scope: ResourceScope) {
+  scope.add(ctx.client.driver.events.on(res, "click", (e) => emit("click", e)));
+  scope.add(ctx.client.driver.events.on(res, "dblclick", (e) => emit("dblclick", e)));
 }
 </script>
 

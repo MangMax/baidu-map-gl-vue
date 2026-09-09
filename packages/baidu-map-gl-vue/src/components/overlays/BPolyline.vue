@@ -3,14 +3,14 @@ import { watch } from "vue";
 import { useOverlayResource, removeOverlay } from "../../core/composables/useOverlayResource";
 import type { MapReadyContext } from "../../core/context/types";
 import type { ResourceScope } from "../../core/lifecycle/ResourceScope";
+import type { PolylineHandle } from "../../driver/types/handles";
 import type { BPolylineProps } from "../../types/components";
-import { toSdkPoints } from "../../core/utils/geometry";
 
 /**
- * M4-07: BPolyline 迁移(adapter 模式)
+ * BPolyline 迁移(adapter 模式)
  *
  * path 视为不可变值,更新后替换根引用触发;支持 pathVersion 强制刷新。
- * 大 path 默认不 deep watch(§11.5)。
+ * 大 path 默认不 deep watch。
  */
 export type { BPolylineProps };
 
@@ -29,42 +29,22 @@ const emit = defineEmits<{
   dblclick: [e: unknown];
 }>();
 
-type SdkPolyline = {
-  setPath(p: unknown[]): void;
-  setStrokeColor(c: string): void;
-  setStrokeWeight(w: number): void;
-  setStrokeOpacity(o: number): void;
-  setStrokeStyle(s: string): void;
-  enableMassClear(): void;
-  disableMassClear(): void;
-  enableEditing(): void;
-  disableEditing(): void;
-};
-
-const { resource } = useOverlayResource<BPolylineProps, SdkPolyline>(
+const { resource } = useOverlayResource<BPolylineProps, PolylineHandle>(
   props,
   {
-    create: (ctx, p) => {
-      const BMapGL = ctx.api as {
-        Polyline: new (pts: unknown[], o?: Record<string, unknown>) => unknown;
-      };
-      return new BMapGL.Polyline(toSdkPoints(ctx.api, p.path), {
+    create: (ctx, p) =>
+      ctx.client.driver.overlays.createPolyline(p.path, {
         strokeColor: p.strokeColor,
         strokeWeight: p.strokeWeight,
         strokeOpacity: p.strokeOpacity,
         strokeStyle: p.strokeStyle,
-      }) as unknown as SdkPolyline;
-    },
+        enableMassClear: p.enableMassClear,
+        enableEditing: p.enableEditing,
+      }),
     addToMap: (res, ctx, p, scope: ResourceScope) => {
-      const map = ctx.map as { addOverlay: (o: unknown) => void };
-      if (props.visible) map.addOverlay(res);
-      (ctx as any).overlays?.register?.("polyline", res);
-      const on = (name: string, h: (e: unknown) => void) => {
-        (res as any).addEventListener?.(name, h);
-        scope.add(() => (res as any).removeEventListener?.(name, h));
-      };
-      on("click", (e) => emit("click", e));
-      on("dblclick", (e) => emit("dblclick", e));
+      if (props.visible) ctx.client.driver.overlays.add({ kind: "map", handle: ctx.map }, res);
+      scope.add(ctx.client.driver.events.on(res, "click", (e) => emit("click", e)));
+      scope.add(ctx.client.driver.events.on(res, "dblclick", (e) => emit("dblclick", e)));
     },
     createWatchers(getCtx, getResource, p, addDisposer) {
       addDisposer(
@@ -74,7 +54,7 @@ const { resource } = useOverlayResource<BPolylineProps, SdkPolyline>(
             const res = getResource();
             const ctx = getCtx();
             if (!res || !ctx) return;
-            if (path && path.length > 0) res.setPath(toSdkPoints(ctx.api, path));
+            if (path && path.length > 0) ctx.client.driver.overlays.setPath(res, path);
           },
           { flush: "sync" },
         ),
@@ -84,7 +64,11 @@ const { resource } = useOverlayResource<BPolylineProps, SdkPolyline>(
           () => p.strokeColor,
           (c) => {
             const _v = c;
-            if (_v !== undefined) getResource()?.setStrokeColor(_v);
+            if (_v !== undefined) {
+              const x = getResource();
+              const ctx = getCtx();
+              if (x && ctx) ctx.client.driver.overlays.setOptions(x, { strokeColor: _v });
+            }
           },
         ),
       );
@@ -93,7 +77,11 @@ const { resource } = useOverlayResource<BPolylineProps, SdkPolyline>(
           () => p.strokeWeight,
           (w) => {
             const _v = w;
-            if (_v !== undefined) getResource()?.setStrokeWeight(_v);
+            if (_v !== undefined) {
+              const x = getResource();
+              const ctx = getCtx();
+              if (x && ctx) ctx.client.driver.overlays.setOptions(x, { strokeWeight: _v });
+            }
           },
         ),
       );
@@ -102,7 +90,11 @@ const { resource } = useOverlayResource<BPolylineProps, SdkPolyline>(
           () => p.strokeOpacity,
           (o) => {
             const _v = o;
-            if (_v !== undefined) getResource()?.setStrokeOpacity(_v);
+            if (_v !== undefined) {
+              const x = getResource();
+              const ctx = getCtx();
+              if (x && ctx) ctx.client.driver.overlays.setOptions(x, { strokeOpacity: _v });
+            }
           },
         ),
       );
@@ -111,7 +103,11 @@ const { resource } = useOverlayResource<BPolylineProps, SdkPolyline>(
           () => p.strokeStyle,
           (s) => {
             const _v = s;
-            if (_v !== undefined) getResource()?.setStrokeStyle(_v);
+            if (_v !== undefined) {
+              const x = getResource();
+              const ctx = getCtx();
+              if (x && ctx) ctx.client.driver.overlays.setOptions(x, { strokeStyle: _v });
+            }
           },
         ),
       );
@@ -120,7 +116,8 @@ const { resource } = useOverlayResource<BPolylineProps, SdkPolyline>(
           () => p.enableMassClear,
           (en) => {
             const r = getResource();
-            if (r) en ? r.enableMassClear() : r.disableMassClear();
+            const ctx = getCtx();
+            if (r && ctx) ctx.client.driver.overlays.setOptions(r, { enableMassClear: en });
           },
         ),
       );
@@ -129,7 +126,8 @@ const { resource } = useOverlayResource<BPolylineProps, SdkPolyline>(
           () => p.enableEditing,
           (en) => {
             const r = getResource();
-            if (r) en ? r.enableEditing() : r.disableEditing();
+            const ctx = getCtx();
+            if (r && ctx) ctx.client.driver.overlays.setOptions(r, { enableEditing: en });
           },
         ),
       );
@@ -140,12 +138,10 @@ const { resource } = useOverlayResource<BPolylineProps, SdkPolyline>(
             const res = getResource();
             const ctx = getCtx();
             if (!res || !ctx) return;
-            const map = ctx.map as {
-              addOverlay: (o: unknown) => void;
-              removeOverlay: (o: unknown) => void;
-            };
-            if (visible) map.addOverlay(res);
-            else map.removeOverlay(res);
+            const overlays = ctx.client.driver.overlays;
+            const target = { kind: "map" as const, handle: ctx.map };
+            if (visible) overlays.add(target, res);
+            else overlays.remove(target, res);
           },
         ),
       );

@@ -1,8 +1,7 @@
 /**
  * 业务层公共 composable:useBMap / useMapReady / useBMapContext
  *
- * 让业务代码不再依赖"在哪个 initd callback 中全局 BMapGL 才存在"
- * (方案 §13.1)。
+ * 让业务代码不再依赖“在哪个 initd callback 中全局 BMapGL 才存在”。
  */
 import { computed, type ComputedRef, type ShallowRef } from "vue";
 import { useRequiredMapContext } from "../core/context/inject";
@@ -22,7 +21,7 @@ export function useBMap() {
   return {
     status: ctx.status,
     map: ctx.map,
-    api: ctx.api,
+    client: ctx.client,
     error: ctx.error,
     whenReady: ctx.whenReady,
   };

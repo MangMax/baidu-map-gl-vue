@@ -23,11 +23,11 @@ hooks/useBMapGeolocation
 ## 用法
 
 ```ts
-const { get, location, isLoading, isError, status } = useBMapGeolocation(options, map)
+const { locate, location, isLoading, isError, status } = useBMapGeolocation(options, map)
 ```
 
 :::tip
-该 hooks 依赖于 `BMapGL`，所以需要在 `Map` 组件初始化完毕调用 `get` 方法后数据才可用
+该 hooks 需要地图 ready 后才能执行定位；在 `<BMap>` 子树内调用时可省略 `map` 参数；`locate` 与 `get` 为同一方法
 :::
 
 ### 参数
@@ -35,7 +35,7 @@ const { get, location, isLoading, isError, status } = useBMapGeolocation(options
 | 参数    | 描述                 | 类型                                                      | 默认值 |
 | ------- | -------------------- | --------------------------------------------------------- | ------ |
 | options | 浏览器定位配置项     | [`UseBrowserLocationOptions`](#usebrowserlocationoptions) | -      |
-| cal     | 定位成功后的回调函数 | `(location: Ref<Location>) => void`                       | -      |
+| map     | `Map`地图组件实例或 `ref`（可省略，用注入值） | `unknown` | - |
 
 #### UseBrowserLocationOptions
 
@@ -48,30 +48,29 @@ const { get, location, isLoading, isError, status } = useBMapGeolocation(options
 
 ### 返回值
 
-| 返回值    | 描述                                                   | 类型                    |
-| --------- | ------------------------------------------------------ | ----------------------- |
-| isLoading | 是否在获取中                                           | `boolean`               |
-| location  | 定位信息                                               | [`Location`](#location) |
-| get       | 获取定位方法，需要在`Map`组件`initd`事件触发后才可调用 | `() => void`            |
-| isError   | 是否定位出错                                           | `boolean`               |
-| status    | 定位状态                                               | [`Status`](#status)     |
+| 返回值    | 描述                                                   | 类型                                              |
+| --------- | ------------------------------------------------------ | ------------------------------------------------- |
+| data      | 定位结果（`location` 为其别名）                        | `Ref<BMapGeoResult \| null>`                      |
+| location  | 定位信息                                               | [`Ref<BMapGeoResult \| null>`](#location)         |
+| error     | 错误信息                                               | `Ref<unknown>`                                    |
+| isError   | 是否定位出错                                           | `boolean`                                         |
+| isLoading | 是否在获取中                                           | `boolean`                                         |
+| status    | 异步状态                                               | `Ref<'idle' \| 'loading' \| 'success' \| 'error'>` |
+| locate    | 获取定位方法，需要在`Map`组件`ready`后才可调用         | `() => Promise<BMapGeoResult \| null>`            |
+| get       | `locate` 别名                                          | 同上                                              |
+| cancel    | 取消 pending 请求                                      | `() => void`                                      |
+| reset     | 清空 data/error                                        | `() => void`                                      |
 
 #### Location
 
-| 属性     | 描述     | 类型                          |
-| -------- | -------- | ----------------------------- |
-| accuracy | 定位精度 | `number`                      |
-| point    | 经纬度点 | `{ lng: number lat: number }` |
-| address  | 定位地址 | [`Address`](#address)         |
-
-#### Status
-
-| status                   | 描述                 |
-| ------------------------ | -------------------- |
-| BMAP_STATUS_SUCCESS      | 定位成功             |
-| ERR_POSITION_TIMEOUT     | 定位超时             |
-| ERR_POSITION_UNAVAILABLE | 定位不可用           |
-| ERR_PERMISSION_DENIED    | 没有权限，定位被拒绝 |
+| 属性      | 描述       | 类型                          |
+| --------- | ---------- | ----------------------------- |
+| accuracy  | 定位精度   | `number`                      |
+| point     | 经纬度点   | `{ lng: number; lat: number }` |
+| address   | 定位地址   | [`Address`](#address)         |
+| status    | SDK 状态（成功为 `BMAP_STATUS_SUCCESS`） | `string` |
+| source    | 数据来源（固定 `baidu-sdk`） | `string`                |
+| timestamp | 定位时间戳 | `number`                      |
 
 #### Address
 
@@ -113,32 +112,27 @@ interface UseBrowserLocationOptions {
    */
   SDKLocation?: boolean
 }
-declare type Status =
-  | 'BMAP_STATUS_SUCCESS'
-  | 'ERR_PERMISSION_DENIED'
-  | 'ERR_POSITION_UNAVAILABLE'
-  | 'ERR_POSITION_TIMEOUT'
 interface Location {
-  accuracy: number
   point: Point
-  address: {
-    country: string
-    city: string
-    city_code: string
-    district: string
-    province: string
-    street: string
-    street_number: string
-  }
+  accuracy?: number
+  address?: Record<string, string>
+  status: string
+  source: 'baidu-sdk'
+  timestamp: number
 }
 export declare function useBMapGeolocation(
   options?: UseBrowserLocationOptions,
-  cal?: (location: Ref<Location>) => void
+  map?: unknown
 ): {
-  get: () => void
-  isLoading: Ref<boolean>
+  data: Ref<Location | null>
+  location: Ref<Location | null>
+  error: Ref<unknown>
   isError: Ref<boolean>
-  status: Ref<Status | undefined>
-  location: Ref<Location>
+  status: Ref<'idle' | 'loading' | 'success' | 'error'>
+  isLoading: Ref<boolean>
+  locate: () => Promise<Location | null>
+  get: () => Promise<Location | null>
+  cancel: (reason?: unknown) => void
+  reset: () => void
 }
 ```

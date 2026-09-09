@@ -11,11 +11,15 @@
     }"
     mapStyleId="91c53039a0b7f75e3dd8ddcdd932243b"
     enableScrollWheelZoom
-    @pluginReady="handlePluginReady"
+    ref="bmapRef"
+    @plugin-ready="handlePluginReady"
   />
 </template>
 <script setup>
-function handlePluginReady(map) {
+import { ref } from "vue";
+const bmapRef = ref();
+function handlePluginReady() {
+  const map = bmapRef.value?.getMapInstance?.();
   let data = [];
 
   let citys = [
@@ -72,7 +76,7 @@ function handlePluginReady(map) {
   }
 
   let view = new mapvgl.View({
-    map: map,
+    map: map?.raw,
   });
 
   let pointLayer = new mapvgl.PointLayer({

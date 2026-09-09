@@ -3,7 +3,7 @@ import BMarkerList from "./BMarkerList.vue";
 import type { BMarkerListProps } from "./BMarkerList.vue";
 
 /**
- * P0-16: BPointLayer —— deprecated alias of BMarkerList.
+ * BPointLayer —— deprecated alias of BMarkerList.
  *
  * 名称暗示批量层，但实际每个 item 一个 SDK Marker（适合中小规模）。
  * 真实批量层完成前，实际实现名为 BMarkerList；BPointLayer 仅作兼容别名保留。

@@ -4,11 +4,15 @@
  *
  * - 在 BMap 内部调用:hook 自动获得注入的上下文(推荐)。
  * - 在 BMap 外部调用:传入 BMap ref(如 `const map = ref()`),whenReady
- *   时实时读取 ref.value;API 从 window.BMapGL 取。
+ *   时实时读取 ref.value;client 经 loader 边界(existingGlobalProvider)创建。
  */
 import { useOptionalMapContext } from "../core/context/inject";
 import type { MapContext, MapReadyContext } from "../core/context/types";
 import { shallowRef, toRaw, type ShallowRef } from "vue";
+import { createBMapClient } from "../client";
+import { existingGlobalProvider } from "../core/loader/Provider";
+import { createHandle, type MapHandle } from "../driver/types/handles";
+import type { BMapClient } from "../client/types";
 
 /** 读取外部传入值:ref 实时解包 `.value`,普通对象直接返回 */
 function readValue(input: unknown): unknown {
@@ -22,23 +26,39 @@ export function resolveMapContext(map?: unknown): MapContext {
   const injected = useOptionalMapContext();
   if (injected) return injected;
 
-  const apiRef: ShallowRef<unknown> = shallowRef(
-    typeof window !== "undefined" ? (window as unknown as Record<string, unknown>).BMapGL ?? null : null,
-  );
+  const mapRef: ShallowRef<MapHandle | null> = shallowRef(null);
+  const clientRef = shallowRef<BMapClient | null>(null);
+  const statusRef = shallowRef("idle") as unknown as MapContext["status"];
+  let readyPromise: Promise<MapReadyContext> | null = null;
 
-  const mapRef: ShallowRef<unknown> = shallowRef(readValue(map));
-  const statusRef = shallowRef(readValue(map) ? "ready" : "idle") as unknown as MapContext["status"];
-
-  const ready = (): MapReadyContext => ({
-    api: apiRef.value,
-    map: mapRef.value,
-  });
+  const getReady = (): Promise<MapReadyContext> => {
+    if (!readyPromise) {
+      readyPromise = (async () => {
+        const rawMap = readValue(map);
+        if (!rawMap) {
+          throw new Error(
+            "BMap map instance is not ready yet. Pass the BMap instance (ref value) or use the hook inside <BMap>.",
+          );
+        }
+        const client = await createBMapClient({
+          provider: existingGlobalProvider(),
+          loadOptions: {},
+        });
+        const handle = createHandle("map", rawMap);
+        mapRef.value = handle;
+        clientRef.value = client;
+        statusRef.value = "ready";
+        return { client, map: handle };
+      })();
+    }
+    return readyPromise;
+  };
 
   const ctx: MapContext = {
     id: Symbol("external-map-context"),
     status: statusRef,
-    api: apiRef,
-    map: mapRef,
+    client: clientRef as unknown as MapContext["client"],
+    map: mapRef as unknown as MapContext["map"],
     error: shallowRef(null),
     resources: {
       isDisposed: false,
@@ -50,22 +70,7 @@ export function resolveMapContext(map?: unknown): MapContext {
     scheduler: {} as never,
     overlays: null,
     plugins: null,
-    whenReady: (signal?: AbortSignal) => {
-      // 实时读取(map 参数为 ref 时,组件挂载后 value 才有值;api 同样实时从 window.BMapGL 取)
-      mapRef.value = readValue(map);
-      apiRef.value =
-        typeof window !== "undefined" ? (window as unknown as Record<string, unknown>).BMapGL ?? null : null;
-      const value = mapRef.value;
-      if (value) {
-        statusRef.value = "ready";
-        return Promise.resolve(ready());
-      }
-      return Promise.reject(
-        new Error(
-          "BMap map instance is not ready yet. Pass the BMap instance (ref value) or use the hook inside <BMap>.",
-        ),
-      );
-    },
+    whenReady: () => getReady(),
     dispose: () => {},
   };
   return ctx;

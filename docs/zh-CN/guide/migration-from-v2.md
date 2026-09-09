@@ -39,9 +39,10 @@ app.use(createBMapPlugin({
 | `app.use(Vue3BaiduMapGl, { ak })` | 保留,映射到 `createBMapPlugin` | 可选迁移 |
 | 按需导入组件(`BMap` 等) | 保留组件名与根 named exports | 无需改动 |
 | `@initd` | 保留并 **deprecate**,新增 `@ready` | 建议改为 `@ready` |
-| `getMapInstance()` | 保留,新增 `whenReady()` | 可选迁移 |
+| `getMapInstance()` | 保留,返回 `MapHandle`（不再是 raw SDK 地图；raw 地图经 `./advanced` 的 `unwrapRaw` 获取）,新增 `whenReady()` | 涉及 raw 地图访问时迁移 |
 | `apiUrl`(离线) | 保留为 CustomScriptProvider 兼容参数 | 推荐 Provider |
 | `plugins: string[]` | 保留适配；`ready` 不等待插件，使用 `plugin-ready` / `plugin-error` 监听插件状态 | 检查插件依赖时序 |
+| `@pluginReady(map)`（旧驼峰事件，载荷为地图实例） | 已移除，统一为 `@plugin-ready`（载荷为插件名）；地图实例改用 `ready` 载荷、`whenReady()` 或组件 `ref.getMapInstance()` 获取 | 涉及插件回调取地图时迁移 |
 | `v-model:show`(InfoWindow) | 保留 | 无需改动 |
 | `modelValue`(InfoWindow) | beta 期保留 + warning | 改为 `open`/`v-model:open` |
 | `usePubSub` | 从主入口移除;短期放入 `legacy` | 改用 context/whenReady |
@@ -66,7 +67,7 @@ app.use(createBMapPlugin({
 </BMap>
 ```
 
-- `ready` 事件带 `{ map, api }`(api 为 SDK namespace)。
+- `ready` 事件带 `{ client, map, container }`：`map` 为 `MapHandle`，`client` 提供 `driver` 领域接口；raw SDK 只经 `baidu-map-gl-vue/advanced` 的 `unwrapRaw()` 获取。
 - `initd` 仍发出,内容与 `ready` 相同,标记 deprecated。
 - 地图 `ready` 不表示 optional plugin 已完成；依赖插件的代码应监听 `plugin-ready`。
 - `resetCenter()` 不再返回 map 实例，改用 `resetView()` 恢复初始视角。
@@ -84,7 +85,7 @@ v3 修复:
 - 0 坐标有效(不再用 truthy 判断)。
 - 初始 `visible`、`icon`、`rotation`、`zIndex` 和拖拽状态会在 Marker 创建时直接应用。
 
-> 大量点请勿堆叠独立 BMarker,改用 `BMarkerCluster` / `BMarkerList`(见 §5)。`BPointLayer` 仍可用，但只是 `BMarkerList` 的 deprecated alias。
+> 大量点请勿堆叠独立 BMarker,改用 `BMarkerCluster` / `BMarkerList`。`BPointLayer` 仍可用，但只是 `BMarkerList` 的 deprecated alias。
 
 ### 3.3 BInfoWindow
 
@@ -104,7 +105,7 @@ v3 修复:
 
 ## 4. 大数据(千级点)
 
-v3 引入三档渲染模型(方案 §12.1):
+v3 引入三档渲染模型:
 
 | 场景 | 组件 | 说明 |
 |---|---|---|

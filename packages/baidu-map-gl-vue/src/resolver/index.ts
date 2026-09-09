@@ -1,7 +1,7 @@
 /**
- * M7-02: 自动组件 resolver(unplugin-vue-components)
+ * 自动组件 resolver(unplugin-vue-components)
  *
- * 合法组件列表从 manifest 生成,不手工维护第二份(方案 §15.4)。
+ * 合法组件列表从 manifest 生成,不手工维护第二份。
  * 为避免强依赖 unplugin-vue-components,此处仅定义最小接口兼容(结构类型)。
  */
 export interface ComponentResolverLike {

@@ -1,5 +1,5 @@
 /**
- * M5-03: BPointLayer 批量点层验证
+ * BPointLayer 批量点层验证
  */
 import { describe, it, expect, beforeEach } from 'vitest'
 import { mount, flushPromises } from '@vue/test-utils'

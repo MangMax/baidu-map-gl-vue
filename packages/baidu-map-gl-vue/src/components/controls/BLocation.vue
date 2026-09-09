@@ -1,8 +1,9 @@
 <script setup lang="ts">
 import { watch } from "vue";
-import { useControlResource, bindControlEvents } from "../../core/composables/useControlResource";
+import { useControlResource } from "../../core/composables/useControlResource";
 import type { MapReadyContext } from "../../core/context/types";
 import type { ResourceScope } from "../../core/lifecycle/ResourceScope";
+import type { ControlHandle } from "../../driver/types/handles";
 
 export interface BLocationProps {
   anchor?: string;
@@ -21,25 +22,16 @@ const emit = defineEmits<{
   locationError: [e: unknown];
 }>();
 
-type SdkControl = { setOptions?: (o: Record<string, unknown>) => void };
-
-const { resource } = useControlResource<BLocationProps, SdkControl>(props, {
-  create: (ctx, p) => {
-    const anchor = p.anchor ?? "BMAP_ANCHOR_TOP_LEFT";
-    const offset = p.offset ?? { x: 0, y: 0 };
-    const win = window as any;
-    return new (ctx.api as any).LocationControl({
-      offset: new (ctx.api as any).Size(offset.x, offset.y),
-      anchor: win[anchor] ?? anchor,
-    }) as unknown as SdkControl;
-  },
+const { resource } = useControlResource<BLocationProps, ControlHandle>(props, {
+  create: (ctx, p) =>
+    ctx.client.driver.controls.create("location", {
+      anchor: p.anchor,
+      offset: p.offset,
+    }),
   addToMap: (res, ctx, p, scope: ResourceScope) => {
-    if (props.visible) (ctx.map as { addControl: (c: unknown) => void }).addControl(res);
-    (ctx as any).overlays?.register?.("control", res);
-    bindControlEvents(res as any, ctx.api, scope, [
-      ["locationSuccess", (e) => emit("locationSuccess", e)],
-      ["locationError", (e) => emit("locationError", e)],
-    ]);
+    if (props.visible) ctx.client.driver.controls.add({ kind: "map", handle: ctx.map }, res);
+    scope.add(ctx.client.driver.events.on(res, "locationSuccess", (e) => emit("locationSuccess", e)));
+    scope.add(ctx.client.driver.events.on(res, "locationError", (e) => emit("locationError", e)));
   },
   createWatchers(getCtx, getResource, p, addDisposer) {
     addDisposer(
@@ -49,18 +41,16 @@ const { resource } = useControlResource<BLocationProps, SdkControl>(props, {
           const res = getResource();
           const ctx = getCtx();
           if (!res || !ctx) return;
-          const map = ctx.map as {
-            addControl: (c: unknown) => void;
-            removeControl: (c: unknown) => void;
-          };
-          if (v) map.addControl(res);
-          else map.removeControl(res);
+          const controls = ctx.client.driver.controls;
+          const target = { kind: "map" as const, handle: ctx.map };
+          if (v) controls.add(target, res);
+          else controls.remove(target, res);
         },
       ),
     );
   },
   remove: (res, ctx) => {
-    (ctx.map as { removeControl: (c: unknown) => void }).removeControl(res);
+    ctx.client.driver.controls.remove({ kind: "map", handle: ctx.map }, res);
   },
 });
 

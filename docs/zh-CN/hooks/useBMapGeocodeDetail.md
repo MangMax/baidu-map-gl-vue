@@ -14,10 +14,10 @@ hooks/useBMapGeocodeDetail/index
 :::
 
 :::tip
-在 Ts 中使用批量解析坐标点时，使用泛型 `PointGeocoderResult` 内部可推断 `result` 为可推断为 `PointGeocoderResult`，从而避免读取值时 ts 的报错。
+`result` 为 `Ref<GeocodeDetailResult | null>`，可直接解构使用：
 
 ```ts
-import { useBMapGeocodeDetail, GeocodeDetailResult } from 'baidu-map-gl-vue'
+import { useBMapGeocodeDetail, type GeocodeDetailResult } from 'baidu-map-gl-vue'
 const { result } = useBMapGeocodeDetail(map)
 ```
 
@@ -31,10 +31,10 @@ hooks/useBMapGeocodeDetail/batch
 :::
 
 :::tip
-在 Ts 中使用批量解析坐标点时，使用泛型 `PointGeocoderResult[]` 内部可推断 `result` 为可推断为 `PointGeocoderResult[]`，从而避免遍历时 ts 的报错。
+批量解析使用 `getBatch`，逐项返回 `{ point, detail, error? }`：
 
 ```ts
-import { useBMapGeocodeDetail, GeocodeDetailResult } from 'baidu-map-gl-vue'
+import { useBMapGeocodeDetail, type GeocodeDetailResult } from 'baidu-map-gl-vue'
 const { getBatch } = useBMapGeocodeDetail(map)
 ```
 
@@ -43,35 +43,34 @@ const { getBatch } = useBMapGeocodeDetail(map)
 ## 用法
 
 ```ts
-const { get, result, isLoading, isEmpty } = useBMapGeocodeDetail(map)
+const { get, getBatch, result, isLoading, isEmpty } = useBMapGeocodeDetail(map)
 ```
 
 :::tip
-该 hooks 依赖于 `BMapGL`，所以需要在 `Map` 组件初始化完毕调用 `get` 方法后数据才可用
+该 hooks 需要地图 ready 后才能执行解析；在 `<BMap>` 子树内调用时可省略 `map` 参数
 :::
 
 ### 参数
 
-| 参数    | 描述                 | 类型                                                                          | 默认值 |
-| ------- | -------------------- | ----------------------------------------------------------------------------- | ------ |
-| options | 解析配置             | [`UsePointGeocoderOptions`](#usepointgeocoderoptions)                         | -      |
-| cal     | 定位成功后的回调函数 | `(result: Ref<PointGeocoderResult \| PointGeocoderResult[] \| null>) => void` | -      |
-
-#### UsePointGeocoderOptions
-
-| 属性      | 描述                                      | 类型     |
-| --------- | ----------------------------------------- | -------- |
-| poiRadius | 附近 POI 所处于的最大半径，默认为 100 米  | `number` |
-| numPois   | 返回的 POI 点个数，默认为 10 个。取值范围 | `number` |
+| 参数 | 描述                                         | 类型      | 默认值 |
+| ---- | -------------------------------------------- | --------- | ------ |
+| map  | `Map`地图组件实例或 `ref`（可省略，用注入值） | `unknown` | -      |
 
 ### 返回值
 
-| 返回值    | 描述                                                         | 类型                                                                                |
-| --------- | ------------------------------------------------------------ | ----------------------------------------------------------------------------------- |
-| isLoading | 是否在获取中                                                 | `boolean`                                                                           |
-| isEmpty   | 是否有解析结果                                               | `boolean`                                                                           |
-| result    | 坐标点解析结果                                               | [`Ref<PointGeocoderResult \| PointGeocoderResult[] \| null>`](#pointgeocoderresult) |
-| get       | 获取坐标点信息方法，需要在`Map`组件`initd`事件触发后才可调用 | `(point: Point \| Point[]) => void]`                                                |
+| 返回值    | 描述                                                          | 类型                                                   |
+| --------- | ------------------------------------------------------------- | ------------------------------------------------------ |
+| data      | 解析结果（`result` 为其别名）                                 | `Ref<GeocodeDetailResult \| null>`                     |
+| result    | 坐标点解析结果                                                | `Ref<GeocodeDetailResult \| null>`                     |
+| error     | 错误信息                                                      | `Ref<unknown>`                                         |
+| isError   | 是否出错                                                      | `boolean`                                              |
+| isEmpty   | 是否有解析结果                                                | `boolean`                                              |
+| isLoading | 是否在获取中                                                  | `boolean`                                              |
+| status    | 异步状态                                                      | `Ref<'idle' \| 'loading' \| 'success' \| 'error'>`     |
+| get       | 获取坐标点信息方法，需要在`Map`组件`ready`后才可调用          | `(point: Point) => Promise<GeocodeDetailResult>`       |
+| getBatch  | 批量反查地址详情，逐项返回 `{ point, detail, error? }`        | `(points: Point[]) => Promise<BatchItem[]>`            |
+| cancel    | 取消 pending 请求                                             | `() => void`                                           |
+| reset     | 清空 data/error                                               | `() => void`                                           |
 
 #### Point
 
@@ -79,15 +78,15 @@ const { get, result, isLoading, isEmpty } = useBMapGeocodeDetail(map)
 type Point = { lng: number; lat: number }
 ```
 
-#### PointGeocoderResult
+#### GeocodeDetailResult
 
-| 属性             | 描述                         | 类型                                    |
-| ---------------- | ---------------------------- | --------------------------------------- |
-| point            | 坐标点                       | `boolean`                               |
-| string           | 地址描述                     | `string`                                |
-| AddressComponent | 结构化的地址描述             | [`AddressComponent`](#AddressComponent) |
-| surroundingPois  | 附近的 POI 点                | [`LocalResultPoi`](#localresultpoi)     |
-| business         | 商圈字段，代表此点所属的商圈 | `string`                                |
+| 属性              | 描述                         | 类型                                    |
+| ----------------- | ---------------------------- | --------------------------------------- |
+| point             | 坐标点                       | `Point`                                 |
+| address           | 地址描述                     | `string`                                |
+| addressComponents | 结构化的地址描述             | [`AddressComponent`](#AddressComponent) |
+| surroundingPois   | 附近的 POI 点（`title`+`point`） | `Array<{ title: string; point: Point }>` |
+| business          | 商圈字段，代表此点所属的商圈 | `string`                                |
 
 ##### AddressComponent
 
@@ -99,35 +98,12 @@ type Point = { lng: number; lat: number }
 | city         | 城市名称 | `string` |
 | province     | 省份名称 | `string` |
 
-##### LocalResultPoi
-
-| 属性        | 描述                                                                                         | 类型                  |
-| ----------- | -------------------------------------------------------------------------------------------- | --------------------- |
-| title       | 结果的名称标题                                                                               | `string`              |
-| point       | 该结果所在的地理位置                                                                         | `point`               |
-| url         | 在百度地图中展示该结果点的详情信息链接                                                       | `string`              |
-| address     | 地址（根据数据部分提供）。注：当结果点类型为公交站或地铁站时，地址信息为经过该站点的所有车次 | `string`              |
-| city        | 所在城市                                                                                     | `string`              |
-| phoneNumber | 电话，根据数据部分提供                                                                       | `string`              |
-| postcode    | 邮政编码，根据数据部分提供                                                                   | `string`              |
-| type        | 类型，根据数据部分提供                                                                       | [`PoiType`](#poitype) |
-| uid         | 地点 id                                                                                      | `string`              |
-| tags        | POI 的标签，如商务大厦、餐馆等。                                                             | `string[]`            |
-
-##### PoiType
-
-| 值  | 描述           |
-| --- | -------------- |
-| 0   | 一般位置点     |
-| 1   | 公交车站位置点 |
-| 3   | 地铁车站位置点 |
-
 ## TS 类型定义参考
 
 ```ts
 import { Ref } from 'vue'
 import { Point } from 'baidu-map-gl-vue'
-export interface PointGeocoderResult {
+export interface GeocodeDetailResult {
   /**
    * 坐标点
    */
@@ -149,24 +125,28 @@ export interface PointGeocoderResult {
   /**
    * 附近的POI点
    */
-  surroundingPois: Array<BMapGL.LocalResultPoi>
+  surroundingPois: Array<{ title: string; point: Point }>
   /**
    * 商圈字段，代表此点所属的商圈
    */
   business: string
 }
 /**
- * 由地址解析坐标点
+ * 由坐标点反查地址详情
  */
 export declare function useBMapGeocodeDetail(map?: unknown): {
-  T extends PointGeocoderResult | PointGeocoderResult[] = PointGeocoderResult | PointGeocoderResult[]
->(
-  options?: BMapGL.LocationOptions | null,
-  cal?: (point: Ref<T>) => void
-): {
-  get: (point: T extends PointGeocoderResult ? Point : Point[]) => void
-  result: Ref<T | null | undefined>
-  isLoading: Ref<boolean>
+  data: Ref<GeocodeDetailResult | null>
+  result: Ref<GeocodeDetailResult | null>
+  error: Ref<unknown>
+  isError: Ref<boolean>
   isEmpty: Ref<boolean>
+  status: Ref<'idle' | 'loading' | 'success' | 'error'>
+  isLoading: Ref<boolean>
+  get: (point: Point) => Promise<GeocodeDetailResult | null>
+  getBatch: (
+    points: Point[]
+  ) => Promise<Array<{ point: Point; detail: GeocodeDetailResult | null; error?: unknown }>>
+  cancel: (reason?: unknown) => void
+  reset: () => void
 }
 ```
