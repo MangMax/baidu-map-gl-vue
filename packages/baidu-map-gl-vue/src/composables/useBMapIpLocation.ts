@@ -1,5 +1,5 @@
 /**
- * useBMapIpLocation —— IP 定位(方案 §13.2)
+ * useBMapIpLocation —— IP 定位
  *
  * 通过 SDK BMapGL.LocalCity 获取 IP 所在城市。
  * 统一异步状态(useBMapAsyncTask),不再由用户担保全局 BMapGL。
@@ -21,10 +21,10 @@ export function useBMapIpLocation(map?: unknown) {
     immediate: false,
     runner: async (_taskContext) => {
       const ready = await ctx.whenReady();
-      const LocalCity = (ready.api as { LocalCity: new () => { get: (cb: (r: unknown) => void) => void } })
-        .LocalCity;
+      const localCity = ready.client.driver.services.createLocalCity();
+      const raw = localCity.raw as { get: (cb: (r: unknown) => void) => void };
       return new Promise<BMapIpLocationResult | null>((resolve) => {
-        new LocalCity().get((res) => {
+        raw.get((res) => {
           const r = res as { code?: number; name?: string; center?: { lng: number; lat: number } };
           resolve(
             r.center && r.name

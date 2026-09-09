@@ -2,28 +2,24 @@
 import { useLayerResource } from "../../core/composables/useLayerResource";
 import type { MapReadyContext } from "../../core/context/types";
 import type { ResourceScope } from "../../core/lifecycle/ResourceScope";
+import type { LayerHandle } from "../../driver/types/handles";
 
 /**
- * M6-04: BPanoramaCoverageLayer 迁移
+ * BPanoramaCoverageLayer 迁移
  *
  * 全景覆盖图层,经 map.addTileLayer/removeTileLayer 管理。
  */
 const props = defineProps({});
 
-type SdkLayer = { setOptions?: (o: Record<string, unknown>) => void };
-
-const { resource } = useLayerResource<Record<string, never>, SdkLayer>(
+const { resource } = useLayerResource<Record<string, never>, LayerHandle>(
   props as Record<string, never>,
   {
-    create: (ctx) => {
-      return new (ctx.api as any).PanoramaCoverageLayer() as unknown as SdkLayer;
-    },
+    create: (ctx) => ctx.client.driver.layers.create("panorama-coverage"),
     addToMap: (res, ctx) => {
-      (ctx.map as { addTileLayer: (l: unknown) => void }).addTileLayer(res);
-      (ctx as any).overlays?.register?.("panorama-coverage", res);
+      ctx.client.driver.layers.add({ kind: "map", handle: ctx.map }, res);
     },
     remove: (res, ctx) => {
-      (ctx.map as { removeTileLayer: (l: unknown) => void }).removeTileLayer(res);
+      ctx.client.driver.layers.remove({ kind: "map", handle: ctx.map }, res);
     },
   },
 );

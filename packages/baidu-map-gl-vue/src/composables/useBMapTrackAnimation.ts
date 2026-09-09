@@ -1,6 +1,7 @@
 import { onScopeDispose, shallowRef, toRaw, type ShallowRef } from "vue";
 import { resolveMapContext } from "./resolveMapContext";
 import { ResourceScope } from "../core/lifecycle/ResourceScope";
+import type { ServiceHandle } from "../driver/types/handles";
 
 export interface UseTrackAnimationOptions {
   duration?: number;
@@ -32,52 +33,36 @@ export function useBMapTrackAnimation(
   const ctx = resolveMapContext(map);
   const scope = new ResourceScope();
   const status = shallowRef<TrackAnimationHandle["status"]["value"]>("idle");
-  let plugin: any = null;
+  let plugin: ServiceHandle<"service:track-animation"> | null = null;
   let path: { lng: number; lat: number }[] = [];
 
   async function createInstance() {
     if (plugin) return plugin;
     const ready = await ctx.whenReady(scope.signal);
     if (scope.isDisposed) return null;
-    const api = ready.api as {
-      Point: new (lng: number, lat: number) => unknown;
-      Polyline: new (path: unknown[], options?: Record<string, unknown>) => unknown;
-      TrackAnimation?: new (map: unknown, line: unknown, opts?: unknown) => unknown;
-    };
+    if (path.length < 2) throw new Error("TrackAnimation requires at least two path points.");
+    // 插件在后台加载：先等待就绪，避免 ready 当即调用 setPath/start 时构造器缺失
     const registry = ctx.plugins as {
-      getStatus?: (name: string) => string | undefined;
       whenPlugin?: (name: string, signal?: AbortSignal) => Promise<unknown>;
     } | null;
-    const globalTrackAnimation = (globalThis as any).BMapGLLib?.TrackAnimation;
-    if (!registry?.getStatus?.("TrackAnimation") && !api.TrackAnimation && !globalTrackAnimation) {
-      throw new Error("TrackAnimation plugin is not ready. Add plugins=['TrackAnimation'] to BMap.");
+    try {
+      await registry?.whenPlugin?.("TrackAnimation", scope.signal);
+    } catch {
+      /* 未注册或加载失败时由 createTrackAnimation 抛明确错误 */
     }
-    const TrackAnimation =
-      api.TrackAnimation ??
-      globalTrackAnimation ??
-      (registry?.whenPlugin ? await registry.whenPlugin("TrackAnimation", scope.signal) : undefined);
-    if (typeof TrackAnimation !== "function") {
-      throw new Error("TrackAnimation plugin did not expose a constructor.");
-    }
-    if (path.length < 2) throw new Error("TrackAnimation requires at least two path points.");
-    const points = path.map((point) => new api.Point(point.lng, point.lat));
-    const polyline = new api.Polyline(points, {
-      strokeColor: "#1677ff",
-      strokeWeight: 5,
-      strokeOpacity: 0.9,
-    });
+    if (scope.isDisposed) return null;
     const mapComponent = (map as { value?: { getMapInstance?: () => unknown } } | undefined)?.value;
-    const animationMap = toRaw(mapComponent?.getMapInstance?.() ?? ready.map) as any;
-    plugin = new (TrackAnimation as new (map: unknown, line: unknown, opts: unknown) => unknown)(
+    const animationMap = (toRaw(mapComponent?.getMapInstance?.() ?? ready.map) as any) ?? ready.map;
+    plugin = ready.client.driver.services.createTrackAnimation(
       animationMap,
-      polyline,
-      options,
+      path,
+      options as Record<string, unknown>,
     );
     return plugin;
   }
 
   async function setPath(nextPath: { lng: number; lat: number }[]) {
-    plugin?.cancel?.();
+    (plugin?.raw as { cancel?: () => void } | null)?.cancel?.();
     plugin = null;
     path = nextPath;
     await createInstance();
@@ -86,33 +71,33 @@ export function useBMapTrackAnimation(
   async function start() {
     const animation = await createInstance();
     if (!animation) return;
-    animation.start();
+    (animation.raw as { start?: () => void }).start?.();
     status.value = "playing";
   }
 
   function pause() {
-    plugin?.pause?.();
+    (plugin?.raw as { pause?: () => void } | null)?.pause?.();
     status.value = "paused";
   }
 
   function resume() {
-    plugin?.continue?.();
+    (plugin?.raw as { continue?: () => void } | null)?.continue?.();
     status.value = "playing";
   }
 
   function stop() {
     status.value = "idle";
-    plugin?.cancel?.();
+    (plugin?.raw as { cancel?: () => void } | null)?.cancel?.();
   }
 
   function cancel() {
-    plugin?.cancel?.();
+    (plugin?.raw as { cancel?: () => void } | null)?.cancel?.();
     plugin = null;
     status.value = "idle";
   }
 
   onScopeDispose(() => {
-    plugin?.cancel?.();
+    (plugin?.raw as { cancel?: () => void } | null)?.cancel?.();
     plugin = null;
     status.value = "disposed";
     scope.dispose();

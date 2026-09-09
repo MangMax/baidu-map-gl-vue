@@ -1,9 +1,10 @@
 /**
- * M6-08: 内置插件 definitions
+ * 内置插件 definitions
  *
- * 将 v2 的字符串插件配置迁移为 typed plugin definitions(方案 §9)。
+ * 将 v2 的字符串插件配置迁移为 typed plugin definitions。
+ *
  * 每个内置插件:
- * - 锁定明确版本 URL,不使用浮动 unpkg latest(§8.5)
+ * - 锁定明确版本 URL,不使用浮动 unpkg latest
  * - 加载后就绪,可被 whenPlugin(name) 取到
  */
 import type { BMapPluginDefinition } from "../core/plugins/PluginRegistry";
@@ -133,7 +134,7 @@ export function drawingManagerPlugin(): BMapPluginDefinition<unknown> {
   );
 }
 
-/** 兼容旧 plugins: string[] 配置 → plugin definitions(§9.3) */
+/** 兼容旧 plugins: string[] 配置 → plugin definitions */
 export function stringToPluginDefinitions(names: string[]): BMapPluginDefinition<unknown>[] {
   return names.map((name) => {
     const map: Record<string, () => BMapPluginDefinition<unknown>> = {

@@ -1,7 +1,7 @@
 /**
- * M4-07: BCircle 迁移验证
+ * BCircle 迁移验证
  *
- * 验证 §11.5:
+ * 验证:
  * - center 字段级更新(不 deep watch),SDK setCenter 被调用
  * - radius/样式 字段级更新
  * - visible 幂等切换

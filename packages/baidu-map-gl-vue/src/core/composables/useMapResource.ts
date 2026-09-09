@@ -1,5 +1,5 @@
 /**
- * M2-12: useMapResource
+ * useMapResource
  *
  * 通用 SDK 资源适配器:管理 create/update/destroy。
  * 处理 SDK ready 异步 + 组件卸载竞态:
@@ -11,16 +11,17 @@ import { onMounted, onScopeDispose, shallowRef, markRaw, type ShallowRef } from 
 import { ResourceScope } from "../lifecycle/ResourceScope";
 import type { MapRuntime } from "../runtime/MapRuntime";
 import { BMapError } from "../errors/BMapError";
+import type { MapReadyContext } from "../context/types";
 
 export interface SdkResourceAdapter<Props, Resource> {
   create(
-    context: { api: unknown; map: unknown },
+    context: MapReadyContext,
     props: Readonly<Props>,
     scope: ResourceScope,
   ): Resource | Promise<Resource>;
   connect?(
     resource: Resource,
-    context: { api: unknown; map: unknown },
+    context: MapReadyContext,
     props: Readonly<Props>,
     scope: ResourceScope,
   ): void;
@@ -28,14 +29,14 @@ export interface SdkResourceAdapter<Props, Resource> {
     resource: Resource,
     previous: Readonly<Props>,
     current: Readonly<Props>,
-    context: { api: unknown; map: unknown },
+    context: MapReadyContext,
   ): void;
-  destroy(resource: Resource, context: { api: unknown; map: unknown }): void;
+  destroy(resource: Resource, context: MapReadyContext): void;
 }
 
 export interface UseMapResourceResult<Resource> {
   resource: ShallowRef<Resource | null>;
-  whenReady: () => Promise<{ api: unknown; map: unknown }>;
+  whenReady: () => Promise<MapReadyContext>;
 }
 
 export function useMapResource<Props, Resource>(
@@ -47,7 +48,7 @@ export function useMapResource<Props, Resource>(
   const resource = shallowRef<Resource | null>(null);
   let createToken = 0;
   // 保存当前 ready context,供 dispose 时销毁
-  let readyCtx: { api: unknown; map: unknown } | null = null;
+  let readyCtx: MapReadyContext | null = null;
 
   onScopeDispose(() => {
     const current = resource.value;

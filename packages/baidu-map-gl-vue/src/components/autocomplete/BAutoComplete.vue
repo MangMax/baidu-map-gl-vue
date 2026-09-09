@@ -4,9 +4,10 @@ import { useRequiredMapContext } from "../../core/context/inject";
 import { ResourceScope } from "../../core/lifecycle/ResourceScope";
 import { BMapError } from "../../core/errors/BMapError";
 import type { MapReadyContext } from "../../core/context/types";
+import type { ServiceHandle } from "../../driver/types/handles";
 
 /**
- * M4-09: BAutoComplete 迁移
+ * BAutoComplete 迁移
  *
  * Autocomplete 需要绑定真实 input DOM(not overlay/control)。
  * 使用 map context + ready 后创建 SDK 实例,并把 input 传给 SDK。
@@ -30,68 +31,60 @@ const emit = defineEmits<{
 
 const inputRef = ref<HTMLInputElement | null>(null);
 
-type SdkAutocomplete = {
-  setLocation(loc: unknown): void;
-  setTypes(types: string[]): void;
-  addEventListener?(name: string, h: (e: unknown) => void): void;
-  removeEventListener?(name: string, h: (e: unknown) => void): void;
-};
+const resource = shallowRef<ServiceHandle<"service:autocomplete"> | null>(null);
+const ctx = useRequiredMapContext();
+const scope = new ResourceScope();
+let readyCtx: MapReadyContext | null = null;
+let disposed = false;
 
-function resolveLocation(api: unknown, location: unknown, map: unknown): unknown {
+function resolveLocation(client: MapReadyContext["client"], location: unknown): unknown {
   if (
     location &&
     typeof location === "object" &&
     (location as { lng?: unknown }).lng !== undefined &&
     (location as { lat?: unknown }).lat !== undefined
   ) {
-    const Point = (api as { Point: new (l: number, t: number) => unknown }).Point;
-    const loc = location as { lng: number; lat: number };
-    return new Point(loc.lng, loc.lat);
+    return client.driver.geometry.toRawPoint(location as { lng: number; lat: number });
   }
-  return location ?? map;
+  return location;
 }
-
-const resource = shallowRef<SdkAutocomplete | null>(null);
-const ctx = useRequiredMapContext();
-const scope = new ResourceScope();
-let readyCtx: MapReadyContext | null = null;
-let disposed = false;
 
 onMounted(async () => {
   try {
     const ready = await ctx.whenReady(scope.signal);
     if (scope.isDisposed || disposed) return;
     readyCtx = ready;
-    const BMapGL = ready.api as { Autocomplete: new (o: Record<string, unknown>) => unknown };
     const input = inputRef.value;
     if (!input) return;
-    const instance = new BMapGL.Autocomplete({
-      location: resolveLocation(ready.api, props.location, ready.map),
+    const instance = ready.client.driver.services.createAutocomplete({
+      location: resolveLocation(ready.client, props.location ?? ready.map),
       input,
       types: props.types,
       onSearchComplete: (e: unknown) => emit("searchComplete", e),
-    }) as unknown as SdkAutocomplete;
-    resource.value = markRaw(instance);
+    });
+    resource.value = markRaw(instance as object) as ServiceHandle<"service:autocomplete">;
     // bind highlight / confirm
-    const bind = (name: string, h: (e: unknown) => void) => {
-      instance.addEventListener?.(name, h);
-      scope.add(() => instance.removeEventListener?.(name, h));
-    };
-    bind("highlight", (e) => emit("highlight", e));
-    bind("confirm", (e) => emit("confirm", e));
+    scope.add(ready.client.driver.events.on(instance, "highlight", (e) => emit("highlight", e)));
+    scope.add(ready.client.driver.events.on(instance, "confirm", (e) => emit("confirm", e)));
 
     watch(
       () => props.location,
       (loc) => {
         const inst = resource.value;
-        if (inst) inst.setLocation(resolveLocation(ready.api, loc, ready.map));
+        if (inst && readyCtx) {
+          const raw = inst.raw as { setLocation?: (loc: unknown) => void };
+          raw.setLocation?.(resolveLocation(ready.client, loc));
+        }
       },
     );
     watch(
       () => props.types,
       (types) => {
         const inst = resource.value;
-        if (inst && types) inst.setTypes(types);
+        if (inst && types) {
+          const raw = inst.raw as { setTypes?: (types: string[]) => void };
+          raw.setTypes?.(types);
+        }
       },
     );
     // 挂到 scope,卸载自动释放
@@ -122,3 +115,25 @@ defineOptions({ name: "BAutoComplete" });
 <template>
   <input class="b-auto-complete-input" type="text" ref="inputRef" placeholder="请输入搜索关键词" />
 </template>
+
+<style scoped>
+.b-auto-complete-input {
+  position: absolute;
+  top: 10px;
+  left: 10px;
+  z-index: 10;
+  box-sizing: border-box;
+  width: 100%;
+  max-width: calc(100% - 20px);
+  padding: 6px 10px;
+  color: #333;
+  background-color: #fff;
+  border: 1px solid #d9d9d9;
+  border-radius: 4px;
+  outline: none;
+}
+
+.b-auto-complete-input:focus {
+  border-color: #1677ff;
+}
+</style>

@@ -1,7 +1,7 @@
 /**
  * v3 公开入口(packages/baidu-map-gl-vue)
  *
- * 仅导出稳定公共 API。core 内部件按方案 §3.3 不直接暴露所有实现。
+ * 仅导出稳定公共 API。core 内部实现不直接暴露。
  */
 // 组件
 export * from "./components/index";
@@ -10,7 +10,7 @@ export * from "./composables/index";
 // 插件/安装
 export { createBMapPlugin, bmapConfigKey } from "./plugins/createBMapPlugin";
 export type { BMapPluginConfig, CreateBMapPluginOptions } from "./plugins/createBMapPlugin";
-// 内置插件 definitions(§9)
+// 内置插件 definitions
 export {
   trackAnimationPlugin,
   mapVglPlugin,
@@ -39,6 +39,53 @@ export type {
 // core 领域类型(供业务使用)
 export type { MapContext, MapReadyContext, MapRuntimeStatus } from "./core/context/types";
 export { useBMapContext, useMapReady, useBMap } from "./composables/useBMap";
+
+// Client/Driver 领域类型(稳定公开,raw SDK 只在 ./advanced)
+export { createBMapClientDefinition } from "./client";
+export type {
+  BMapClient,
+  BMapProviderLike,
+  CreateBMapClientOptions,
+} from "./client/types";
+export type { BMapDriver, BMapEngine } from "./driver/types/bmap";
+export type {
+  MapHandle,
+  OverlayHandle,
+  MarkerHandle,
+  InfoWindowHandle,
+  PolylineHandle,
+  PolygonHandle,
+  CircleHandle,
+  LabelHandle,
+  ControlHandle,
+  LayerHandle,
+  ServiceHandle,
+} from "./driver/types/handles";
+export type {
+  Point,
+  PointInput,
+  Pixel,
+  Size,
+  Bounds,
+} from "./driver/types/geometry";
+export type { Capability, CapabilityRegistry, CapabilityExplanation } from "./driver/capability";
+export type { UnsupportedBehavior } from "./driver/capability";
+export type { MapMouseEvent } from "./driver/types/events";
+export type {
+  MapType,
+  MapInteraction,
+  MapStyleInput,
+  InitialMapOptions,
+  MapView,
+  MapDriver,
+  GeometryDriver,
+  OverlayDriver,
+  ControlDriver,
+  LayerDriver,
+  ServiceDriver,
+  EventDriver,
+  PanoramaDriver,
+} from "./driver";
 
 // 组件公开类型(与 SFC 内 export 对齐,供类型使用)
 export type { ContextMenuItem, ContextMenuSeparator } from "./components/overlays/BContextMenu.vue";

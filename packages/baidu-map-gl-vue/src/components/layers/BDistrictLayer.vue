@@ -2,9 +2,9 @@
 import { watch } from "vue";
 import { useLayerResource } from "../../core/composables/useLayerResource";
 import { useRequiredMapContext } from "../../core/context/inject";
-import { bindSdkEvent } from "../../core/events/EventBridge";
 import type { MapReadyContext } from "../../core/context/types";
 import type { ResourceScope } from "../../core/lifecycle/ResourceScope";
+import type { LayerHandle } from "../../driver/types/handles";
 import type { DistrictTypeValue } from "../../types/components";
 
 export type DistrictType = DistrictTypeValue;
@@ -38,16 +38,13 @@ const emit = defineEmits<{
   mouseout: [e: unknown];
 }>();
 
-type SdkDistrictLayer = { onload?: (cb: () => void) => void };
-
 // 组件级 map context:用于 visible 切换
 const mapCtx = useRequiredMapContext();
 
-const { resource } = useLayerResource<BDistrictLayerProps, SdkDistrictLayer>(props, {
+const { resource } = useLayerResource<BDistrictLayerProps, LayerHandle>(props, {
   create: (ctx, p) => {
-    const BMapGL = ctx.api as { DistrictLayer: new (o?: Record<string, unknown>) => unknown };
     if (!p.name) throw new Error("DistrictLayer props.name is required");
-    return new BMapGL.DistrictLayer({
+    return ctx.client.driver.layers.create("district", {
       name: `(${p.name})`,
       kind: p.kind,
       fillColor: p.fillColor,
@@ -56,20 +53,18 @@ const { resource } = useLayerResource<BDistrictLayerProps, SdkDistrictLayer>(pro
       strokeOpacity: p.strokeOpacity,
       strokeWeight: p.strokeWeight,
       viewport: p.viewport,
-    }) as unknown as SdkDistrictLayer;
+    });
   },
   addToMap: (res, ctx) => {
-    if (props.visible)
-      (ctx.map as { addDistrictLayer: (l: unknown) => void }).addDistrictLayer(res);
-    (ctx as any).overlays?.register?.("district-layer", res);
+    if (props.visible) ctx.client.driver.layers.add({ kind: "map", handle: ctx.map }, res);
   },
   createWatchers(res, ctx: MapReadyContext, p, scope: ResourceScope) {
-    scope.add(bindSdkEvent(res as any, "click", (e) => emit("click", e)));
-    scope.add(bindSdkEvent(res as any, "mouseover", (e) => emit("mouseover", e)));
-    scope.add(bindSdkEvent(res as any, "mouseout", (e) => emit("mouseout", e)));
+    scope.add(ctx.client.driver.events.on(res, "click", (e) => emit("click", e)));
+    scope.add(ctx.client.driver.events.on(res, "mouseover", (e) => emit("mouseover", e)));
+    scope.add(ctx.client.driver.events.on(res, "mouseout", (e) => emit("mouseout", e)));
   },
   remove: (res, ctx) => {
-    (ctx.map as { removeDistrictLayer: (l: unknown) => void }).removeDistrictLayer(res);
+    ctx.client.driver.layers.remove({ kind: "map", handle: ctx.map }, res);
   },
 });
 
@@ -77,15 +72,13 @@ const { resource } = useLayerResource<BDistrictLayerProps, SdkDistrictLayer>(pro
 watch(
   () => props.visible,
   (visible) => {
-    const layer = resource.value as any;
-    if (!layer) return;
-    const map = mapCtx.map.value as {
-      addDistrictLayer: (l: unknown) => void;
-      removeDistrictLayer: (l: unknown) => void;
-    };
-    if (!map) return;
-    if (visible) map.addDistrictLayer(layer);
-    else map.removeDistrictLayer(layer);
+    const layer = resource.value;
+    const map = mapCtx.map.value;
+    const client = mapCtx.client.value;
+    if (!layer || !map || !client) return;
+    const target = { kind: "map" as const, handle: map };
+    if (visible) client.driver.layers.add(target, layer);
+    else client.driver.layers.remove(target, layer);
   },
 );
 

@@ -3,7 +3,7 @@ import { watch } from "vue";
 import { useOverlayResource, removeOverlay } from "../../core/composables/useOverlayResource";
 import type { MapReadyContext } from "../../core/context/types";
 import type { ResourceScope } from "../../core/lifecycle/ResourceScope";
-import { toSdkPoints } from "../../core/utils/geometry";
+import type { OverlayHandle } from "../../driver/types/handles";
 
 export interface BPrismProps {
   path: { lng: number; lat: number }[] | string[];
@@ -36,30 +36,12 @@ const emit = defineEmits<{
   mouseout: [e: unknown];
 }>();
 
-function toPrismPath(api: unknown, path: BPrismProps["path"], isBoundary: boolean) {
-  return isBoundary ? path : toSdkPoints(api, path as { lng: number; lat: number }[]);
-}
-
-type SdkPrism = {
-  setPath(p: unknown[]): void;
-  setAltitude(a: number): void;
-  setTopFillColor(c: string): void;
-  setTopFillOpacity(o: number): void;
-  setSideFillColor(c: string): void;
-  setSideFillOpacity(o: number): void;
-  enableMassClear(): void;
-  disableMassClear(): void;
-};
-
-const { resource, rebuild } = useOverlayResource<BPrismProps, SdkPrism>(
+const { resource, rebuild } = useOverlayResource<BPrismProps, OverlayHandle>(
   props,
   {
     create: (ctx, p) => {
-      const BMapGL = ctx.api as {
-        Prism: new (pts: unknown[], a: number, o?: Record<string, unknown>) => unknown;
-      };
       if (!p.path?.length) throw new Error("BPrism path is required");
-      return new BMapGL.Prism(toPrismPath(ctx.api, p.path, !!p.isBoundary), p.altitude, {
+      return ctx.client.driver.overlays.createPrism(p.path, p.altitude, {
         topFillColor: p.topFillColor,
         topFillOpacity: p.topFillOpacity,
         sideFillColor: p.sideFillColor,
@@ -67,15 +49,12 @@ const { resource, rebuild } = useOverlayResource<BPrismProps, SdkPrism>(
         isBoundary: p.isBoundary,
         autoCenter: p.autoCenter,
         enableMassClear: p.enableMassClear,
-      }) as unknown as SdkPrism;
+      });
     },
     addToMap: (res, ctx, p, scope: ResourceScope) => {
-      const map = ctx.map as { addOverlay: (o: unknown) => void };
-      if (props.visible) map.addOverlay(res);
-      (ctx as any).overlays?.register?.("prism", res);
+      if (props.visible) ctx.client.driver.overlays.add({ kind: "map", handle: ctx.map }, res);
       const on = (name: string, h: (e: unknown) => void) => {
-        (res as any).addEventListener?.(name, h);
-        scope.add(() => (res as any).removeEventListener?.(name, h));
+        scope.add(ctx.client.driver.events.on(res, name, h));
       };
       on("click", (e) => emit("click", e));
       on("dblclick", (e) => emit("dblclick", e));
@@ -90,7 +69,7 @@ const { resource, rebuild } = useOverlayResource<BPrismProps, SdkPrism>(
             const ctx = getCtx();
             if (!p.path?.length || !ctx) return;
             const res = getResource();
-            if (res) res.setPath(toPrismPath(ctx.api, p.path, !!p.isBoundary));
+            if (res) ctx.client.driver.overlays.setPath(res, p.path);
             else void rebuild();
           },
           { flush: "sync" },
@@ -101,7 +80,11 @@ const { resource, rebuild } = useOverlayResource<BPrismProps, SdkPrism>(
           () => p.altitude,
           (a) => {
             const _v = a;
-            if (_v !== undefined) getResource()?.setAltitude(_v);
+            if (_v !== undefined) {
+              const x = getResource();
+              const ctx = getCtx();
+              if (x && ctx) ctx.client.driver.overlays.setOptions(x, { altitude: _v });
+            }
           },
         ),
       );
@@ -110,7 +93,11 @@ const { resource, rebuild } = useOverlayResource<BPrismProps, SdkPrism>(
           () => p.topFillColor,
           (c) => {
             const _v = c;
-            if (_v !== undefined) getResource()?.setTopFillColor(_v);
+            if (_v !== undefined) {
+              const x = getResource();
+              const ctx = getCtx();
+              if (x && ctx) ctx.client.driver.overlays.setOptions(x, { topFillColor: _v });
+            }
           },
         ),
       );
@@ -119,7 +106,11 @@ const { resource, rebuild } = useOverlayResource<BPrismProps, SdkPrism>(
           () => p.topFillOpacity,
           (o) => {
             const _v = o;
-            if (_v !== undefined) getResource()?.setTopFillOpacity(_v);
+            if (_v !== undefined) {
+              const x = getResource();
+              const ctx = getCtx();
+              if (x && ctx) ctx.client.driver.overlays.setOptions(x, { topFillOpacity: _v });
+            }
           },
         ),
       );
@@ -128,7 +119,11 @@ const { resource, rebuild } = useOverlayResource<BPrismProps, SdkPrism>(
           () => p.sideFillColor,
           (c) => {
             const _v = c;
-            if (_v !== undefined) getResource()?.setSideFillColor(_v);
+            if (_v !== undefined) {
+              const x = getResource();
+              const ctx = getCtx();
+              if (x && ctx) ctx.client.driver.overlays.setOptions(x, { sideFillColor: _v });
+            }
           },
         ),
       );
@@ -137,7 +132,11 @@ const { resource, rebuild } = useOverlayResource<BPrismProps, SdkPrism>(
           () => p.sideFillOpacity,
           (o) => {
             const _v = o;
-            if (_v !== undefined) getResource()?.setSideFillOpacity(_v);
+            if (_v !== undefined) {
+              const x = getResource();
+              const ctx = getCtx();
+              if (x && ctx) ctx.client.driver.overlays.setOptions(x, { sideFillOpacity: _v });
+            }
           },
         ),
       );
@@ -146,7 +145,8 @@ const { resource, rebuild } = useOverlayResource<BPrismProps, SdkPrism>(
           () => p.enableMassClear,
           (en) => {
             const r = getResource();
-            if (r) en ? r.enableMassClear() : r.disableMassClear();
+            const ctx = getCtx();
+            if (r && ctx) ctx.client.driver.overlays.setOptions(r, { enableMassClear: en });
           },
         ),
       );
@@ -157,12 +157,10 @@ const { resource, rebuild } = useOverlayResource<BPrismProps, SdkPrism>(
             const res = getResource();
             const ctx = getCtx();
             if (!res || !ctx) return;
-            const map = ctx.map as {
-              addOverlay: (o: unknown) => void;
-              removeOverlay: (o: unknown) => void;
-            };
-            if (visible) map.addOverlay(res);
-            else map.removeOverlay(res);
+            const overlays = ctx.client.driver.overlays;
+            const target = { kind: "map" as const, handle: ctx.map };
+            if (visible) overlays.add(target, res);
+            else overlays.remove(target, res);
           },
         ),
       );

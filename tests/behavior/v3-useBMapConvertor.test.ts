@@ -1,5 +1,5 @@
 /**
- * M6-06: useBMapConvertor 验证
+ * useBMapConvertor 验证
  */
 import { describe, it, expect, beforeEach } from 'vitest'
 import { mount, flushPromises } from '@vue/test-utils'

@@ -1,5 +1,5 @@
 /**
- * M0-03: Fake BMapGL
+ * Fake BMapGL
  *
  * 最小但可观察的百度 JSAPI GL 实现,供单元测试 / 浏览器 PR 测试使用。
  *
@@ -218,6 +218,33 @@ export class FakeMap extends FakeEventTarget {
 
   getContainer(): HTMLElement {
     return this.container
+  }
+
+  getCenter(): FakePoint | string | null {
+    return this.center
+  }
+
+  getZoom(): number | null {
+    return this.zoom
+  }
+
+  getHeading(): number {
+    return this.heading
+  }
+
+  getTilt(): number {
+    return this.tilt
+  }
+
+  getSize() {
+    return { width: this.container.clientWidth || 300, height: this.container.clientHeight || 300 }
+  }
+
+  getBounds() {
+    return {
+      getSouthWest: () => ({ lng: 0, lat: 0 }),
+      getNorthEast: () => ({ lng: 180, lat: 90 }),
+    }
   }
 
   centerAndZoom(point: FakePoint | string, zoom?: number) {

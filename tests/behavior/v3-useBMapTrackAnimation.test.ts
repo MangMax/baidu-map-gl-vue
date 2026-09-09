@@ -1,5 +1,5 @@
 /**
- * M6-07: useBMapTrackAnimation 验证(自有状态机,不读私有 _status)
+ * useBMapTrackAnimation 验证(自有状态机,不读私有 _status)
  */
 import { describe, it, expect, beforeEach } from 'vitest'
 import { mount, flushPromises } from '@vue/test-utils'

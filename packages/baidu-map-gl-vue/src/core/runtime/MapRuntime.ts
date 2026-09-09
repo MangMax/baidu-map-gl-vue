@@ -1,12 +1,18 @@
 /**
- * M2-11: MapRuntime
+ * MapRuntime
  *
  * 每个地图实例的运行时容器:
  * - 状态机 idle/loading/ready/error/disposing/disposed
  * - whenReady:可被多个子组件调用,状态可回放
  * - dispose:清理 done 等待者、资源作用域、事件总线、scheduler
+ *
+ * Runtime 只管理 Map，SDK 创建统一走 client.driver.map；
+ * MapReadyContext 为 { client, map: MapHandle }。
  */
 import { shallowRef, type ShallowRef } from "vue";
+import type { BMapClient } from "../../client/types";
+import type { MapHandle } from "../../driver/types/handles";
+import type { InitialMapOptions } from "../../driver/types/map";
 import { BMapError } from "../errors/BMapError";
 import { ResourceScope } from "../lifecycle/ResourceScope";
 import { createMapEventBus, type MapEventBus, type InternalMapEvents } from "../events/MapEventBus";
@@ -31,21 +37,18 @@ function createAbortError(reason?: unknown): BMapError {
 }
 
 export interface MapRuntimeOptions {
-  provider: { load(opts?: unknown, signal?: AbortSignal): Promise<unknown> };
-  providerOptions?: Record<string, unknown>;
-  /** 创建 map 的工厂:SDK ready 后调用 */
-  createMap: (api: unknown, container: HTMLElement, opts?: Record<string, unknown>) => unknown;
-  /** 销毁 map 的钩子(如 map.destroy),dispose 时调用 */
-  destroyMap?: (map: unknown) => void;
+  /** 创建 BMapClient 的工厂：SDK 加载 + Driver 组装在 Client 边界完成 */
+  clientFactory: (signal?: AbortSignal) => Promise<BMapClient>;
+  /** 创建 map 的容器（mount 时回填） */
   container: HTMLElement;
-  mapOptions?: Record<string, unknown>;
+  mapOptions?: InitialMapOptions;
 }
 
 export class MapRuntime {
   readonly id = Symbol("map-runtime");
   readonly status: ShallowRef<MapRuntimeStatus> = shallowRef("idle");
-  readonly api: ShallowRef<unknown> = shallowRef(null);
-  readonly map: ShallowRef<unknown> = shallowRef(null);
+  readonly client: ShallowRef<BMapClient | null> = shallowRef(null);
+  readonly map: ShallowRef<MapHandle | null> = shallowRef(null);
   readonly error: ShallowRef<unknown> = shallowRef(null);
   readonly resources = new ResourceScope();
   readonly events: MapEventBus = createMapEventBus();
@@ -63,8 +66,12 @@ export class MapRuntime {
     this.options = options;
     this.container = options.container;
     this.plugins = createPluginRegistry(
-      // plugin context 动态读取当前 api/map,注册在 runtime 时已就绪
-      () => ({ api: this.api.value, map: this.map.value }),
+      // plugin context 动态读取当前 client/map,注册在 runtime 时已就绪
+      () => ({
+        client: this.client.value,
+        map: this.map.value,
+        api: this.client.value?.rawSdk ?? null,
+      }),
       {
         emit: (type: string, payload: unknown) =>
           this.events.emit(
@@ -88,18 +95,15 @@ export class MapRuntime {
 
     this.status.value = "loading";
     try {
-      const api = await this.options.provider.load(
-        this.options.providerOptions,
-        this.resources.signal,
-      );
+      const client = await this.options.clientFactory(this.resources.signal);
       if (this.resources.isDisposed) {
         throw new BMapError("BMAP_RUNTIME_DISPOSED", "MapRuntime disposed during SDK load");
       }
-      const map = this.options.createMap(api, this.container, this.options.mapOptions);
-      this.api.value = api;
+      const map = client.driver.map.create(this.container, this.options.mapOptions);
+      this.client.value = client;
       this.map.value = map;
       this.status.value = "ready";
-      const ctx: MapReadyContext = { api, map };
+      const ctx: MapReadyContext = { client, map };
       this.flushWaiters(ctx);
       return ctx;
     } catch (err) {
@@ -120,7 +124,7 @@ export class MapRuntime {
 
   whenReady(signal?: AbortSignal): Promise<MapReadyContext> {
     if (this.status.value === "ready") {
-      return Promise.resolve({ api: this.api.value, map: this.map.value });
+      return Promise.resolve({ client: this.client.value!, map: this.map.value! });
     }
     if (this.status.value === "error") {
       return Promise.reject(this.error.value);
@@ -176,16 +180,17 @@ export class MapRuntime {
     this.plugins.dispose();
     this.overlays.dispose();
     // 销毁 SDK map(如 WebGL context 释放)
+    const currentClient = this.client.value;
     const currentMap = this.map.value;
-    if (currentMap && this.options.destroyMap) {
+    if (currentMap && currentClient) {
       try {
-        this.options.destroyMap(currentMap);
+        currentClient.driver.map.destroy(currentMap);
       } catch {
         // 忽略销毁错误
       }
     }
     this.map.value = null;
-    this.api.value = null;
+    this.client.value = null;
     this.scheduler.dispose();
     this.events.clear();
     this.resources.dispose();

@@ -1,7 +1,7 @@
 /**
- * M6-03: useLayerResource
+ * useLayerResource
  *
- * Layer 类组件统一处理(方案 §11):
+ * Layer 类组件统一处理:
  * - map.addLayer/removeLayer(及 district 等 addDistrictLayer 变体)
  * - add/remove 幂等
  * - 卸载时移除 + 释放

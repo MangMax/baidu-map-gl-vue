@@ -3,7 +3,7 @@ import { watch } from "vue";
 import { useOverlayResource, removeOverlay } from "../../core/composables/useOverlayResource";
 import type { MapReadyContext } from "../../core/context/types";
 import type { ResourceScope } from "../../core/lifecycle/ResourceScope";
-import { toSdkPoints } from "../../core/utils/geometry";
+import type { PolygonHandle } from "../../driver/types/handles";
 
 export interface BPolygonProps {
   path: { lng: number; lat: number }[] | string[];
@@ -33,37 +33,16 @@ const props = withDefaults(defineProps<BPolygonProps>(), {
   visible: true,
 });
 
-function toPolygonPath(api: unknown, path: BPolygonProps["path"], isBoundary: boolean) {
-  return isBoundary ? path : toSdkPoints(api, path as { lng: number; lat: number }[]);
-}
-
 const emit = defineEmits<{
   click: [e: unknown];
   dblclick: [e: unknown];
 }>();
 
-type SdkPolygon = {
-  setPath(p: unknown[]): void;
-  setStrokeColor(c: string): void;
-  setStrokeWeight(w: number): void;
-  setStrokeOpacity(o: number): void;
-  setStrokeStyle(s: string): void;
-  setFillColor(c: string): void;
-  setFillOpacity(o: number): void;
-  enableMassClear(): void;
-  disableMassClear(): void;
-  enableEditing(): void;
-  disableEditing(): void;
-};
-
-const { resource } = useOverlayResource<BPolygonProps, SdkPolygon>(
+const { resource } = useOverlayResource<BPolygonProps, PolygonHandle>(
   props,
   {
-    create: (ctx, p) => {
-      const BMapGL = ctx.api as {
-        Polygon: new (pts: unknown[], o?: Record<string, unknown>) => unknown;
-      };
-       return new BMapGL.Polygon(toPolygonPath(ctx.api, p.path, !!p.isBoundary), {
+    create: (ctx, p) =>
+      ctx.client.driver.overlays.createPolygon(p.path, {
         strokeColor: p.strokeColor,
         strokeWeight: p.strokeWeight,
         strokeOpacity: p.strokeOpacity,
@@ -71,18 +50,13 @@ const { resource } = useOverlayResource<BPolygonProps, SdkPolygon>(
         fillColor: p.fillColor,
         fillOpacity: p.fillOpacity,
         isBoundary: p.isBoundary,
-      }) as unknown as SdkPolygon;
-    },
+        enableMassClear: p.enableMassClear,
+        enableEditing: p.enableEditing,
+      }),
     addToMap: (res, ctx, p, scope: ResourceScope) => {
-      const map = ctx.map as { addOverlay: (o: unknown) => void };
-      if (props.visible) map.addOverlay(res);
-      (ctx as any).overlays?.register?.("polygon", res);
-      const on = (name: string, h: (e: unknown) => void) => {
-        (res as any).addEventListener?.(name, h);
-        scope.add(() => (res as any).removeEventListener?.(name, h));
-      };
-      on("click", (e) => emit("click", e));
-      on("dblclick", (e) => emit("dblclick", e));
+      if (props.visible) ctx.client.driver.overlays.add({ kind: "map", handle: ctx.map }, res);
+      scope.add(ctx.client.driver.events.on(res, "click", (e) => emit("click", e)));
+      scope.add(ctx.client.driver.events.on(res, "dblclick", (e) => emit("dblclick", e)));
     },
     createWatchers(getCtx, getResource, p, addDisposer) {
       addDisposer(
@@ -92,9 +66,9 @@ const { resource } = useOverlayResource<BPolygonProps, SdkPolygon>(
             const res = getResource();
             const ctx = getCtx();
             if (!res || !ctx) return;
-             if (path && path.length > 0) {
-               res.setPath(toPolygonPath(ctx.api, path, !!p.isBoundary));
-             }
+            if (path && path.length > 0) {
+              ctx.client.driver.overlays.setPath(res, path);
+            }
           },
           { flush: "sync" },
         ),
@@ -104,7 +78,11 @@ const { resource } = useOverlayResource<BPolygonProps, SdkPolygon>(
           () => p.strokeColor,
           (c) => {
             const _v = c;
-            if (_v !== undefined) getResource()?.setStrokeColor(_v);
+            if (_v !== undefined) {
+              const x = getResource();
+              const ctx = getCtx();
+              if (x && ctx) ctx.client.driver.overlays.setOptions(x, { strokeColor: _v });
+            }
           },
         ),
       );
@@ -113,7 +91,11 @@ const { resource } = useOverlayResource<BPolygonProps, SdkPolygon>(
           () => p.strokeWeight,
           (w) => {
             const _v = w;
-            if (_v !== undefined) getResource()?.setStrokeWeight(_v);
+            if (_v !== undefined) {
+              const x = getResource();
+              const ctx = getCtx();
+              if (x && ctx) ctx.client.driver.overlays.setOptions(x, { strokeWeight: _v });
+            }
           },
         ),
       );
@@ -122,7 +104,11 @@ const { resource } = useOverlayResource<BPolygonProps, SdkPolygon>(
           () => p.strokeOpacity,
           (o) => {
             const _v = o;
-            if (_v !== undefined) getResource()?.setStrokeOpacity(_v);
+            if (_v !== undefined) {
+              const x = getResource();
+              const ctx = getCtx();
+              if (x && ctx) ctx.client.driver.overlays.setOptions(x, { strokeOpacity: _v });
+            }
           },
         ),
       );
@@ -131,7 +117,11 @@ const { resource } = useOverlayResource<BPolygonProps, SdkPolygon>(
           () => p.strokeStyle,
           (s) => {
             const _v = s;
-            if (_v !== undefined) getResource()?.setStrokeStyle(_v);
+            if (_v !== undefined) {
+              const x = getResource();
+              const ctx = getCtx();
+              if (x && ctx) ctx.client.driver.overlays.setOptions(x, { strokeStyle: _v });
+            }
           },
         ),
       );
@@ -140,7 +130,11 @@ const { resource } = useOverlayResource<BPolygonProps, SdkPolygon>(
           () => p.fillColor,
           (c) => {
             const _v = c;
-            if (_v !== undefined) getResource()?.setFillColor(_v);
+            if (_v !== undefined) {
+              const x = getResource();
+              const ctx = getCtx();
+              if (x && ctx) ctx.client.driver.overlays.setOptions(x, { fillColor: _v });
+            }
           },
         ),
       );
@@ -149,7 +143,11 @@ const { resource } = useOverlayResource<BPolygonProps, SdkPolygon>(
           () => p.fillOpacity,
           (o) => {
             const _v = o;
-            if (_v !== undefined) getResource()?.setFillOpacity(_v);
+            if (_v !== undefined) {
+              const x = getResource();
+              const ctx = getCtx();
+              if (x && ctx) ctx.client.driver.overlays.setOptions(x, { fillOpacity: _v });
+            }
           },
         ),
       );
@@ -158,7 +156,8 @@ const { resource } = useOverlayResource<BPolygonProps, SdkPolygon>(
           () => p.enableMassClear,
           (en) => {
             const r = getResource();
-            if (r) en ? r.enableMassClear() : r.disableMassClear();
+            const ctx = getCtx();
+            if (r && ctx) ctx.client.driver.overlays.setOptions(r, { enableMassClear: en });
           },
         ),
       );
@@ -167,7 +166,8 @@ const { resource } = useOverlayResource<BPolygonProps, SdkPolygon>(
           () => p.enableEditing,
           (en) => {
             const r = getResource();
-            if (r) en ? r.enableEditing() : r.disableEditing();
+            const ctx = getCtx();
+            if (r && ctx) ctx.client.driver.overlays.setOptions(r, { enableEditing: en });
           },
         ),
       );
@@ -178,12 +178,10 @@ const { resource } = useOverlayResource<BPolygonProps, SdkPolygon>(
             const res = getResource();
             const ctx = getCtx();
             if (!res || !ctx) return;
-            const map = ctx.map as {
-              addOverlay: (o: unknown) => void;
-              removeOverlay: (o: unknown) => void;
-            };
-            if (visible) map.addOverlay(res);
-            else map.removeOverlay(res);
+            const overlays = ctx.client.driver.overlays;
+            const target = { kind: "map" as const, handle: ctx.map };
+            if (visible) overlays.add(target, res);
+            else overlays.remove(target, res);
           },
         ),
       );

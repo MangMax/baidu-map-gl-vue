@@ -54,6 +54,7 @@ export default defineConfig({
         plugins: resolve(root, 'src/plugins/index.ts'),
         resolver: resolve(root, 'src/resolver/index.ts'),
         core: resolve(root, 'src/core/index.ts'),
+        advanced: resolve(root, 'src/advanced.ts'),
       },
       formats: ['es'],
     },

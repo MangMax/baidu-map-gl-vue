@@ -4,9 +4,10 @@ import { useRequiredMapContext } from "../../core/context/inject";
 import { ResourceScope } from "../../core/lifecycle/ResourceScope";
 import { DataLayerManager } from "../../core/data/DataLayerManager";
 import type { MapReadyContext } from "../../core/context/types";
+import type { MarkerHandle } from "../../driver/types/handles";
 
 /**
- * M5-03: BMarkerList —— 声明式标记列表（P0-16 实际实现名）
+ * BMarkerList —— 声明式标记列表
  *
  * 用一个组件管理整批点,内部用 DataLayerManager 做 keyed diff + RAF 合并,
  * 不为每个点创建 Vue 组件。
@@ -35,36 +36,34 @@ const ctx = useRequiredMapContext();
 const scope = new ResourceScope();
 let manager: DataLayerManager<any, any> | null = null;
 let readyCtx: MapReadyContext | null = null;
-let createMarkerRef: (() => any) | null = null;
+
+// 事件委托 disposer 以 WeakMap 存储(Handle 被 freeze,不可附加属性)
+const clickDisposers = new WeakMap<object, () => void>();
 
 function buildHost(c: MapReadyContext) {
+  const driver = c.client.driver;
+  const target = { kind: "map" as const, handle: c.map };
   return {
     createMarker: (item: any) => {
-      const BMapGL = c.api as {
-        Point: new (l: number, t: number) => unknown;
-        Marker: new (p: unknown, o?: Record<string, unknown>) => unknown;
-      };
       const pos = props.getPosition(item);
-      const m = new BMapGL.Marker(new BMapGL.Point(pos.lng, pos.lat));
-      (c.map as { addOverlay: (o: unknown) => void }).addOverlay(m);
+      const marker = driver.overlays.createMarker(pos);
+      driver.overlays.add(target, marker);
       // 事件委托:每个 marker 回传 item(通过闭包),而不为每个点建 Vue 组件
-      const clickHandler = () => emit("item-click", item);
-      (m as any).addEventListener?.("click", clickHandler);
-      (m as any).__clickHandler = clickHandler; // 供移除时解绑
-      return m;
+      clickDisposers.set(
+        marker as object,
+        driver.events.on(marker, "click", () => emit("item-click", item)),
+      );
+      return marker;
     },
-    removeMarker: (m: any) => {
+    removeMarker: (m: MarkerHandle) => {
       // 解绑事件委托监听(避免泄漏)
-      if ((m as any).__clickHandler) {
-        (m as any).removeEventListener?.("click", (m as any).__clickHandler);
-        delete (m as any).__clickHandler;
-      }
-      (c.map as { removeOverlay: (o: unknown) => void }).removeOverlay(m);
+      clickDisposers.get(m as object)?.();
+      clickDisposers.delete(m as object);
+      driver.overlays.remove(target, m);
     },
-    updatePosition: (m: any, item: any) => {
-      const BMapGL = c.api as { Point: new (l: number, t: number) => unknown };
+    updatePosition: (m: MarkerHandle, item: any) => {
       const pos = props.getPosition(item);
-      (m as any).setPosition?.(new BMapGL.Point(pos.lng, pos.lat));
+      driver.overlays.setPosition(m, pos);
     },
   };
 }

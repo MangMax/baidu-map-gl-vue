@@ -50,9 +50,9 @@ let measure = ref({
     }
   },
 });
-function handleInitd({ map }: { map: unknown }) {
+function handleInitd({ map }: { map: { raw: unknown } }) {
   import("bmap-draw").then(({ DrawScene, DistanceMeasure, AreaMeasure }) => {
-    const scene = new DrawScene(map);
+    const scene = new DrawScene(map.raw);
     // 测量距离
     distance.value.instance = new DistanceMeasure(scene);
     distance.value.toggle();

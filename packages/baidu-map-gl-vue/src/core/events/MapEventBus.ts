@@ -1,11 +1,11 @@
 /**
- * M2-05: MapEventBus
+ * MapEventBus
  *
  * 每个 MapRuntime 独立实例化的 typed mitt 事件总线。
  * 用于内部松耦合事件(resource:error / overlay:registered / plugin:ready 等),
  * 不用于父子 ready(那由 MapContext 表达)。
  *
- * 规则(方案 §7.4):
+ * 规则:
  * - 每次创建 MapRuntime 都新建 emitter。
  * - dispose() 清空全部 listener。
  * - 组件公开事件使用 Vue emits,不经过此总线。

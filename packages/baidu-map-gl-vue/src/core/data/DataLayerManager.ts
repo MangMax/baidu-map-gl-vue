@@ -1,8 +1,8 @@
 /**
- * M5: 批量点层管理器
+ * 批量点层管理器
  *
  * 用单个 SDK 对象承载一批点(通过 addEventListener 委托),避免为每个点
- * 创建独立 Vue 组件和多套 SDK listener(方案 §12.1 BPointLayer)。
+ * 创建独立 Vue 组件和多套 SDK listener。
  *
  * 设计:
  * - `sync(points, options)` 用 data diff 计算增删改,批量更新

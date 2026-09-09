@@ -3,10 +3,10 @@ import { getCurrentInstance, onUpdated, ref, watch } from "vue";
 import { useControlResource } from "../../core/composables/useControlResource";
 import type { MapReadyContext } from "../../core/context/types";
 import type { ResourceScope } from "../../core/lifecycle/ResourceScope";
+import type { ControlHandle } from "../../driver/types/handles";
 import {
   copyrightControlPosCache,
   removeCopyrightControlIfEmpty,
-  type CopyrightControl,
 } from "./copyrightControlPosCache";
 
 export interface BCopyrightProps {
@@ -23,11 +23,11 @@ const props = withDefaults(defineProps<BCopyrightProps>(), {
 
 const containerRef = ref<HTMLElement | null>(null);
 const id = getCurrentInstance()?.uid ?? Math.random();
-let control: CopyrightControl | null = null;
+let control: ControlHandle | null = null;
 let readyContext: MapReadyContext | null = null;
 let registered = false;
 
-const { resource } = useControlResource<BCopyrightProps, CopyrightControl>(props, {
+const { resource } = useControlResource<BCopyrightProps, ControlHandle>(props, {
   create: (ctx, p) => {
     readyContext = ctx;
     const anchor = p.anchor ?? "BMAP_ANCHOR_BOTTOM_LEFT";
@@ -36,13 +36,10 @@ const { resource } = useControlResource<BCopyrightProps, CopyrightControl>(props
       control = cached;
       return cached;
     }
-
-    const win = window as any;
-    const api = ctx.api as any;
-    const created = new api.CopyrightControl({
-      offset: new api.Size(p.offset?.x ?? 0, p.offset?.y ?? 0),
-      anchor: win[anchor] ?? anchor,
-    }) as CopyrightControl;
+    const created = ctx.client.driver.controls.create("copyright", {
+      anchor,
+      offset: p.offset,
+    });
     control = created;
     copyrightControlPosCache.set(anchor, created);
     return created;
@@ -50,9 +47,9 @@ const { resource } = useControlResource<BCopyrightProps, CopyrightControl>(props
   addToMap: (res, ctx, p, _scope: ResourceScope) => {
     const anchor = p.anchor ?? "BMAP_ANCHOR_BOTTOM_LEFT";
     if (res === copyrightControlPosCache.get(anchor)) {
-      const entries = res.getCopyrightCollection?.() ?? [];
+      const entries = ctx.client.driver.controls.listCopyrights(res);
       if (entries.length === 0) {
-        (ctx.map as { addControl: (control: unknown) => void }).addControl(res);
+        ctx.client.driver.controls.add({ kind: "map", handle: ctx.map }, res);
       }
     }
     readyContext = ctx;
@@ -67,7 +64,7 @@ const { resource } = useControlResource<BCopyrightProps, CopyrightControl>(props
         if (!res || !ctx) return;
         if (visible) registerCopyright();
         else {
-          res.removeCopyright(id);
+          ctx.client.driver.controls.removeCopyright(res, id);
           registered = false;
         }
       },
@@ -76,7 +73,7 @@ const { resource } = useControlResource<BCopyrightProps, CopyrightControl>(props
   },
   remove: (res, ctx) => {
     const anchor = props.anchor ?? "BMAP_ANCHOR_BOTTOM_LEFT";
-    res.removeCopyright(id);
+    ctx.client.driver.controls.removeCopyright(res, id);
     registered = false;
     removeCopyrightControlIfEmpty(anchor, res, ctx);
     if (control === res) control = null;
@@ -86,19 +83,29 @@ const { resource } = useControlResource<BCopyrightProps, CopyrightControl>(props
 
 function registerCopyright() {
   if (registered || !props.visible || !control || !readyContext || !containerRef.value) return;
-  control.addCopyright({
+  const ctx = readyContext;
+  let bounds: unknown;
+  try {
+    bounds = ctx.client.driver.map.getBounds(ctx.map);
+  } catch {
+    bounds = undefined;
+  }
+  ctx.client.driver.controls.addCopyright(control, {
     id,
     content: containerRef.value.innerHTML,
-    bounds: (readyContext.map as { getBounds?: () => unknown }).getBounds?.(),
+    bounds,
   });
   registered = true;
 }
 
 onUpdated(() => {
-  if (!control || !containerRef.value || !registered) return;
-  const current = control.getCopyrightCollection?.().find((item) => item.id === id);
+  if (!control || !containerRef.value || !registered || !readyContext) return;
+  const ctx = readyContext;
+  const current = ctx.client.driver.controls
+    .listCopyrights(control)
+    .find((item) => item.id === id);
   if (!current || current.content === containerRef.value.innerHTML) return;
-  control.addCopyright({
+  ctx.client.driver.controls.addCopyright(control, {
     id,
     content: containerRef.value.innerHTML,
     bounds: current.bounds,

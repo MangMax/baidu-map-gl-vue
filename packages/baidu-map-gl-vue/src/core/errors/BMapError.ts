@@ -1,8 +1,8 @@
 /**
- * M2-01: 错误模型
+ * 错误模型
  *
  * 所有运行时错误都以稳定 code 表达,携带 mapId/component/plugin 等上下文。
- * 日志输出不得包含完整 AK(见方案 §7.6)。
+ * 日志输出不得包含完整 AK。
  */
 
 export type BMapErrorCode =
@@ -11,16 +11,26 @@ export type BMapErrorCode =
   | "BMAP_SDK_CONFIG_CONFLICT"
   | "BMAP_PROVIDER_ABORTED"
   | "BMAP_RUNTIME_DISPOSED"
+  | "BMAP_RESOURCE_DISPOSED"
   | "BMAP_PARENT_CONTEXT_MISSING"
   | "BMAP_RESOURCE_CREATE_FAILED"
+  | "BMAP_RESOURCE_UPDATE_FAILED"
   | "BMAP_PLUGIN_LOAD_FAILED"
-  | "BMAP_INVALID_POINT";
+  | "BMAP_CAPABILITY_UNSUPPORTED"
+  | "BMAP_SDK_CALL_FAILED"
+  | "BMAP_SERVICE_FAILED"
+  | "BMAP_INVALID_ARGUMENT"
+  | "BMAP_INVALID_POINT"
+  | "BMAP_DUPLICATE_ITEM_KEY";
 
 export interface BMapErrorOptions {
   cause?: unknown;
   mapId?: symbol | string;
   component?: string;
   plugin?: string;
+  capability?: string;
+  engine?: string;
+  version?: string;
 }
 
 export class BMapError extends Error {
@@ -67,9 +77,16 @@ export class BMapError extends Error {
     SDK_CONFIG_CONFLICT: "BMAP_SDK_CONFIG_CONFLICT" as const,
     PROVIDER_ABORTED: "BMAP_PROVIDER_ABORTED" as const,
     RUNTIME_DISPOSED: "BMAP_RUNTIME_DISPOSED" as const,
+    RESOURCE_DISPOSED: "BMAP_RESOURCE_DISPOSED" as const,
     PARENT_CONTEXT_MISSING: "BMAP_PARENT_CONTEXT_MISSING" as const,
     RESOURCE_CREATE_FAILED: "BMAP_RESOURCE_CREATE_FAILED" as const,
+    RESOURCE_UPDATE_FAILED: "BMAP_RESOURCE_UPDATE_FAILED" as const,
     PLUGIN_LOAD_FAILED: "BMAP_PLUGIN_LOAD_FAILED" as const,
+    CAPABILITY_UNSUPPORTED: "BMAP_CAPABILITY_UNSUPPORTED" as const,
+    SDK_CALL_FAILED: "BMAP_SDK_CALL_FAILED" as const,
+    SERVICE_FAILED: "BMAP_SERVICE_FAILED" as const,
+    INVALID_ARGUMENT: "BMAP_INVALID_ARGUMENT" as const,
     INVALID_POINT: "BMAP_INVALID_POINT" as const,
+    DUPLICATE_ITEM_KEY: "BMAP_DUPLICATE_ITEM_KEY" as const,
   };
 }

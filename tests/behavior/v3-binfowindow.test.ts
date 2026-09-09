@@ -1,7 +1,7 @@
 /**
  * M4: BInfoWindow 状态机与资源释放
  *
- * 验证 §11.3:
+ * 验证:
  * - open= true → 打开(infoWindow 可读)
  * - open→false → 关闭
  * - SDK close 事件回写 update:open

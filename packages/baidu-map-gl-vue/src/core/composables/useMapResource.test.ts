@@ -1,5 +1,5 @@
 /**
- * M2-12: useMapResource 竞态测试
+ * useMapResource 竞态测试
  *
  * 验证核心不变式:"组件在 SDK 就绪前卸载,不创建 SDK 资源"。
  */
@@ -26,10 +26,18 @@ function createDeferred<T>() {
 
 function makeRuntime() {
   const deferred = createDeferred<any>();
+  const fakeClient = {
+    driver: {
+      map: {
+        create: () => ({ id: "map" }),
+        destroy: () => {},
+        initializeView: () => {},
+      },
+    },
+  };
   const rt = new MapRuntime({
-    provider: { load: () => deferred.promise } as any,
+    clientFactory: () => deferred.promise.then(() => fakeClient) as never,
     container: document.createElement("div"),
-    createMap: (api) => ({ api }),
   });
   return { rt, deferred };
 }
@@ -78,7 +86,7 @@ describe("useMapResource", () => {
       render: () => h("div"),
     });
     const wrapper = mount(Comp);
-    rt.mount();
+    void rt.mount().catch(() => {}); // dispose 后 mount 会拒绝(预期)
     wrapper.unmount(); // SDK 尚未 resolve,组件先卸载
     deferred.resolve({ api: "x" });
     await nextTick();

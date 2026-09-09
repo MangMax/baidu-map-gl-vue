@@ -26,7 +26,7 @@ describe("plugin definitions", () => {
       "https://example.com/x.js",
       () => (window as any).__fakePlugin,
     );
-    const res = await def.load({ api: {}, map: {} } as any);
+    const res = await def.load({ api: {}, map: {}, client: null } as any);
     expect(res).toEqual({ v: 1 });
     delete (window as any).__fakePlugin;
   });
@@ -34,6 +34,6 @@ describe("plugin definitions", () => {
   it("urlPluginDefinition rejects when export missing after (mock) load", async () => {
     const def = urlPluginDefinition("Missing", "https://example.com/x.js", () => undefined);
     // 无全局导出且无 script 环境,应 reject
-    await expect(def.load({ api: {}, map: {} } as any)).rejects.toThrow();
+    await expect(def.load({ api: {}, map: {}, client: null } as any)).rejects.toThrow();
   });
 });

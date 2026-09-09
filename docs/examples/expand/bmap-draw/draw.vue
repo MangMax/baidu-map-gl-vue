@@ -34,7 +34,7 @@
 
 <script lang="ts" setup>
 import { ref } from "vue";
-import { useBMapMarkerIcons } from "baidu-map-gl-vue";
+import { useBMapMarkerIcons, type BMapClient } from "baidu-map-gl-vue";
 let marker = ref({
   instance: null as { open(): void; closeAll(): void } | null,
   isDrawing: false,
@@ -93,22 +93,21 @@ let rectangle = ref({
 let clearFn = ref();
 function handleInitd({
   map,
-  BMapGL,
-  api,
+  client,
 }: {
-  map: unknown;
-  BMapGL: {
+  map: { raw: unknown };
+  client: BMapClient;
+}) {
+  const BMapGL = client.rawSdk as {
     Icon: new (url: string, size: unknown, opts?: Record<string, unknown>) => unknown;
     Size: new (w: number, h: number) => unknown;
   };
-  api: unknown;
-}) {
   import("bmap-draw").then(
     ({ DrawScene, MarkerDraw, PolylineDraw, CircleDraw, PolygonDraw, RectDraw }) => {
-      const scene = new DrawScene(map);
+      const scene = new DrawScene(map.raw);
       clearFn.value = () => scene.clearData();
       // 点绘制
-      const defaultIcons = useBMapMarkerIcons(api);
+      const defaultIcons = useBMapMarkerIcons(client);
       marker.value.instance = new MarkerDraw(scene, {
         isOpen: false,
         isSeries: true,

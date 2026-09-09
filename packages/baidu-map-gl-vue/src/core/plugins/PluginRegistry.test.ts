@@ -3,7 +3,7 @@ import { createPluginRegistry, type BMapPluginDefinition } from "./PluginRegistr
 import { ResourceScope } from "../lifecycle/ResourceScope";
 
 function makeContext() {
-  return { api: { BMapGL: {} }, map: { id: "map" } };
+  return { api: { BMapGL: {} }, map: { id: "map" }, client: null };
 }
 
 function defer<T>() {

@@ -1,7 +1,7 @@
 /**
  * M4: BMarker 动态更新与幂等可见性
  *
- * 验证 §11.2 的关键修复:
+ * 验证关键修复:
  * - position 变化用字段级 watch(不等同于 deep watch),更新 SDK position
  * - visible 切换幂等,不重复 add 同一 Overlay
  * - 卸载后 SDK 监听与 watcher 全部释放

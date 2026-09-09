@@ -1,10 +1,10 @@
 /**
- * M2-04: EventBridge
+ * EventBridge
  *
  * 将 SDK 对象的 addEventListener/removeEventListener 包成可释放的 Disposer。
  * 解决 v2 bindEvents 匿名回调无法解除、动态监听不同步的问题。
  *
- * 另外提供归一化事件包装(方案 §7.5),不修改原始 SDK event 对象。
+ * 另外提供归一化事件包装,不修改原始 SDK event 对象。
  */
 import type { Disposer } from "../lifecycle/ResourceScope";
 

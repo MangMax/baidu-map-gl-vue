@@ -6,6 +6,7 @@
     "test:unit": "vitest run tests/behavior tests/__smoke__.test.ts",
     "test:performance": "vitest run tests/performance",
     "verify:manifest": "node scripts/collect-api-manifest.mts --check",
+    "check:raw-sdk": "node --experimental-strip-types scripts/check-raw-sdk.mts",
     "verify:package": "node --experimental-strip-types scripts/verify-package.mts",
     "size:baseline": "node --experimental-strip-types scripts/collect-package-size.mts",
     "perf:baseline": "node --experimental-strip-types scripts/collect-performance-baseline.mts",

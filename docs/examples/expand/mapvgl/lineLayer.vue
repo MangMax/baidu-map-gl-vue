@@ -6,13 +6,17 @@
     :displayOptions="{ indoor: false, poi: true }"
     enableScrollWheelZoom
     :plugins="['Mapvgl']"
-    @pluginReady="handlePluginReady"
+    ref="bmapRef"
+    @plugin-ready="handlePluginReady"
   />
 </template>
 
 <script setup>
-function handlePluginReady(map) {
-  const view = new mapvgl.View({ map });
+import { ref } from "vue";
+const bmapRef = ref();
+function handlePluginReady() {
+  const map = bmapRef.value?.getMapInstance?.();
+  const view = new mapvgl.View({ map: map?.raw });
   const lineLayer = new mapvgl.LineLayer({
     color: "rgba(50, 50, 200, 0.9)",
     blend: "lighter",

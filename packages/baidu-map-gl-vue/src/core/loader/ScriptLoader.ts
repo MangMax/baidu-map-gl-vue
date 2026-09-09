@@ -1,5 +1,5 @@
 /**
- * M2-08: ScriptLoader
+ * ScriptLoader
  *
  * 进程级 script 加载器,支持:
  * - timeout / abort
@@ -8,8 +8,8 @@
  * - 失败后从缓存移除,允许重试
  * - SSR 安全(不执行加载)
  *
- * P0-06: Promise 创建后立即缓存，同 key 并发只创建一个 script。
- * P0-07: 全路径释放，无残留 callback / listener / 超时 script。
+ * Promise 创建后立即缓存，同 key 并发只创建一个 script。
+ * 全路径释放，无残留 callback / listener / 超时 script。
  */
 import { BMapError } from "../errors/BMapError";
 
@@ -83,7 +83,7 @@ export class ScriptLoader {
     const existing = this.cache.get(key);
     if (existing) return existing;
 
-    // P0-06: 先占位缓存，再执行真实加载，保证并发只创建一个 script
+    // 先占位缓存，再执行真实加载，保证并发只创建一个 script
     let resolveEntry!: (v: Record<string, unknown>) => void;
     let rejectEntry!: (e: unknown) => void;
     const pending = new Promise<Record<string, unknown>>((resolve, reject) => {

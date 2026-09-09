@@ -1,5 +1,5 @@
 /**
- * useBMapGeocodeDetail —— 坐标点反查地址详情(方案 §13.2)
+ * useBMapGeocodeDetail —— 坐标点反查地址详情
  *
  * 对应 v2 usePointGeocoder 语义:点 → 地址详情
  * (point/address/addressComponents/business/surroundingPois)。
@@ -36,17 +36,15 @@ export function useBMapGeocodeDetail(map?: unknown) {
       if (!point || typeof point.lng !== "number")
         throw new BMapError("BMAP_INVALID_POINT", "missing required params: point");
       const ready = await ctx.whenReady();
-      const api = ready.api as {
-        Geocoder: new (o?: Record<string, unknown>) => {
-          getLocation(
-            p: { lng: number; lat: number },
-            cb: (r: Record<string, unknown> | null) => void,
-          ): void;
-        };
+      const geocoder = ready.client.driver.services.createGeocoder();
+      const raw = geocoder.raw as {
+        getLocation(
+          p: { lng: number; lat: number },
+          cb: (r: Record<string, unknown> | null) => void,
+        ): void;
       };
-      const geocoder = new api.Geocoder();
       return new Promise<GeocodeDetailResult | null>((resolve) => {
-        geocoder.getLocation(point, (r) => {
+        raw.getLocation(point, (r) => {
           if (!r) return resolve(null);
           const g = r as unknown as {
             point?: { lng: number; lat: number };

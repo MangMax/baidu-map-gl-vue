@@ -4,10 +4,10 @@ import type { MapMaskShowRegion } from "../../types/components";
 import { useOverlayResource, removeOverlay } from "../../core/composables/useOverlayResource";
 import type { MapReadyContext } from "../../core/context/types";
 import type { ResourceScope } from "../../core/lifecycle/ResourceScope";
-import { toSdkPoints } from "../../core/utils/geometry";
+import type { OverlayHandle } from "../../driver/types/handles";
 
 /**
- * M4-08: BMapMask 迁移(adapter 模式)
+ * BMapMask 迁移(adapter 模式)
  *
  * path 视为不可变值,更新后替换根引用触发;支持 pathVersion 强制刷新。
  */
@@ -39,30 +39,22 @@ const emit = defineEmits<{
   rightclick: [e: unknown];
 }>();
 
-type SdkMapMask = object;
-
-const { resource, rebuild } = useOverlayResource<BMapMaskProps, SdkMapMask>(
+const { resource, rebuild } = useOverlayResource<BMapMaskProps, OverlayHandle>(
   props,
   {
     create: (ctx, p) => {
-      const BMapGL = ctx.api as {
-        MapMask: new (pts: unknown[], o?: Record<string, unknown>) => unknown;
-      };
       if (!p.path?.length) throw new Error("BMapMask path is required");
-      return new BMapGL.MapMask(toSdkPoints(ctx.api, p.path), {
+      return ctx.client.driver.overlays.createMapMask(p.path, {
         showRegion: p.showRegion,
         isBuildingMask: p.isBuildingMask,
         isMapMask: p.isMapMask,
         isPoiMask: p.isPoiMask,
-      }) as unknown as SdkMapMask;
+      });
     },
     addToMap: (res, ctx, p, scope: ResourceScope) => {
-      const map = ctx.map as { addOverlay: (o: unknown) => void };
-      if (props.visible) map.addOverlay(res);
-      (ctx as any).overlays?.register?.("mapmask", res);
+      if (props.visible) ctx.client.driver.overlays.add({ kind: "map", handle: ctx.map }, res);
       const on = (name: string, h: (e: unknown) => void) => {
-        (res as any).addEventListener?.(name, h);
-        scope.add(() => (res as any).removeEventListener?.(name, h));
+        scope.add(ctx.client.driver.events.on(res, name, h));
       };
       on("click", (e) => emit("click", e));
       on("dblclick", (e) => emit("dblclick", e));
@@ -85,6 +77,19 @@ const { resource, rebuild } = useOverlayResource<BMapMaskProps, SdkMapMask>(
           { flush: "sync" },
         ),
       );
+      // 掩膜选项构造期生效：变化时重建（SDK setOptions 不保证刷新已挂载掩膜）
+      for (const key of ["showRegion", "isBuildingMask", "isMapMask", "isPoiMask"] as const) {
+        addDisposer(
+          watch(
+            () => p[key],
+            (value, old) => {
+              if (value === old) return;
+              if (!getResource()) return;
+              void rebuild();
+            },
+          ),
+        );
+      }
       addDisposer(
         watch(
           () => p.visible,
@@ -92,12 +97,10 @@ const { resource, rebuild } = useOverlayResource<BMapMaskProps, SdkMapMask>(
             const res = getResource();
             const ctx = getCtx();
             if (!res || !ctx) return;
-            const map = ctx.map as {
-              addOverlay: (o: unknown) => void;
-              removeOverlay: (o: unknown) => void;
-            };
-            if (visible) map.addOverlay(res);
-            else map.removeOverlay(res);
+            const overlays = ctx.client.driver.overlays;
+            const target = { kind: "map" as const, handle: ctx.map };
+            if (visible) overlays.add(target, res);
+            else overlays.remove(target, res);
           },
         ),
       );

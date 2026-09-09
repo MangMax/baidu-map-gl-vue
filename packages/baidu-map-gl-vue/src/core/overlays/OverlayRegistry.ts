@@ -1,5 +1,5 @@
 /**
- * M2-06: OverlayRegistry
+ * OverlayRegistry
  *
  * 每地图实例的覆盖物注册表:
  * - 注册/注销 Overlay
@@ -8,7 +8,7 @@
  * - 支持 InfoWindow 单实例策略
  * - 处理 clearOverlays 后 registry 同步
  *
- * P0-11: registration 自带 dispose，不再维护无界 disposer 历史数组。
+ * registration 自带 dispose，不再维护无界 disposer 历史数组。
  */
 import { ResourceScope } from "../lifecycle/ResourceScope";
 

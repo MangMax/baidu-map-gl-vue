@@ -1,5 +1,5 @@
 /**
- * M7-08: CDN/global build smoke
+ * CDN/global build smoke
  *
  * 验证 dist/index.global.js:
  * - 存在
@@ -16,7 +16,7 @@ const globalPath = resolve(
   '../../packages/baidu-map-gl-vue/dist/index.global.js',
 )
 
-describe('v3 global build (M7-08)', () => {
+describe('v3 global build', () => {
   it('produces dist/index.global.js', () => {
     expect(existsSync(globalPath)).toBe(true)
   })

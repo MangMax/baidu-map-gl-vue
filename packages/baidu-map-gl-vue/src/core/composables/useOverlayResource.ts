@@ -1,5 +1,5 @@
 /**
- * M4-06: useOverlayResource
+ * useOverlayResource
  *
  * 通用 Overlay 生命周期 composable:
  * - map ready 后创建 SDK 实例
@@ -86,7 +86,7 @@ export function useOverlayResource<Props, Resource>(
       if (componentScope.isDisposed || disposed || token !== createToken) return;
       readyCtx = ready;
 
-      // P0-12: 每个实例独立 child scope；create/addToMap 的监听与资源进入 instanceScope
+      // 每个实例独立 child scope；create/addToMap 的监听与资源进入 instanceScope
       const scope = ensureInstanceScope();
       const created = await lifecycle.create(ready, props, scope);
       if (scope.isDisposed || componentScope.isDisposed || disposed || token !== createToken) {
@@ -138,7 +138,7 @@ export function useOverlayResource<Props, Resource>(
       }
       resource.value = null;
     }
-    // P0-12: 废弃旧 instanceScope，重 fork 新实例 scope，避免复用同一 scope 堆积 listener
+    // 废弃旧 instanceScope，重 fork 新实例 scope，避免复用同一 scope 堆积 listener
     instanceScope?.dispose();
     instanceScope = componentScope.fork("overlay-instance");
     const scope = instanceScope;
@@ -163,8 +163,7 @@ export function useOverlayResource<Props, Resource>(
   };
 }
 
-/** 通用的 overlay 移除 helper:从地图 removeOverlay */
+/** 通用的 overlay 移除 helper:经 Driver 从地图 removeOverlay */
 export function removeOverlay(resource: unknown, ctx: MapReadyContext) {
-  const map = ctx.map as { removeOverlay?: (o: unknown) => void } | null;
-  map?.removeOverlay?.(resource);
+  ctx.client.driver.overlays.remove({ kind: "map", handle: ctx.map }, resource as never);
 }

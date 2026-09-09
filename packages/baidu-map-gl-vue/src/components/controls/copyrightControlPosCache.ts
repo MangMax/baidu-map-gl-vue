@@ -1,4 +1,5 @@
 import type { MapReadyContext } from "../../core/context/types";
+import type { ControlHandle } from "../../driver/types/handles";
 
 export type CopyrightEntry = {
   id: number;
@@ -6,21 +7,15 @@ export type CopyrightEntry = {
   bounds?: unknown;
 };
 
-export type CopyrightControl = {
-  addCopyright: (copyright: CopyrightEntry) => void;
-  removeCopyright: (id: number) => void;
-  getCopyrightCollection?: () => CopyrightEntry[];
-};
-
-export const copyrightControlPosCache = new Map<string, CopyrightControl>();
+export const copyrightControlPosCache = new Map<string, ControlHandle>();
 
 export function removeCopyrightControlIfEmpty(
   anchor: string,
-  control: CopyrightControl,
+  control: ControlHandle,
   ctx: MapReadyContext,
 ) {
-  const entries = control.getCopyrightCollection?.() ?? [];
+  const entries = ctx.client.driver.controls.listCopyrights(control);
   if (entries.length > 0) return;
-  (ctx.map as { removeControl: (control: unknown) => void }).removeControl(control);
+  ctx.client.driver.controls.remove({ kind: "map", handle: ctx.map }, control);
   copyrightControlPosCache.delete(anchor);
 }

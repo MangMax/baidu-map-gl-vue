@@ -1,5 +1,5 @@
 /**
- * M0-03: FakeEventTarget
+ * FakeEventTarget
  *
  * 可统计 add/remove 事件的 SDK EventTarget,用于组件事件绑定行为测试。
  */

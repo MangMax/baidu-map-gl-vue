@@ -19,22 +19,30 @@ const { result, convert, isLoading, isError, status } = useBMapConvertor(map)
 ```
 
 :::tip
-该 hooks 依赖于 `BMapGL`，所以需要在 `Map` 组件初始化完毕调用 `convert` 方法后数据才可用
+该 hooks 需要地图 ready 后才能执行转换；在 `<BMap>` 子树内调用时可省略 `map` 参数
 :::
 
 ### 参数
 
-无
+| 参数 | 描述                                         | 类型      | 默认值 |
+| ---- | -------------------------------------------- | --------- | ------ |
+| map  | `Map`地图组件实例或 `ref`（可省略，用注入值） | `unknown` | -      |
 
 ### 返回值
 
-| 返回值    | 描述                                                     | 类型                                                                                                                                    |
-| --------- | -------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------- |
-| result    | 目标坐标点数组                                           | `{ lng: number; lat: number }[]`                                                                                                        |
-| isLoading | 是否加载中                                               | `boolean`                                                                                                                               |
-| isError   | 是否出错                                                 | `boolean`                                                                                                                               |
-| status    | 当前状态                                                 | [`UsePointConvertorStatus`](#usepointconvertorstatus)                                                                                   |
-| convert   | 点坐标转换方法，需要在`Map`组件`initd`事件触发后才可调用 | `({ lng: number; lat: number }[], `[`CoordinatesFromType, `](#coordinatesfromtype) [`CoordinatesToType`](#coordinatestotype)`) => void` |
+| 返回值    | 描述                                                     | 类型                                                                                                                                                |
+| --------- | -------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------- |
+| data      | 目标坐标点数组（`result` 为其别名）                      | `Ref<{ lng: number; lat: number }[] \| null>`                                                                                                       |
+| result    | 目标坐标点数组                                           | `Ref<{ lng: number; lat: number }[] \| null>`                                                                                                       |
+| error     | 错误信息                                                 | `Ref<unknown>`                                                                                                                                      |
+| isError   | 是否出错                                                 | `boolean`                                                                                                                                           |
+| isEmpty   | 结果是否为空                                             | `boolean`                                                                                                                                           |
+| isLoading | 是否加载中                                               | `boolean`                                                                                                                                           |
+| status    | 当前状态                                                 | `Ref<'idle' \| 'loading' \| 'success' \| 'error'>`                                                                                                  |
+| convert   | 点坐标转换方法，需要在`Map`组件`ready`后才可调用         | `(points: Point[], `[`from: CoordinatesFromType`](#coordinatesfromtype)`, `[`to: CoordinatesToType`](#coordinatestotype)`) => Promise<Point[]>`      |
+| get       | `convert` 别名                                           | 同上                                                                                                                                                |
+| cancel    | 取消 pending 请求                                        | `() => void`                                                                                                                                        |
+| reset     | 清空 data/error                                          | `() => void`                                                                                                                                        |
 
 ### CoordinatesFromType
 
@@ -119,18 +127,20 @@ export enum CoordinatesToType {
 
 <!-- prettier-ignore -->
 ```html
-<Map @initd="handleInitd"></Map>
+<BMap @ready="handleReady"></BMap>
 
 <script setup lang="ts">
-  import { usePoint } from 'baidu-map-gl-vue'
+  import { useBMapConvertor, CoordinatesFromType, CoordinatesToType } from 'baidu-map-gl-vue'
 
-  const { point, set } = usePoint()
+  const { convert, result } = useBMapConvertor()
 
-  function handleInitd() {
-    set({
-      lng: 116.297611,
-      lat: 40.047363
-    })
+  async function handleReady() {
+    await convert(
+      [{ lng: 116.297611, lat: 40.047363 }],
+      CoordinatesFromType.COORDINATES_GCJ02,
+      CoordinatesToType.COORDINATES_BD09
+    )
+    console.log(result.value)
   }
 </script>
 ```
@@ -142,21 +152,32 @@ import { Ref } from 'vue'
 /**
  * 地图经纬度点
  */
-export declare type Point = {
+export declare type GeoPoint = {
   lng: number
   lat: number
 }
 /**
- * 获取一个地图经纬度点实例
+ * 坐标转换
  */
-export declare function usePoint(): {
-  /**
-   * BMapGL.Point 实例对象
-   */
-  point: Ref<BMapGL.Point | null>
-  /**
-   * 设置实例点坐标
-   */
-  set: ({ lng, lat }: { lng: number; lat: number }) => void
+export declare function useBMapConvertor(map?: unknown): {
+  data: Ref<GeoPoint[] | null>
+  result: Ref<GeoPoint[] | null>
+  error: Ref<unknown>
+  isError: Ref<boolean>
+  isEmpty: Ref<boolean>
+  status: Ref<'idle' | 'loading' | 'success' | 'error'>
+  isLoading: Ref<boolean>
+  convert: (
+    points: GeoPoint[],
+    from: CoordinatesFromType,
+    to: CoordinatesToType
+  ) => Promise<GeoPoint[] | null>
+  get: (
+    points: GeoPoint[],
+    from: CoordinatesFromType,
+    to: CoordinatesToType
+  ) => Promise<GeoPoint[] | null>
+  cancel: (reason?: unknown) => void
+  reset: () => void
 }
 ```

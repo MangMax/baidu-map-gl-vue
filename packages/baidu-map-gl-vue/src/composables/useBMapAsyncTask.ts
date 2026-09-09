@@ -1,9 +1,9 @@
 /**
- * M6-11: useBMapAsyncTask
+ * useBMapAsyncTask
  *
- * 统一异步服务 composable 状态封装(方案 §13.3):
+ * 统一异步服务 composable 状态封装:
  * - 每次 execute 带 request sequence ID,旧请求结果不得覆盖新请求
- * - P0-18: runner 接收 { signal, requestId }，支持真实取消；
+ * - runner 接收 { signal, requestId }，支持真实取消；
  *   不支持 AbortSignal 的百度 callback API 在 callback 中检查 signal.aborted
  * - 状态: idle / loading / success / error
  * - cancel 不标记 error；reset 清空 data/error
@@ -21,7 +21,7 @@ export interface AsyncTaskState<Result> {
   reset: () => void;
 }
 
-/** P0-18: 传递给 runner 的取消上下文 */
+/** 传递给 runner 的取消上下文 */
 export interface AsyncTaskContext {
   signal: AbortSignal;
   requestId: number;
@@ -62,7 +62,7 @@ export function useBMapAsyncTask<Result, Args extends unknown[]>(
     error.value = null;
 
     try {
-      // P0-18: AbortController 传给 runner
+      // AbortController 传给 runner
       const result = await options.runner(
         { signal, requestId: currentRequestId },
         ...(execArgs as Args),

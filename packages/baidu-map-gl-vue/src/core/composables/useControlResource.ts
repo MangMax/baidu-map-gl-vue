@@ -1,7 +1,7 @@
 /**
- * M6-01: useControlResource
+ * useControlResource
  *
- * Control 类组件统一处理(方案 §11.4):
+ * Control 类组件统一处理:
  * - anchor
  * - offset
  * - map.addControl/removeControl
@@ -13,6 +13,7 @@ import { onMounted, onUnmounted, shallowRef, markRaw, type ShallowRef } from "vu
 import { useRequiredMapContext } from "../../core/context/inject";
 import { ResourceScope } from "../../core/lifecycle/ResourceScope";
 import { BMapError } from "../../core/errors/BMapError";
+import { toSdkXYSize } from "../utils/geometry";
 import type { MapReadyContext } from "../../core/context/types";
 
 export interface ControlResourceAdapter<Props, Resource> {
@@ -98,10 +99,9 @@ export function buildControlOptions(
   offset: { x: number; y: number },
   api: unknown,
 ) {
-  const BMapGL = api as { Size: new (w: number, h: number) => unknown };
   return {
     anchor,
-    offset: new BMapGL.Size(offset.x, offset.y),
+    offset: toSdkXYSize(api, offset),
   };
 }
 

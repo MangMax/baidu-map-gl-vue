@@ -1,13 +1,13 @@
 <template>
   显示区域:
   <select class="mySelect" name="" id="" v-model="showRegion">
-    <option value="outside">局部影藏</option>
+    <option value="outside">局部隐藏</option>
     <option value="inside">局部显示</option>
   </select>
   <BMap
     v-bind="$attrs"
     :center="center"
-    :zoom="16"
+    :zoom="18"
     @ready="handleInitd"
     enable-scroll-wheel-zoom
     :backgroundColor="[192, 214, 213, 100]"

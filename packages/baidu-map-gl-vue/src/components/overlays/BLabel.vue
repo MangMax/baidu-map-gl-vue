@@ -3,6 +3,7 @@ import { watch } from "vue";
 import { useOverlayResource, removeOverlay } from "../../core/composables/useOverlayResource";
 import type { MapReadyContext } from "../../core/context/types";
 import type { ResourceScope } from "../../core/lifecycle/ResourceScope";
+import type { LabelHandle } from "../../driver/types/handles";
 
 export type LabelStyle = Record<string, any>;
 export interface BLabelProps {
@@ -26,43 +27,20 @@ const emit = defineEmits<{
   dblclick: [e: unknown];
 }>();
 
-type SdkLabel = {
-  setContent(c: string): void;
-  setPosition(p: unknown): void;
-  setOffset(o: unknown): void;
-  setZIndex(z: number): void;
-  setStyle(s: Record<string, unknown>): void;
-  enableMassClear(): void;
-  disableMassClear(): void;
-};
-
-const { resource } = useOverlayResource<BLabelProps, SdkLabel>(
+const { resource } = useOverlayResource<BLabelProps, LabelHandle>(
   props,
   {
-    create: (ctx, p) => {
-      const BMapGL = ctx.api as {
-        Label: new (content: string, o?: Record<string, unknown>) => unknown;
-        Point: new (l: number, t: number) => unknown;
-        Size: new (a: number, b: number) => unknown;
-      };
-      const label = new BMapGL.Label(p.content, {
-        position: new BMapGL.Point(p.position.lng, p.position.lat),
-        offset: new BMapGL.Size((p.offset ?? { x: 0, y: 0 }).x, (p.offset ?? { x: 0, y: 0 }).y),
+    create: (ctx, p) =>
+      ctx.client.driver.overlays.createLabel(p.content, {
+        position: p.position,
+        offset: p.offset,
         enableMassClear: p.enableMassClear,
-      }) as unknown as SdkLabel;
-      if (p.style) label.setStyle(p.style);
-      return label;
-    },
+        style: p.style,
+      }),
     addToMap: (res, ctx, p, scope: ResourceScope) => {
-      const map = ctx.map as { addOverlay: (o: unknown) => void };
-      if (props.visible) map.addOverlay(res);
-      (ctx as any).overlays?.register?.("label", res);
-      const on = (name: string, h: (e: unknown) => void) => {
-        (res as any).addEventListener?.(name, h);
-        scope.add(() => (res as any).removeEventListener?.(name, h));
-      };
-      on("click", (e) => emit("click", e));
-      on("dblclick", (e) => emit("dblclick", e));
+      if (props.visible) ctx.client.driver.overlays.add({ kind: "map", handle: ctx.map }, res);
+      scope.add(ctx.client.driver.events.on(res, "click", (e) => emit("click", e)));
+      scope.add(ctx.client.driver.events.on(res, "dblclick", (e) => emit("dblclick", e)));
     },
     createWatchers(getCtx, getResource, p, addDisposer) {
       addDisposer(
@@ -72,14 +50,17 @@ const { resource } = useOverlayResource<BLabelProps, SdkLabel>(
           const res = getResource();
           const ctx = getCtx();
           if (!res || !ctx) return;
-          const Point = (ctx.api as { Point: new (l: number, t: number) => unknown }).Point;
-          res.setPosition(new Point(lng, lat));
+          ctx.client.driver.overlays.setPosition(res, { lng, lat });
         }),
       );
       addDisposer(
         watch(
           () => p.content,
-          (c) => getResource()?.setContent(c),
+          (c) => {
+            const r = getResource();
+            const ctx = getCtx();
+            if (r && ctx) ctx.client.driver.overlays.setOptions(r, { content: c });
+          },
         ),
       );
       addDisposer(
@@ -87,7 +68,8 @@ const { resource } = useOverlayResource<BLabelProps, SdkLabel>(
           () => p.zIndex,
           (z) => {
             const r = getResource();
-            if (z != null && r) r.setZIndex(z);
+            const ctx = getCtx();
+            if (z != null && r && ctx) ctx.client.driver.overlays.setOptions(r, { zIndex: z });
           },
         ),
       );
@@ -96,7 +78,8 @@ const { resource } = useOverlayResource<BLabelProps, SdkLabel>(
           () => p.style,
           (s) => {
             const r = getResource();
-            if (s && r) r.setStyle(s);
+            const ctx = getCtx();
+            if (s && r && ctx) ctx.client.driver.overlays.setOptions(r, { style: s });
           },
         ),
       );
@@ -105,7 +88,8 @@ const { resource } = useOverlayResource<BLabelProps, SdkLabel>(
           () => p.enableMassClear,
           (en) => {
             const r = getResource();
-            if (r) en ? r.enableMassClear() : r.disableMassClear();
+            const ctx = getCtx();
+            if (r && ctx) ctx.client.driver.overlays.setOptions(r, { enableMassClear: en });
           },
         ),
       );
@@ -116,12 +100,10 @@ const { resource } = useOverlayResource<BLabelProps, SdkLabel>(
             const res = getResource();
             const ctx = getCtx();
             if (!res || !ctx) return;
-            const map = ctx.map as {
-              addOverlay: (o: unknown) => void;
-              removeOverlay: (o: unknown) => void;
-            };
-            if (visible) map.addOverlay(res);
-            else map.removeOverlay(res);
+            const overlays = ctx.client.driver.overlays;
+            const target = { kind: "map" as const, handle: ctx.map };
+            if (visible) overlays.add(target, res);
+            else overlays.remove(target, res);
           },
         ),
       );

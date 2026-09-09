@@ -1,5 +1,5 @@
 /**
- * 工具函数单测(方案 §13:utils 改造验证)
+ * 工具函数单测
  */
 import { describe, it, expect } from 'vitest'
 import { toSdkPoints, toSdkPoint, toSdkSize, toSdkXYSize } from './geometry'

@@ -32,6 +32,10 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
+      # raw SDK 静态扫描:组件/composables/runtime 禁止访问 BMapGL
+      - name: Check raw SDK boundaries
+        run: node --experimental-strip-types scripts/check-raw-sdk.mts
+
       # v3 组件 manifest 无漂移
       - name: Check v3 API manifest
         run: node --experimental-strip-types scripts/generate-manifest-artifacts.mts --check

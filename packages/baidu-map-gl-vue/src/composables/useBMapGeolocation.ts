@@ -1,11 +1,11 @@
 /**
- * M6-05: useBMapGeolocation —— 百度 SDK 定位
+ * useBMapGeolocation —— 百度 SDK 定位
  *
- * 方案 §A.9.1:当前 v2 的 `useBrowserLocation` 实际调用 BMapGL.Geolocation,
+ * 当前 v2 的 `useBrowserLocation` 实际调用 BMapGL.Geolocation,
  * 并非浏览器 navigator.geolocation。v3 重命名为 useBMapGeolocation(百度 SDK),
  * 并保留 useBrowserLocation 为 deprecated alias。
  *
- * 需要地图已 ready(经 ctx.whenReady 获取 api),否则重试或报错。
+ * 需要地图已 ready(经 ctx.whenReady 获取 client),否则重试或报错。
  */
 import { computed } from "vue";
 import { resolveMapContext } from "./resolveMapContext";
@@ -35,23 +35,20 @@ export function useBMapGeolocation(options: BMapGeolocationOptions = {}, map?: u
     immediate: false,
     runner: async (_taskContext) => {
       const ready = await ctx.whenReady();
-      const api = ready.api as {
-        Geolocation: new (o?: Record<string, unknown>) => {
-          getCurrentPosition(cb: (res: any) => void): void;
-          getStatus(): number;
-        };
-        Point: new (lng: number, lat: number) => { lng: number; lat: number };
-      };
-      const geolocation = new api.Geolocation({
+      const geolocation = ready.client.driver.services.createGeolocation({
         enableSDKLocation: options.enableSDKLocation,
         enableHighAccuracy: options.enableHighAccuracy,
         timeout: options.timeout,
         maximumAge: options.maximumAge,
       });
+      const raw = geolocation.raw as {
+        getCurrentPosition(cb: (res: any) => void): void;
+        getStatus(): number;
+      };
 
       const result = await new Promise<BMapGeoResult>((resolve, reject) => {
-        geolocation.getCurrentPosition((res) => {
-          const status = geolocation.getStatus();
+        raw.getCurrentPosition((res) => {
+          const status = raw.getStatus();
           if (status === 0) {
             resolve({
               point: { lng: res.point.lng, lat: res.point.lat },

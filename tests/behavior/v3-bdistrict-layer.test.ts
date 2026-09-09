@@ -1,5 +1,5 @@
 /**
- * M6-03/04: BDistrictLayer 迁移验证
+ * BDistrictLayer 迁移验证
  */
 import { describe, it, expect, beforeEach } from 'vitest'
 import { mount, flushPromises } from '@vue/test-utils'

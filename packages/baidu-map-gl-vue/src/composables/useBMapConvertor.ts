@@ -1,7 +1,7 @@
 /**
- * M6-06: useBMapConvertor —— 坐标转换
+ * useBMapConvertor —— 坐标转换
  *
- * 复用 useBMapAsyncTask 统一异步状态(§13.3)。
+ * 复用 useBMapAsyncTask 统一异步状态。
  * 支持从/到坐标类型枚举(v2 CoordinatesFromType/ToType 断点兼容)。
  */
 import { computed } from "vue";
@@ -41,22 +41,19 @@ export function useBMapConvertor(map?: unknown) {
         throw new BMapError("BMAP_RESOURCE_CREATE_FAILED", "missing required params: from");
       if (!to) throw new BMapError("BMAP_RESOURCE_CREATE_FAILED", "missing required params: to");
       const ready = await ctx.whenReady();
-      const api = ready.api as {
-        Point: new (lng: number, lat: number) => { lng: number; lat: number };
-        Convertor: new (o?: Record<string, unknown>) => {
-          translate(
-            points: { lng: number; lat: number }[],
-            from: number,
-            to: number,
-            cb: (res: { points: { lng: number; lat: number }[]; status: number }) => void,
-          ): void;
-        };
+      const convertor = ready.client.driver.services.createConvertor();
+      const raw = convertor.raw as {
+        translate(
+          points: unknown[],
+          from: number,
+          to: number,
+          cb: (res: { points: { lng: number; lat: number }[]; status: number }) => void,
+        ): void;
       };
-      const convertor = new api.Convertor();
-      const pointsInstance = points.map((p) => new api.Point(p.lng, p.lat));
+      const pointsInstance = points.map((p) => ready.client.driver.geometry.toRawPoint(p));
       const res = await new Promise<{ points: { lng: number; lat: number }[]; status: number }>(
         (resolve, reject) => {
-          convertor.translate(pointsInstance, from, to, (r) => {
+          raw.translate(pointsInstance, from, to, (r) => {
             if (r.status === 0) resolve(r);
             else
               reject(

@@ -1,5 +1,5 @@
 <template>
-  <BMap :center="point || '北京市'">
+  <BMap :center="point || defaultCenter">
     <BAutoComplete style="width: 100%" @confirm="handleConfirm" />
     <BMarker v-if="point" :position="point"></BMarker>
   </BMap>
@@ -7,6 +7,8 @@
 
 <script setup lang="ts">
 import { BMap, BAutoComplete, BMarker, type PointLike, useBMapGeocoder } from "baidu-map-gl-vue";
+// 字符串地点需要后端解析，抖动时地图会停在默认视角；用显式坐标兜底
+const defaultCenter: PointLike = { lng: 116.404, lat: 39.915 };
 const { get, point } = useBMapGeocoder();
 
 function handleConfirm(e: any) {
