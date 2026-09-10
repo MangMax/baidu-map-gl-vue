@@ -10,6 +10,9 @@
  * 模式由显式的 `mode` 决定，不再依据 `callbackName` 是否存在隐式推断：
  * - `load`：以 script `load` 事件作为就绪信号；
  * - `jsonp`：挂载全局回调作为就绪信号，`callbackName` 必须与 URL 中回调参数一致。
+ *
+ * 初始化（含回调安装）具备异常安全性：同步异常统一转为 `BMapError` 进入 `fail()`，
+ * 不会把任务留在 `loading` 状态。
  */
 import { BMapError } from "../errors/BMapError";
 
@@ -59,6 +62,97 @@ interface Consumer {
   settled: boolean;
 }
 
+/* -------------------------------------------------------------------------- */
+/* 全局回调注册表                                                              */
+/* -------------------------------------------------------------------------- */
+
+interface CallbackSlot {
+  handler: (...args: unknown[]) => void;
+  active: boolean;
+}
+
+interface CallbackEntry {
+  /** 按安装顺序保存的同名回调栈（可能来自多个并发任务）。 */
+  slots: CallbackSlot[];
+  /** 第一个 Loader 任务接管前，该全局名上的“外部原值”。 */
+  foreign: { had: boolean; value: unknown };
+}
+
+/**
+ * 多个任务可能使用同名回调（例如不同 URL 但相同的 callback 名）。
+ * 仅保存一个 previous 引用会在交叠失败时把已失效的 handler 重新挂回全局，
+ * 因此按名字维护安装栈 + 存活标记。
+ */
+const callbackRegistry = new Map<string, CallbackEntry>();
+
+function hasOwn(target: object, key: string): boolean {
+  return Object.prototype.hasOwnProperty.call(target, key);
+}
+
+/**
+ * 安装回调并登记所有权。
+ * 赋值失败（如只读全局属性）会抛错，此时**不做任何登记**，由调用方进入失败路径。
+ */
+function installGlobalCallback(
+  target: Record<string, unknown>,
+  name: string,
+  handler: (...args: unknown[]) => void,
+): void {
+  let entry = callbackRegistry.get(name);
+  const isNew = !entry;
+  if (!entry) {
+    entry = { slots: [], foreign: { had: hasOwn(target, name), value: target[name] } };
+  }
+  // 只读属性会抛 TypeError；此处尚未写入任何注册记录。
+  target[name] = handler;
+  if (isNew) callbackRegistry.set(name, entry);
+  entry.slots.push({ handler, active: true });
+}
+
+/**
+ * 释放回调所有权（任务成功 / 失败 / 取消时调用）。
+ *
+ * - 若全局已被更晚的任务接管，只把自己标记为失效，不触碰全局；
+ * - 若自己仍是当前所有者，丢弃栈顶所有已失效槽位；
+ * - 仍有存活槽位则回退到它，否则恢复“外部原值”或删除。
+ */
+function releaseGlobalCallback(
+  target: Record<string, unknown>,
+  name: string,
+  handler: (...args: unknown[]) => void,
+): void {
+  const entry = callbackRegistry.get(name);
+  if (!entry) {
+    // 未经注册表安装（例如全局被外部替换过）：保守地只清理自己。
+    if (target[name] === handler) delete target[name];
+    return;
+  }
+  const slot = entry.slots.find((candidate) => candidate.handler === handler);
+  if (slot) slot.active = false;
+  if (target[name] !== handler) return;
+
+  while (entry.slots.length > 0 && !entry.slots[entry.slots.length - 1]!.active) {
+    entry.slots.pop();
+  }
+  const top = entry.slots[entry.slots.length - 1];
+  if (top) {
+    target[name] = top.handler;
+    return;
+  }
+  if (entry.foreign.had) target[name] = entry.foreign.value;
+  else delete target[name];
+  callbackRegistry.delete(name);
+}
+
+/** 仅测试使用：清空回调注册表。 */
+export function resetGlobalCallbackRegistryForTests(): void {
+  callbackRegistry.clear();
+}
+
+/* -------------------------------------------------------------------------- */
+/* SharedLoadTask                                                              */
+/* -------------------------------------------------------------------------- */
+
 function createAbortError(): BMapError {
   return new BMapError("BMAP_PROVIDER_ABORTED", "SDK load aborted");
 }
@@ -78,8 +172,6 @@ export class SharedLoadTask {
   private callbackTarget: Record<string, unknown> | null = null;
   private callbackKey: string | undefined;
   private installedCallback: ((...args: unknown[]) => void) | undefined;
-  private previousCallback: unknown;
-  private hadPreviousCallback = false;
 
   constructor(
     private readonly options: ScriptLoaderOptions,
@@ -104,11 +196,12 @@ export class SharedLoadTask {
    * `signal` 只影响该消费者；abort 不会波及同一任务上的其它消费者。
    */
   subscribe(signal?: AbortSignal): Promise<unknown> {
-    if (this.state === "settled") {
-      return this.succeeded ? Promise.resolve(this.result) : Promise.reject(this.error);
-    }
+    // 已取消的 signal 优先于已结算结果：命中也必须拒绝当前消费者。
     if (signal?.aborted) {
       return Promise.reject(createAbortError());
+    }
+    if (this.state === "settled") {
+      return this.succeeded ? Promise.resolve(this.result) : Promise.reject(this.error);
     }
 
     return new Promise<unknown>((resolve, reject) => {
@@ -142,65 +235,79 @@ export class SharedLoadTask {
     else consumer.reject(value);
   }
 
+  /**
+   * 初始化底层 script。
+   *
+   * 清理函数与超时器都在可能抛错的操作（回调安装、appendChild）之前登记，
+   * 同步异常统一转为 `BMapError` 进入 `fail()`，保证任务不会卡在 `loading`。
+   */
   private begin(): void {
     this.started = true;
     this.state = "loading";
 
-    if (typeof document === "undefined" || typeof window === "undefined") {
-      this.fail(new BMapError("BMAP_SDK_LOAD_FAILED", "SDK load requires a browser environment"));
-      return;
-    }
+    try {
+      if (typeof document === "undefined" || typeof window === "undefined") {
+        this.fail(new BMapError("BMAP_SDK_LOAD_FAILED", "SDK load requires a browser environment"));
+        return;
+      }
 
-    const script = document.createElement("script");
-    script.src = this.options.src;
-    script.type = "text/javascript";
-    script.async = true;
-    if (this.options.integrity) script.integrity = this.options.integrity;
-    if (this.options.crossOrigin) script.crossOrigin = this.options.crossOrigin;
-    if (this.options.referrerPolicy) script.referrerPolicy = this.options.referrerPolicy;
-    if (this.options.nonce) script.nonce = this.options.nonce;
-    this.script = script;
+      const script = document.createElement("script");
+      script.src = this.options.src;
+      script.type = "text/javascript";
+      script.async = true;
+      if (this.options.integrity) script.integrity = this.options.integrity;
+      if (this.options.crossOrigin) script.crossOrigin = this.options.crossOrigin;
+      if (this.options.referrerPolicy) script.referrerPolicy = this.options.referrerPolicy;
+      if (this.options.nonce) script.nonce = this.options.nonce;
+      this.script = script;
 
-    const onLoad = () => this.succeed(undefined);
-    const onError = () =>
-      this.fail(
-        new BMapError("BMAP_SDK_LOAD_FAILED", `Failed to load script: ${this.options.src}`),
-      );
-    script.addEventListener("error", onError);
-    if (this.options.mode === "jsonp") {
-      this.installJsonpCallback(this.options.callbackName);
-    } else {
-      script.addEventListener("load", onLoad);
-    }
-    this.detachScriptListeners = () => {
-      script.removeEventListener("load", onLoad);
-      script.removeEventListener("error", onError);
-    };
-
-    if (this.options.timeout) {
-      const timeout = this.options.timeout;
-      this.timeoutId = window.setTimeout(() => {
+      const onLoad = () => this.succeed(undefined);
+      const onError = () =>
         this.fail(
-          new BMapError(
-            "BMAP_SDK_LOAD_TIMEOUT",
-            `SDK load timed out after ${timeout}ms`,
-          ),
+          new BMapError("BMAP_SDK_LOAD_FAILED", `Failed to load script: ${this.options.src}`),
         );
-      }, timeout);
-    }
+      // 先登记释放路径，再执行可能抛错的安装动作。
+      this.detachScriptListeners = () => {
+        script.removeEventListener("load", onLoad);
+        script.removeEventListener("error", onError);
+      };
+      script.addEventListener("error", onError);
 
-    document.body.appendChild(script);
+      if (this.options.timeout) {
+        const timeout = this.options.timeout;
+        this.timeoutId = window.setTimeout(() => {
+          this.fail(
+            new BMapError("BMAP_SDK_LOAD_TIMEOUT", `SDK load timed out after ${timeout}ms`),
+          );
+        }, timeout);
+      }
+
+      if (this.options.mode === "jsonp") {
+        this.installJsonpCallback(this.options.callbackName);
+      } else {
+        script.addEventListener("load", onLoad);
+      }
+
+      document.body.appendChild(script);
+    } catch (cause) {
+      this.fail(
+        cause instanceof BMapError
+          ? cause
+          : new BMapError("BMAP_SDK_LOAD_FAILED", "Failed to initialize SDK script loading", {
+              cause,
+            }),
+      );
+    }
   }
 
   private installJsonpCallback(callbackName: string): void {
     const target = window as unknown as Record<string, unknown>;
+    const handler = (...args: unknown[]) => this.succeed(args[0]);
+    // 赋值失败时不登记，避免残留无法释放的所有权记录。
+    installGlobalCallback(target, callbackName, handler);
     this.callbackTarget = target;
     this.callbackKey = callbackName;
-    this.hadPreviousCallback = Object.prototype.hasOwnProperty.call(target, callbackName);
-    this.previousCallback = target[callbackName];
-    const handler = (...args: unknown[]) => this.succeed(args[0]);
     this.installedCallback = handler;
-    target[callbackName] = handler;
   }
 
   private succeed(callbackResult: unknown): void {
@@ -266,12 +373,8 @@ export class SharedLoadTask {
     this.callbackTarget = null;
     this.callbackKey = undefined;
     this.installedCallback = undefined;
-    if (target && key && installed && target[key] === installed) {
-      // 只清理自己安装的回调；同名已存在时恢复原值，避免破坏其它加载。
-      if (this.hadPreviousCallback) target[key] = this.previousCallback;
-      else delete target[key];
+    if (target && key && installed) {
+      releaseGlobalCallback(target, key, installed);
     }
-    this.previousCallback = undefined;
-    this.hadPreviousCallback = false;
   }
 }

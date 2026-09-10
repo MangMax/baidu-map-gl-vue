@@ -62,8 +62,10 @@ jobs:
       - name: Check public d.ts boundaries
         run: node --experimental-strip-types scripts/check-public-dts.mts
 
+      # 单一执行入口：tests/behavior + packages/**（含 core/loader 的 Loader 测试），
+      # 避免 CI 与本地 `pnpm test:unit` 的执行范围漂移。
       - name: Unit & behavior tests
-        run: pnpm exec vitest run tests/behavior tests/__smoke__.test.ts
+        run: pnpm test:unit
 
       # v2 leak assertion removed (v2 sources deleted); v3 lifecycle covered by v3 tests
 

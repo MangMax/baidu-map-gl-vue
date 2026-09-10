@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, afterEach } from "vitest";
-import { SharedLoadTask } from "./SharedLoadTask";
+import { SharedLoadTask, resetGlobalCallbackRegistryForTests } from "./SharedLoadTask";
 
 const SRC = "https://sdk.example.com/bmap.js";
 
@@ -23,6 +23,8 @@ function isAttached(script: HTMLScriptElement): boolean {
 describe("SharedLoadTask", () => {
   afterEach(() => {
     delete (document as unknown as Record<string, unknown>).body;
+    delete (window as unknown as Record<string, unknown>).__cb_ro_unit;
+    resetGlobalCallbackRegistryForTests();
     vi.restoreAllMocks();
   });
 
@@ -90,5 +92,44 @@ describe("SharedLoadTask", () => {
       code: "BMAP_PROVIDER_ABORTED",
     });
     expect(task.status).toBe("idle");
+  });
+
+  it("[F1] 回调安装失败时进入失败路径，不卡在 loading", async () => {
+    const created = trackScripts();
+    const name = "__cb_ro_unit";
+    Object.defineProperty(window, name, {
+      value: undefined,
+      writable: false,
+      configurable: true,
+    });
+    const onFailure = vi.fn();
+    const task = new SharedLoadTask(
+      { mode: "jsonp", src: SRC, callbackName: name, timeout: 10 },
+      { onFailure },
+    );
+
+    await expect(task.subscribe()).rejects.toMatchObject({ code: "BMAP_SDK_LOAD_FAILED" });
+    expect(onFailure).toHaveBeenCalledTimes(1);
+    expect(task.isSettled).toBe(true);
+    expect(task.consumerCount).toBe(0);
+    // 安装失败发生在 appendChild 之前。
+    expect(created).toHaveLength(0);
+    Reflect.deleteProperty(window as unknown as object, name);
+  });
+
+  it("[F4] 已结算的任务收到已取消的 signal 仍拒绝", async () => {
+    const created = trackScripts();
+    const task = new SharedLoadTask({ mode: "load", src: SRC, exportGetter: () => "sdk" });
+    const first = task.subscribe();
+    created[0].dispatchEvent(new Event("load"));
+    await expect(first).resolves.toBe("sdk");
+
+    const controller = new AbortController();
+    controller.abort();
+    await expect(task.subscribe(controller.signal)).rejects.toMatchObject({
+      code: "BMAP_PROVIDER_ABORTED",
+    });
+    // 已结算结果不被取消影响。
+    await expect(task.subscribe()).resolves.toBe("sdk");
   });
 });

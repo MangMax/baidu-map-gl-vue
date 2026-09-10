@@ -31,19 +31,23 @@ function isBrowser(): boolean {
 }
 
 /**
- * 逻辑缓存 key：随机 callback 名不参与 key，只区分 src / 模式 / 完整性策略。
+ * 逻辑缓存 key：只区分 src / 模式 / 完整性策略。
  *
  * `src` 经 `resolveBrowserUrl` 归一，保证相对路径与绝对路径指向同一配置时去重。
+ * 仅在 `jsonp` 模式下剔除 **Loader 自己管理**的回调参数——它的取值是每次加载的
+ * 实现细节；`load` 模式下 `callback` 只是普通查询参数，必须完整保留。
  */
 export function getScriptKey(options: ScriptLoaderOptions): string {
   let src = options.src;
   try {
     const url = resolveBrowserUrl(src);
-    // 回调名是本次 script 的实现细节，不得破坏同配置去重。
-    const callbackParam =
-      options.mode === "jsonp" ? (options.callbackParam ?? DEFAULT_CALLBACK_PARAM) : undefined;
-    if (callbackParam) url.searchParams.delete(callbackParam);
-    url.searchParams.delete(DEFAULT_CALLBACK_PARAM);
+    if (options.mode === "jsonp") {
+      const callbackParam = options.callbackParam ?? DEFAULT_CALLBACK_PARAM;
+      url.searchParams.delete(callbackParam);
+      if (callbackParam !== DEFAULT_CALLBACK_PARAM) {
+        url.searchParams.delete(DEFAULT_CALLBACK_PARAM);
+      }
+    }
     src = url.toString();
   } catch {
     // 保留原 src，让非法 URL 继续由浏览器/加载流程报告错误。
@@ -68,14 +72,16 @@ export class ScriptLoader {
         new BMapError("BMAP_SDK_LOAD_FAILED", "SDK load requires a browser environment"),
       );
     }
-    const key = getScriptKey(options);
-    if (this.completed.has(key)) {
-      return Promise.resolve(this.completed.get(key));
-    }
+    // 已取消的 signal 优先于成功缓存：命中缓存也必须拒绝当前消费者，
+    // 但不清理共享缓存（其它消费者仍可复用）。
     if (signal?.aborted) {
       return Promise.reject(
         new BMapError("BMAP_PROVIDER_ABORTED", "SDK load aborted before start"),
       );
+    }
+    const key = getScriptKey(options);
+    if (this.completed.has(key)) {
+      return Promise.resolve(this.completed.get(key));
     }
 
     let task = this.inFlight.get(key);
