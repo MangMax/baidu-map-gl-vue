@@ -25,6 +25,12 @@
       "skillPath": "skills/engineering/implement/SKILL.md",
       "computedHash": "2139cfedf24791adbc839aaab6019cff158af1e28bfead020ec6e0ce01b3e74d"
     },
+    "pnpm": {
+      "source": "antfu/skills",
+      "sourceType": "github",
+      "skillPath": "skills/pnpm/SKILL.md",
+      "computedHash": "2ec08c851c6f901d4ed72c21b826416ed074a487db65662b36249418afd728bf"
+    },
     "to-spec": {
       "source": "mattpocock/skills",
       "sourceType": "github",
@@ -36,6 +42,36 @@
       "sourceType": "github",
       "skillPath": "skills/engineering/to-tickets/SKILL.md",
       "computedHash": "bf5e6ebcb4f1272de0c188d5b3901f265a03d1fa9935a21a7a56938e21e2e761"
+    },
+    "tsdown": {
+      "source": "antfu/skills",
+      "sourceType": "github",
+      "skillPath": "skills/tsdown/SKILL.md",
+      "computedHash": "2183b9019058744215ab8b1261e34833653b5864da159bc022e3b9ad2f706aa5"
+    },
+    "vite": {
+      "source": "antfu/skills",
+      "sourceType": "github",
+      "skillPath": "skills/vite/SKILL.md",
+      "computedHash": "867ff66238f3152e9c494339ad08dc432dd0df5bcf5cc7a00b61a72b580eb908"
+    },
+    "vitepress": {
+      "source": "antfu/skills",
+      "sourceType": "github",
+      "skillPath": "skills/vitepress/SKILL.md",
+      "computedHash": "629d8ec4bcbf7cac86c15c3ca5f173933f01729bcb6396c0d74733755a896a41"
+    },
+    "vitest": {
+      "source": "antfu/skills",
+      "sourceType": "github",
+      "skillPath": "skills/vitest/SKILL.md",
+      "computedHash": "943d436114c677802426741980146c07560bf375297666b03062444f4b98a785"
+    },
+    "vue": {
+      "source": "antfu/skills",
+      "sourceType": "github",
+      "skillPath": "skills/vue/SKILL.md",
+      "computedHash": "9c241141e07e836e4f0537c63e8f929fba3767c2997250be38e699f19b75e3f2"
     }
   }
 }
