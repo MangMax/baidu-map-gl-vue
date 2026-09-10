@@ -66,23 +66,98 @@ npx skills update bmap-jsapi-v4
   const map = new BMap.Map("container");
   ```
 
-- 官方声明缺口只在 `packages/baidu-map-gl-vue/src/driver/jsapi-v4/types-reference.d.ts` 做最小 augmentation；禁止 `any`、禁止复制整套声明。
+- 官方声明缺口只在 `packages/baidu-map-gl-vue/src/driver/jsapi-v4/augmentations/` 做最小 augmentation；禁止 `any`、禁止复制整套声明。
+- 每个 augmentation 文件都必须带 `@augmentation` / `@upstream` / `@upstreamVersion` / `@runtimeBasis` / `@deletionCondition` / `@owner` 元数据，模板与删除流程见 [`augmentations/README.md`](https://github.com/MangMax/baidu-map-gl-vue/blob/main/packages/baidu-map-gl-vue/src/driver/jsapi-v4/augmentations/README.md)。
+- 入口文件 `src/driver/jsapi-v4/types-reference.d.ts` 只用三斜线引用官方类型与 augmentation 目录，本身不再内联声明。
 - 保持 `skipLibCheck: false`。升级类型包后必须重新核对 augmentation，官方补齐的声明要删除。
+
+### 已知问题：官方 `4.0.4` 的大小写引用缺陷
+
+`@baidumap/jsapi-v4-types@4.0.4/index.d.ts:67` 写的是 `/// <reference path="core/displayOptions.d.ts" />`，
+而发布产物中的真实文件名是 `core/DisplayOptions.d.ts`。在 macOS（默认大小写不敏感）上解析正常，
+在 Linux 上则依次报：
+
+```text
+error TS6053: File '.../core/displayOptions.d.ts' not found.
+error TS2552: Cannot find name 'DisplayOptions'.   // Map.d.ts / MapOptions.d.ts
+```
+
+因此 `pnpm typecheck:v3` **只能在大小写不敏感的文件系统上通过**，暂未纳入 CI
+（见 `.github/workflows/quality.yml` 中的 NOTE）。在修复前不要把它加回门禁，否则 CI 必然红。
+
+修复路径：等上游发布修正大小写的版本；或本仓库确定一个最小 workaround（例如绕过官方 `index.d.ts`
+入口、改引用 `core/DisplayOptions.d.ts`），并把结论补进本页与 ADR。
+
+## SDK 边界：raw SDK 与公共声明
+
+边界配置的单一事实源是 `scripts/raw-sdk-boundary.mts`，源码门禁与公共声明门禁共用同一份规则与检测引擎（`scripts/raw-sdk-detector.mts`）。
+
+### 目录白名单
+
+`BMap.*` / `BMapGL` 只允许出现在以下边界（相对 `packages/baidu-map-gl-vue/src`）：
+
+| 边界 | 用途 |
+| --- | --- |
+| `driver/**` | v4 Driver 实现与 `driver/jsapi-v4/**` 类型边界 |
+| `client/**` | `createBMapClient` 聚合层 |
+| `core/loader/**` | Loader / Provider / SdkRegistry（`hasExistingGlobalSdk()` 是唯一全局探测入口） |
+| `plugins/**` | 插件适配与 CDN 定义 |
+| `packages/test-utils` | Fake SDK（独立测试边界，不在扫描范围内） |
+
+其余目录（尤其 `components`、`composables`、`core/runtime`）一律视为禁区。
+
+### 检测规则
+
+| 规则 | 说明 |
+| --- | --- |
+| `legacy-namespace` | `BMapGL` 标识符 / `"BMapGL"` 字符串键 |
+| `global-member` | `window.BMap` / `globalThis.BMap` / `self.BMap` / `window["BMap"]`（含 `as any` 双转型） |
+| `namespace-root` | `BMap.*` 成员访问、方括号访问与 `new BMap.*()`；接收者会先解包 `( )`、`as`、非空断言与 `satisfies`，因此 `new (BMap as any).Point()` 同样被拦截 |
+| `type-position` | `BMap.*` 类型位置（`BMap.Point`、`BMap["Point"]`、`typeof BMap`） |
+| `namespace-declaration` | `namespace BMap` / `declare global` |
+| `official-types-import` | 具名导入 `@baidumap/jsapi-v4-types` |
+| `official-types-reference` | 三斜线 `/// <reference types="@baidumap/jsapi-v4-types" />`（按包名判定，属性顺序、引号与空格不影响） |
+
+组件同名导出 `export { BMap }`、字符串 `"BMap"`、`BMapProvider` 等复合名、以及 `h(BMap)` / `{ BMap }` 这类把 `BMap` 当组件值的用法都不会误报。注意：仅做「重命名到另一个变量再访问」的别名（如 `const M = BMap; new M.Map()`）不在静态门禁范围内——这需要数据流分析，目前依靠目录白名单约束。
+
+### 门禁
+
+| 命令 | 作用 |
+| --- | --- |
+| `pnpm check:raw-sdk` | 扫描禁区目录（`components` / `composables` / `core/runtime`） |
+| `pnpm check:raw-sdk:tree` | 以白名单扫描整棵 `src`，白名单外的任何 raw SDK 引用都会失败 |
+| `pnpm check:public-dts` | 校验 `dist/**/*.d.ts` 无 `BMap.*` / `BMapGL` / 官方类型包引用，且类型边界文件未被发布 |
+
+`pnpm check:public-dts` 需在 `pnpm build:v3` 之后运行；CI 的两个 job 都会在构建后执行。
+
+## Capability Catalog
+
+能力清单的单一事实源是 `packages/baidu-map-gl-vue/src/driver/capability/catalog.ts`，覆盖 **Map / Overlay / Layer / Service / Panorama / Runtime** 六个 family，并用 `status` 表达 `native` / `extended` / `experimental` / `unsupported` 四种状态、用 `runtimeOnly` 标注只能运行时探测的能力。
+
+- 能力矩阵由数据生成，请勿手工编辑：`pnpm generate:capability-matrix` 生成
+  [Capability Catalog 能力矩阵](./capability-matrix) 与 `docs/.vitepress/capability-catalog.json`，
+  CI 用 `pnpm generate:capability-matrix:check` 校验无漂移。
+- `status: "unsupported"` 的条目 `supports()` 恒为 `false`（用户 override 除外），保留槽位使错误信息、文档与能力矩阵保持一致。
+- `rawMembers` 名称以官方 `@baidumap/jsapi-v4-types@4.0.4` 声明为基准核对（`core/Map.d.ts` 与各子目录的 `declare namespace BMap`）。
 
 ## AI Agent 边界
 
 - `BMap.*` 只允许出现在 v4 Driver/Provider、Fake SDK、`src/driver/jsapi-v4/**` 类型边界与最小 augmentation。
 - 组件、业务 composable、runtime 只能依赖项目领域类型与 Facet Driver，禁止直接访问 `window.BMap` / `window.BMapGL`。
 - raw SDK 只允许出现在 `src/driver`、`src/client`、`src/core/loader`、`src/plugins` 适配层与 Fake 边界。
-- 任何资源都必须有释放路径；`pnpm check:raw-sdk` 是硬门禁。
+- 任何资源都必须有释放路径；`pnpm check:raw-sdk` 与 `pnpm check:public-dts` 是硬门禁。
 
 ## 提交前验证
 
 ```bash
-pnpm typecheck:v3   # 官方类型接入后仍要求通过
+pnpm typecheck:v3          # 官方类型接入后仍要求通过（Linux 受上游包大小写缺陷影响，见「已知问题」）
 pnpm test:unit
 pnpm build:v3
-pnpm docs:build     # 涉及文档时
+pnpm check:raw-sdk         # 禁区目录 raw SDK 边界
+pnpm check:raw-sdk:tree    # 整棵 src 按白名单校验
+pnpm check:public-dts      # 公共声明无 BMap.* 泄漏(需先 build:v3)
+pnpm generate:capability-matrix:check
+pnpm docs:build            # 涉及文档时
 ```
 
 涉及 SDK 行为的改动，在 PR 描述中说明：

@@ -1,20 +1,37 @@
 /**
  * CapabilityRegistry
  *
- * 运行时能力探测：engine 白名单 + raw member 存在性 + 用户 override。
+ * 运行时能力探测：显式 override → 声明状态 → engine 白名单 → raw member 存在性。
  * require() 按 unsupported 策略 throw/warn/silent。
  */
 import { logger } from "../../core/logger";
 import type { BMapEngine } from "../types/bmap";
-import { CAPABILITY_CATALOG, CAPABILITY_IDS, type Capability } from "./catalog";
+import {
+  CAPABILITY_CATALOG,
+  CAPABILITY_IDS,
+  type Capability,
+  type CapabilityDescriptor,
+  type CapabilityFamily,
+  type CapabilityStatus,
+} from "./catalog";
 import { UnsupportedCapabilityError, type UnsupportedBehavior } from "./unsupported";
+
+export type CapabilityReason =
+  | "supported"
+  | "engine-unsupported"
+  | "raw-member-missing"
+  | "status-unsupported"
+  | "overridden";
 
 export interface CapabilityExplanation {
   id: Capability;
   supported: boolean;
-  reason: "supported" | "engine-unsupported" | "raw-member-missing" | "overridden";
+  reason: CapabilityReason;
   engine: BMapEngine;
   version: string;
+  family: CapabilityFamily;
+  status: CapabilityStatus;
+  runtimeOnly: boolean;
 }
 
 export interface CapabilityRegistry {
@@ -22,6 +39,8 @@ export interface CapabilityRegistry {
   require(capability: Capability): void;
   list(): readonly Capability[];
   explain(capability: Capability): CapabilityExplanation;
+  /** 只读访问能力描述符（能力矩阵生成与诊断使用） */
+  descriptor(capability: Capability): CapabilityDescriptor | undefined;
 }
 
 export interface CreateCapabilityRegistryOptions {
@@ -45,16 +64,31 @@ export function createCapabilityRegistry(
 ): CapabilityRegistry {
   const { engine, version, rawSdk, unsupported = "warn", overrides } = options;
 
+  type BaseReason = Exclude<CapabilityReason, "overridden">;
+
+  const evaluate = (
+    capability: Capability,
+  ): { supported: boolean; reason: BaseReason; descriptor: CapabilityDescriptor | undefined } => {
+    const descriptor = CAPABILITY_CATALOG[capability];
+    if (!descriptor) return { supported: false, reason: "engine-unsupported", descriptor };
+    if (descriptor.status === "unsupported") {
+      return { supported: false, reason: "status-unsupported", descriptor };
+    }
+    if (!descriptor.engines.includes(engine)) {
+      return { supported: false, reason: "engine-unsupported", descriptor };
+    }
+    for (const member of descriptor.rawMembers ?? []) {
+      if (!hasMember(rawSdk, member)) {
+        return { supported: false, reason: "raw-member-missing", descriptor };
+      }
+    }
+    return { supported: true, reason: "supported", descriptor };
+  };
+
   const baseSupported = (capability: Capability): boolean => {
     const override = overrides?.[capability];
     if (typeof override === "boolean") return override;
-    const descriptor = CAPABILITY_CATALOG[capability];
-    if (!descriptor) return false;
-    if (!descriptor.engines.includes(engine)) return false;
-    for (const member of descriptor.rawMembers ?? []) {
-      if (!hasMember(rawSdk, member)) return false;
-    }
-    return true;
+    return evaluate(capability).supported;
   };
 
   const registry: CapabilityRegistry = {
@@ -75,28 +109,26 @@ export function createCapabilityRegistry(
 
     explain(capability) {
       const descriptor = CAPABILITY_CATALOG[capability];
-      if (!descriptor) {
-        return {
-          id: capability,
-          supported: false,
-          reason: "engine-unsupported",
-          engine,
-          version,
-        };
-      }
+      const metadata = {
+        id: capability,
+        engine,
+        version,
+        family: descriptor?.family ?? ("runtime" as CapabilityFamily),
+        status: descriptor?.status ?? ("unsupported" as CapabilityStatus),
+        runtimeOnly: descriptor?.runtimeOnly ?? true,
+      };
+
       const override = overrides?.[capability];
       if (typeof override === "boolean") {
-        return { id: capability, supported: override, reason: "overridden", engine, version };
+        return { ...metadata, supported: override, reason: "overridden" };
       }
-      if (!descriptor.engines.includes(engine)) {
-        return { id: capability, supported: false, reason: "engine-unsupported", engine, version };
-      }
-      for (const member of descriptor.rawMembers ?? []) {
-        if (!hasMember(rawSdk, member)) {
-          return { id: capability, supported: false, reason: "raw-member-missing", engine, version };
-        }
-      }
-      return { id: capability, supported: true, reason: "supported", engine, version };
+
+      const { supported, reason } = evaluate(capability);
+      return { ...metadata, supported, reason };
+    },
+
+    descriptor(capability) {
+      return CAPABILITY_CATALOG[capability];
     },
   };
 

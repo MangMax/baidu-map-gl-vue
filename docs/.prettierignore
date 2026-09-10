@@ -1,4 +1,5 @@
 **/*.md
+.vitepress/capability-catalog.json
 public/**
 .vitepress/dist/**
 .vitepress/cache/**

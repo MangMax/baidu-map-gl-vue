@@ -9,7 +9,14 @@ import type { Capability } from "./driver/capability";
 export { createDriver, detectEngine } from "./driver";
 export type { CreateDriverInput } from "./driver";
 export { unwrapRaw, createHandle, HANDLE_BRAND } from "./driver/types/handles";
-export { createCapabilityRegistry, UnsupportedCapabilityError, CAPABILITY_CATALOG, CAPABILITY_IDS } from "./driver/capability";
+export {
+  createCapabilityRegistry,
+  UnsupportedCapabilityError,
+  CAPABILITY_CATALOG,
+  CAPABILITY_FAMILIES,
+  CAPABILITY_IDS,
+  CAPABILITY_STATUSES,
+} from "./driver/capability";
 export { normalizeProvider, createBMapClientDefinition } from "./client";
 export { createBMapClient } from "./client/createBMapClient";
 
@@ -33,7 +40,15 @@ export type {
   ServiceHandle,
   SdkHandle,
 } from "./driver/types/handles";
-export type { Capability, CapabilityRegistry, CapabilityExplanation, CapabilityDescriptor } from "./driver/capability";
+export type {
+  Capability,
+  CapabilityRegistry,
+  CapabilityExplanation,
+  CapabilityDescriptor,
+  CapabilityFamily,
+  CapabilityReason,
+  CapabilityStatus,
+} from "./driver/capability";
 export type { UnsupportedBehavior } from "./driver/capability";
 export type {
   Point,

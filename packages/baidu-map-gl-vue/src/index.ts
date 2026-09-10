@@ -93,7 +93,14 @@ export type {
   Size,
   Bounds,
 } from "./driver/types/geometry";
-export type { Capability, CapabilityRegistry, CapabilityExplanation } from "./driver/capability";
+export type {
+  Capability,
+  CapabilityDescriptor,
+  CapabilityFamily,
+  CapabilityRegistry,
+  CapabilityStatus,
+  CapabilityExplanation,
+} from "./driver/capability";
 export type { UnsupportedBehavior } from "./driver/capability";
 export type { MapMouseEvent } from "./driver/types/events";
 export type {

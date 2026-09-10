@@ -12,7 +12,7 @@
  *   node scripts/verify-package.mts
  */
 import { execSync } from 'node:child_process'
-import { readdirSync, existsSync, rmSync, copyFileSync, mkdirSync, statSync } from 'node:fs'
+import { readdirSync, existsSync, rmSync, copyFileSync, mkdirSync, statSync, writeFileSync } from 'node:fs'
 import { resolve, dirname } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
@@ -68,6 +68,26 @@ function main() {
     v3Consumer,
     'v3-consumer typecheck + ESM import (v3 tarball)',
   )
+
+  // 6) 负向消费测试:消费者未安装官方类型包时,全局 `BMap.*` 必须不可用
+  //    (公共声明不得泄漏官方命名空间;泄漏会让下面的类型检查意外通过)
+  const negativeFile = resolve(v3Consumer, 'src/global-namespace-negative.ts')
+  writeFileSync(negativeFile, 'export declare const leaked: BMap.Point\n')
+  let leaked = false
+  try {
+    execSync('npx vue-tsc --noEmit', { cwd: v3Consumer, stdio: 'pipe', env: { ...process.env, CI: '1' } })
+    leaked = true
+  } catch {
+    leaked = false
+  } finally {
+    rmSync(negativeFile, { force: true })
+  }
+  if (leaked) {
+    throw new Error(
+      '[verify-package] public declarations leak the global `BMap` namespace: consumer type-checked `BMap.Point` without @baidumap/jsapi-v4-types',
+    )
+  }
+  console.log('\n[verify-package] negative check OK: global BMap namespace is not visible to consumers')
 
   console.log('\n[verify-package] ALL PASSED')
 }
