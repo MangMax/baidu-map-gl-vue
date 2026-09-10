@@ -150,6 +150,15 @@ export function existingGlobalProvider(): ExistingGlobalProvider {
   return new ExistingGlobalProvider();
 }
 
+/**
+ * 全局 SDK 存在性探测（Loader 边界内）。
+ * 组件/Composable/Runtime 不得直接读 `window.BMapGL`，统一经此判断。
+ */
+export function hasExistingGlobalSdk(): boolean {
+  if (!isClient()) return false;
+  return Boolean((window as unknown as { BMapGL?: unknown }).BMapGL);
+}
+
 export function customScriptProvider(scriptSrc: string): CustomScriptProvider {
   return new CustomScriptProvider(scriptSrc);
 }
