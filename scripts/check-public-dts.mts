@@ -9,9 +9,9 @@
  *   1. `namespace BMap` / `namespace BMapGL` / `declare global` 声明；
  *   2. `BMap.*` 成员访问、类型位置引用与 `BMapGL` 标识符（复用源码门禁的检测引擎，
  *      因此 `export { BMap }` 这类组件同名导出不会被误判）；
- *   3. `/// <reference types="@baidumap/jsapi-v4-types" />` 三斜线引用；
- *   4. 具名导入 `@baidumap/jsapi-v4-types`；
- *   5. 类型边界文件（`driver/jsapi-v4/**`）不得进入发布产物。
+ *   3. 三斜线 `/// <reference types="@baidumap/jsapi-v4-types" />` 与具名导入
+ *      （由共享检测引擎按**包名**判定，不依赖属性排列与空格）；
+ *   4. 类型边界文件（`driver/jsapi-v4/**`）不得进入发布产物。
  *
  * 用法：
  *   node --experimental-strip-types scripts/check-public-dts.mts
@@ -21,7 +21,7 @@
  */
 import { existsSync, readFileSync, readdirSync, statSync } from "node:fs";
 import { join, relative, resolve } from "node:path";
-import { OFFICIAL_TYPES_PACKAGE, boundarySummary } from "./raw-sdk-boundary.mts";
+import { boundarySummary } from "./raw-sdk-boundary.mts";
 import { RULE_LABELS, findViolations } from "./raw-sdk-detector.mts";
 
 const ROOT = resolve(import.meta.dirname, "..");
@@ -29,8 +29,6 @@ const DEFAULT_DIST = join(ROOT, "packages/baidu-map-gl-vue/dist");
 
 /** 发布产物中禁止出现的边界目录（源码侧类型边界，见 augmentations 治理规则）。 */
 const BOUNDARY_PATH_MARKERS = ["driver/jsapi-v4"] as const;
-
-const OFFICIAL_TYPES_REFERENCE = /\/\/\/\s*<reference\s+types=["']?@baidumap\/jsapi-v4-types["']?/;
 
 interface DtsIssue {
   file: string;
@@ -105,14 +103,8 @@ function main(): void {
       }
     }
 
-    if (OFFICIAL_TYPES_REFERENCE.test(text)) {
-      issues.push({
-        file: rel,
-        rule: "official-types-reference",
-        text: `三斜线引用官方类型包 ${OFFICIAL_TYPES_PACKAGE}`,
-      });
-    }
-
+    // 三斜线 `/ <reference types=...>` 与具名导入统一由共享检测引擎给出
+    // （按包名判定，兼容 `preserve` 等属性与 `types = "..."` 空格写法）。
     for (const v of findViolations(rel, text)) {
       issues.push({ file: v.file, line: v.line, column: v.column, rule: v.rule, text: v.text });
     }

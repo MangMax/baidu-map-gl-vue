@@ -314,3 +314,93 @@ describe("check-raw-sdk: JSAPI 4.0 `BMap` 边界（issue #15）", () => {
     expect(isRawSdkAllowedPath("core/runtime/MapRuntime.ts")).toBe(false);
   });
 });
+
+/**
+ * 评审 F1 回归：接收者只做「直接父节点」判断时，加括号 / 类型断言 / 方括号访问
+ * 这类等价写法可以完整绕过门禁。此处按等价写法逐条钉死。
+ */
+describe("check-raw-sdk: `BMap` 等价写法不得绕过（评审 F1）", () => {
+  it("加括号 / as 断言 / 方括号访问的值位置全部拦截", () => {
+    const dir = makeFixture({
+      "bypass.ts": [
+        "new BMap.Point(116, 39);",
+        "new (BMap).Point(116, 39);",
+        "new (BMap as any).Point(116, 39);",
+        "new BMap[\"Point\"](116, 39);",
+        "const M = (BMap as unknown as { Map: unknown }).Map;",
+        "const N = ((BMap))[\"Marker\"];",
+        "BMap[\"Map\"](\"container\");",
+      ].join("\n"),
+    });
+    const r = scanDir(dir);
+    expect(r.code).toBe(1);
+    for (const line of [1, 2, 3, 4, 5, 6, 7]) {
+      expect(r.output, `第 ${line} 行应被拦截`).toContain(`bypass.ts:${line}`);
+    }
+    expect(r.output).toContain("[namespace-root]");
+    rmSync(dir, { recursive: true, force: true });
+  });
+
+  it("括号 / 断言的类型位置（方括号索引类型）同样拦截", () => {
+    const dir = makeFixture({
+      "bypass-type.ts": [
+        "type A = BMap[\"Point\"];",
+        "type B = (BMap)['MapOptions'];",
+        "let probe: typeof BMap;",
+      ].join("\n"),
+    });
+    const r = scanDir(dir);
+    expect(r.code).toBe(1);
+    expect(r.output).toContain("bypass-type.ts:1");
+    expect(r.output).toContain("bypass-type.ts:2");
+    expect(r.output).toContain("bypass-type.ts:3");
+    rmSync(dir, { recursive: true, force: true });
+  });
+
+  it("SFC 脚本中的括号写法被拦截，行号映射回源文件", () => {
+    const dir = makeFixture({
+      "Comp.vue": [
+        '<script setup lang="ts">',
+        "const a = 1;",
+        "const map = new (BMap as any).Point(116, 39);",
+        "</script>",
+        "<template><div/></template>",
+      ].join("\n"),
+      "Other.vue": [
+        '<script lang="ts">',
+        'export default { setup() { return new (BMap)["Map"]("c"); } };',
+        "</script>",
+      ].join("\n"),
+    });
+    const r = scanDir(dir);
+    expect(r.code).toBe(1);
+    expect(r.output).toMatch(/Comp\.vue:3/);
+    expect(r.output).toMatch(/Other\.vue:2/);
+    rmSync(dir, { recursive: true, force: true });
+  });
+
+  it("把 `BMap` 当组件值使用时仍然放行（与 SDK 命名空间区分）", () => {
+    const dir = makeFixture({
+      "comp.ts": [
+        'import { h } from "vue";',
+        'import BMap from "./map/BMap.vue";',
+        "export const el = () => h(BMap);",
+        "export { BMap };",
+        "export const components = { BMap };",
+        "export const registry = { BMap: BMap };",
+        "export const comps = { key: 'BMap', BMap };",
+      ].join("\n"),
+      "Comp.vue": [
+        '<script setup lang="ts">',
+        'import BMap from "./BMap.vue";',
+        "const props = {};",
+        "</script>",
+        "<template><BMap v-bind=\"props\"/></template>",
+      ].join("\n"),
+    });
+    const r = scanDir(dir);
+    expect(r.code).toBe(0);
+    expect(r.output).toContain("scan OK");
+    rmSync(dir, { recursive: true, force: true });
+  });
+});

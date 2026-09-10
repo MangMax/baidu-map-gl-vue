@@ -111,3 +111,45 @@ describe("public d.ts gate", () => {
     expect(r.code).toBe(0);
   });
 });
+
+/**
+ * 评审 F2 回归：三斜线 `types` 引用必须按**包名**判定。
+ *
+ * 每个 fixture 只放引用指令本身，不放 `BMap.Point` 之类的其它违规，
+ * 否则其它规则会先命中、掩盖这里的漏报。
+ */
+describe("public d.ts gate: 三斜线 types 引用的排版无关性（评审 F2）", () => {
+  const CASES: ReadonlyArray<readonly [string, string]> = [
+    ["紧凑写法", '/// <reference types="@baidumap/jsapi-v4-types" />'],
+    ["单引号", "/// <reference types='@baidumap/jsapi-v4-types' />"],
+    ["等号带空格", '/// <reference types = "@baidumap/jsapi-v4-types" />'],
+    ["types 非首个属性", '/// <reference preserve="true" types="@baidumap/jsapi-v4-types" />'],
+    ["多属性 + 空格混排", "/// <reference preserve='true' types = '@baidumap/jsapi-v4-types' />"],
+  ];
+
+  for (const [label, directive] of CASES) {
+    it(`拦截「${label}」的官方类型包引用指令`, () => {
+      const dir = makeDist({ "index.d.ts": `${directive}\nexport {};\n` });
+      const r = runGate(dir);
+      expect(r.code, `应失败: ${directive}`).toBe(1);
+      expect(r.output).toContain("[official-types-reference]");
+      expect(r.output).toContain("index.d.ts:1");
+      rmSync(dir, { recursive: true, force: true });
+    });
+  }
+
+  it("放行非官方类型包的三斜线引用", () => {
+    const dir = makeDist({
+      "index.d.ts": [
+        '/// <reference types="vite/client" />',
+        '/// <reference path="./something.d.ts" />',
+        "export {};",
+        "",
+      ].join("\n"),
+    });
+    const r = runGate(dir);
+    expect(r.code).toBe(0);
+    expect(r.output).toContain("public d.ts gate OK");
+    rmSync(dir, { recursive: true, force: true });
+  });
+});

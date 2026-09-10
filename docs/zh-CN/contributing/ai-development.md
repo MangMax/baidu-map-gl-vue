@@ -112,12 +112,13 @@ error TS2552: Cannot find name 'DisplayOptions'.   // Map.d.ts / MapOptions.d.ts
 | --- | --- |
 | `legacy-namespace` | `BMapGL` 标识符 / `"BMapGL"` 字符串键 |
 | `global-member` | `window.BMap` / `globalThis.BMap` / `self.BMap` / `window["BMap"]`（含 `as any` 双转型） |
-| `namespace-root` | `BMap.*` 成员访问、`new BMap.*()` |
-| `type-position` | `BMap.*` 类型位置（`BMap.Point`、`typeof BMap`） |
+| `namespace-root` | `BMap.*` 成员访问、方括号访问与 `new BMap.*()`；接收者会先解包 `( )`、`as`、非空断言与 `satisfies`，因此 `new (BMap as any).Point()` 同样被拦截 |
+| `type-position` | `BMap.*` 类型位置（`BMap.Point`、`BMap["Point"]`、`typeof BMap`） |
 | `namespace-declaration` | `namespace BMap` / `declare global` |
 | `official-types-import` | 具名导入 `@baidumap/jsapi-v4-types` |
+| `official-types-reference` | 三斜线 `/// <reference types="@baidumap/jsapi-v4-types" />`（按包名判定，属性顺序、引号与空格不影响） |
 
-组件同名导出 `export { BMap }`、字符串 `"BMap"`、`BMapProvider` 等复合名不会误报。
+组件同名导出 `export { BMap }`、字符串 `"BMap"`、`BMapProvider` 等复合名、以及 `h(BMap)` / `{ BMap }` 这类把 `BMap` 当组件值的用法都不会误报。注意：仅做「重命名到另一个变量再访问」的别名（如 `const M = BMap; new M.Map()`）不在静态门禁范围内——这需要数据流分析，目前依靠目录白名单约束。
 
 ### 门禁
 
