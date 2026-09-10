@@ -1,6 +1,22 @@
-export type { Capability, CapabilityDescriptor, CapabilityFallback } from "./catalog";
-export { CAPABILITY_CATALOG, CAPABILITY_IDS } from "./catalog";
-export type { CapabilityExplanation, CapabilityRegistry, CreateCapabilityRegistryOptions } from "./registry";
+export type {
+  Capability,
+  CapabilityDescriptor,
+  CapabilityFallback,
+  CapabilityFamily,
+  CapabilityStatus,
+} from "./catalog";
+export {
+  CAPABILITY_CATALOG,
+  CAPABILITY_FAMILIES,
+  CAPABILITY_IDS,
+  CAPABILITY_STATUSES,
+} from "./catalog";
+export type {
+  CapabilityExplanation,
+  CapabilityReason,
+  CapabilityRegistry,
+  CreateCapabilityRegistryOptions,
+} from "./registry";
 export { createCapabilityRegistry } from "./registry";
 export { UnsupportedCapabilityError } from "./unsupported";
 export type { UnsupportedBehavior } from "./unsupported";

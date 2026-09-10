@@ -32,17 +32,33 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
-      # raw SDK 静态扫描:组件/composables/runtime 禁止访问 BMapGL
+      # raw SDK 静态扫描:组件/composables/runtime 禁止访问 BMapGL / BMap
       - name: Check raw SDK boundaries
         run: node --experimental-strip-types scripts/check-raw-sdk.mts
+
+      # 整棵 src 树按白名单校验(driver/client/core-loader/plugins 之外的目录禁止 raw SDK)
+      - name: Check raw SDK boundaries (whole src tree)
+        run: node --experimental-strip-types scripts/check-raw-sdk.mts --src packages/baidu-map-gl-vue/src
 
       # v3 组件 manifest 无漂移
       - name: Check v3 API manifest
         run: node --experimental-strip-types scripts/generate-manifest-artifacts.mts --check
 
+      # Capability Catalog 能力矩阵无漂移
+      - name: Check capability matrix
+        run: node --experimental-strip-types scripts/generate-capability-matrix.mts --check
+
+      # 类型边界:skipLibCheck=false 下校验官方类型 + 最小 augmentation 可合并
+      - name: Typecheck v3 (declaration boundary)
+        run: pnpm typecheck:v3
+
       # Behavior snapshot tests (data-driven, no external network/AK)
       - name: Build v3 artifacts for global bundle tests
         run: node --experimental-strip-types scripts/build-v3.mts
+
+      # 公共声明边界:dist/**/*.d.ts 不得泄漏 BMap.* / 官方类型包引用
+      - name: Check public d.ts boundaries
+        run: node --experimental-strip-types scripts/check-public-dts.mts
 
       - name: Unit & behavior tests
         run: pnpm exec vitest run tests/behavior tests/__smoke__.test.ts
@@ -81,6 +97,9 @@ jobs:
 
       - name: Build v3 package (vp pack)
         run: node --experimental-strip-types scripts/build-v3.mts
+
+      - name: Check public d.ts boundaries
+        run: node --experimental-strip-types scripts/check-public-dts.mts
 
       - name: publint
         run: |

@@ -69,7 +69,22 @@ export type { AutocompleteOptions, ServiceDriver } from "./types/services";
 export type { PanoramaDriver } from "./types/panorama";
 export type { MapMouseEvent, EventDriver } from "./types/events";
 export type { BMapDriver, BMapEngine } from "./types/bmap";
-export type { Capability, CapabilityDescriptor, CapabilityExplanation, CapabilityRegistry } from "./capability";
-export { CAPABILITY_CATALOG, CAPABILITY_IDS, createCapabilityRegistry, UnsupportedCapabilityError } from "./capability";
+export type {
+  Capability,
+  CapabilityDescriptor,
+  CapabilityExplanation,
+  CapabilityFamily,
+  CapabilityReason,
+  CapabilityRegistry,
+  CapabilityStatus,
+} from "./capability";
+export {
+  CAPABILITY_CATALOG,
+  CAPABILITY_FAMILIES,
+  CAPABILITY_IDS,
+  CAPABILITY_STATUSES,
+  createCapabilityRegistry,
+  UnsupportedCapabilityError,
+} from "./capability";
 export type { UnsupportedBehavior } from "./capability";
 export { normalizeMapMouseEvent, toPoint, isPointLike, toPlainPoint, toPlainPoints } from "./normalize";

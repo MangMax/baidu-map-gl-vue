@@ -13,37 +13,90 @@
 import { defineConfig } from 'vite'
 import vue from '@vitejs/plugin-vue'
 import dts from 'vite-plugin-dts'
-import { readFileSync } from 'node:fs'
-import { resolve } from 'node:path'
+import { readFileSync, readdirSync, existsSync } from 'node:fs'
+import { resolve, join } from 'node:path'
 
 const root = resolve(import.meta.dirname)
 
 /**
- * 从类型边界文件源码中提取会被打包内联的 `declare global` augmentation 块。
+ * 从类型边界文件源码中提取会被打包内联的 `declare global` 块。
  *
  * 上游 unplugin-dts 用 `s.slice(node.pos, node.end + 1)` 收集该块，只会额外带上
  * `}` 后的一个字符（LF 文件是 `\n`，CRLF 文件是 `\r`），所以这里必须 `trimEnd()`
  * 去掉末尾换行，才能同时匹配 LF 与 CRLF 源文件。
+ *
+ * 采用花括号配对而非 `lastIndexOf`，以支持边界目录下存在多个 augmentation 文件
+ * 或单文件内多个 `declare global` 块（见 src/driver/jsapi-v4/augmentations/）。
  */
-export function extractJsapiV4Augmentation(source: string): string {
-  const start = source.lastIndexOf('declare global {')
-  return start === -1 ? '' : source.slice(start).trimEnd()
+export function extractDeclareGlobalBlocks(source: string): string[] {
+  const blocks: string[] = []
+  const marker = 'declare global'
+  let from = 0
+  for (;;) {
+    const start = source.indexOf(marker, from)
+    if (start === -1) break
+    const braceStart = source.indexOf('{', start)
+    if (braceStart === -1) break
+    let depth = 0
+    let end = -1
+    for (let i = braceStart; i < source.length; i++) {
+      const ch = source[i]
+      if (ch === '{') depth++
+      else if (ch === '}') {
+        depth--
+        if (depth === 0) {
+          end = i
+          break
+        }
+      }
+    }
+    if (end === -1) break
+    blocks.push(source.slice(start, end + 1).trimEnd())
+    from = end + 1
+  }
+  return blocks
 }
 
 /** 从声明产物中剔除 augmentation 块；返回 `undefined` 表示无需修改。 */
-export function stripJsapiV4Augmentation(
+export function stripDeclareGlobalBlocks(
   content: string,
-  augmentation: string,
+  blocks: readonly string[],
 ): string | undefined {
-  if (!augmentation || !content.includes(augmentation)) return undefined
-  return `${content.replace(augmentation, '').trimEnd()}\n`
+  let output = content
+  let changed = false
+  for (const block of blocks) {
+    if (block && output.includes(block)) {
+      output = output.replace(block, '')
+      changed = true
+    }
+  }
+  return changed ? `${output.trimEnd()}\n` : undefined
 }
 
 // 类型边界补丁只服务类型检查与 TS 声明 emit，必须保留在声明构建的 Program 中；
-// 但 API Extractor 会把 Program 内的全局 augmentation 内联进每个公共 dist/*.d.ts，
-// 因此在写入阶段从公共声明里剔除该 augmentation 块，避免向消费者泄漏 BMap.*。
-const jsapiV4TypesReference = resolve(root, 'src/driver/jsapi-v4/types-reference.d.ts')
-const jsapiV4Augmentation = extractJsapiV4Augmentation(readFileSync(jsapiV4TypesReference, 'utf8'))
+// 但声明打包器会把 Program 内的全局 augmentation 内联进每个公共 dist/*.d.ts，
+// 因此在写入阶段剔除这些 augmentation 块，避免向消费者泄漏 BMap.*。
+// 治理规则与元数据模板见 src/driver/jsapi-v4/augmentations/README.md。
+const jsapiV4BoundaryDir = resolve(root, 'src/driver/jsapi-v4')
+const jsapiV4AugmentationsDir = join(jsapiV4BoundaryDir, 'augmentations')
+
+const jsapiV4BoundaryFiles = [
+  join(jsapiV4BoundaryDir, 'types-reference.d.ts'),
+  ...(existsSync(jsapiV4AugmentationsDir)
+    ? readdirSync(jsapiV4AugmentationsDir)
+        .filter((name) => name.endsWith('.d.ts'))
+        .map((name) => join(jsapiV4AugmentationsDir, name))
+    : []),
+]
+
+const jsapiV4AugmentationBlocks = jsapiV4BoundaryFiles.flatMap((file) =>
+  extractDeclareGlobalBlocks(readFileSync(file, 'utf8')),
+)
+
+/** 类型边界文件一律不写入发布产物（由 check-public-dts 兜底断言）。 */
+function isJsapiV4BoundaryFile(filePath: string): boolean {
+  return filePath.replace(/\\/g, '/').includes('/driver/jsapi-v4/')
+}
 
 export default defineConfig({
   plugins: [
@@ -62,8 +115,8 @@ export default defineConfig({
       // 仅在写入阶段移除：跳过其独立声明，并从被打包内联的公共声明里剔除。
       exclude: ['src/**/*.test.ts', 'src/**/__tests__/**'],
       beforeWriteFile: (filePath, content) => {
-        if (filePath.endsWith('driver/jsapi-v4/types-reference.d.ts')) return false
-        const stripped = stripJsapiV4Augmentation(content, jsapiV4Augmentation)
+        if (isJsapiV4BoundaryFile(filePath)) return false
+        const stripped = stripDeclareGlobalBlocks(content, jsapiV4AugmentationBlocks)
         if (stripped !== undefined) return { content: stripped }
       },
       // 保留声明与源码结构对应,便于调试

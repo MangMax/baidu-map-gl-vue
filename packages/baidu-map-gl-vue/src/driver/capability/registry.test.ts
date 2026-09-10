@@ -1,7 +1,13 @@
 import { describe, it, expect, vi } from "vitest";
 import { createCapabilityRegistry } from "./registry";
 import { UnsupportedCapabilityError } from "./unsupported";
-import { CAPABILITY_IDS } from "./catalog";
+import {
+  CAPABILITY_CATALOG,
+  CAPABILITY_FAMILIES,
+  CAPABILITY_IDS,
+  CAPABILITY_STATUSES,
+  type Capability,
+} from "./catalog";
 
 const fakeSdk = {
   Map: class {},
@@ -82,5 +88,169 @@ describe("CapabilityRegistry", () => {
     });
     expect(registry.supports("overlay.marker")).toBe(false);
     expect(registry.supports("service.truck-route")).toBe(true);
+  });
+});
+
+describe("Capability Catalog 状态语义（M3A0-06 / issue #15）", () => {
+  const fullSdk = {
+    Map: class {},
+    Marker: class {},
+    InfoWindow: class {},
+    Label: class {},
+    Circle: class {},
+    Polyline: class {},
+    Polygon: class {},
+    Rectangle: class {},
+    CustomOverlay: class {},
+    GroundOverlay: class {},
+    PointCollection: class {},
+    ContextMenu: class {},
+    MenuItem: class {},
+    Prism: class {},
+    BezierCurve: class {},
+    Marker3D: class {},
+    TileLayer: class {},
+    TrafficLayer: class {},
+    GeoJSONLayer: class {},
+    PointIconLayer: class {},
+    PointShapeLayer: class {},
+    DistrictLayer: class {},
+    LineLayer: class {},
+    FillLayer: class {},
+    MVTLayer: class {},
+    DOMLayer: class {},
+    LocalSearch: class {},
+    Autocomplete: class {},
+    DrivingRoute: class {},
+    WalkingRoute: class {},
+    RidingRoute: class {},
+    TransitRoute: class {},
+    TruckRoute: class {},
+    Geocoder: class {},
+    Geolocation: class {},
+    LocalCity: class {},
+    Boundary: class {},
+    Convertor: class {},
+    Panorama: class {},
+    PanoramaService: class {},
+    PanoramaLabel: class {},
+    getCenter: () => {},
+    setCenter: () => {},
+    setHeading: () => {},
+    checkResize: () => {},
+    setMapStyle: () => {},
+    destroy: () => {},
+    VERSION: "4.0",
+  };
+
+  it("catalog 覆盖 Map / Overlay / Layer / Service / Panorama / Runtime 六个 family", () => {
+    for (const family of CAPABILITY_FAMILIES) {
+      const entries = CAPABILITY_IDS.filter((id) => CAPABILITY_CATALOG[id].family === family);
+      expect(entries.length, `family ${family} 应至少有一个能力`).toBeGreaterThan(0);
+    }
+  });
+
+  it("catalog 能表达 native / extended / experimental / unsupported 四种状态", () => {
+    const statuses = new Set(CAPABILITY_IDS.map((id) => CAPABILITY_CATALOG[id].status));
+    for (const status of CAPABILITY_STATUSES) {
+      expect(statuses.has(status), `缺少状态 ${status}`).toBe(true);
+    }
+  });
+
+  it("status=unsupported 在任何 engine 下都不支持，除非显式 override", () => {
+    const unsupportedIds = CAPABILITY_IDS.filter(
+      (id) => CAPABILITY_CATALOG[id].status === "unsupported",
+    );
+    expect(unsupportedIds.length).toBeGreaterThan(0);
+
+    for (const engine of ["webgl-v1", "jsapi-v3", "jsapi-v4"] as const) {
+      const registry = createCapabilityRegistry({
+        engine,
+        version: "4.0",
+        rawSdk: fullSdk,
+        unsupported: "silent",
+      });
+      for (const id of unsupportedIds) {
+        expect(registry.supports(id), `${id} @ ${engine} 应不支持`).toBe(false);
+        expect(registry.explain(id).reason).toBe("status-unsupported");
+      }
+    }
+
+    const overridden = createCapabilityRegistry({
+      engine: "jsapi-v4",
+      version: "4.0",
+      rawSdk: fullSdk,
+      unsupported: "silent",
+      overrides: { "service.truck-route": true },
+    });
+    expect(overridden.supports("service.truck-route")).toBe(true);
+    expect(overridden.explain("service.truck-route").reason).toBe("overridden");
+  });
+
+  it("runtime-only 能力被显式标注，可探测能力不被误标", () => {
+    const runtimeOnly = CAPABILITY_IDS.filter((id) => CAPABILITY_CATALOG[id].runtimeOnly);
+    expect(runtimeOnly).toContain("map.check-resize");
+    expect(runtimeOnly).toContain("overlay.point-collection");
+    expect(runtimeOnly).toContain("runtime.capability-override");
+    expect(CAPABILITY_CATALOG["overlay.marker"].runtimeOnly).toBe(false);
+    expect(CAPABILITY_CATALOG["service.geocoder"].runtimeOnly).toBe(false);
+  });
+
+  it("explain() 返回 family / status / runtimeOnly 元数据", () => {
+    const registry = createCapabilityRegistry({
+      engine: "jsapi-v4",
+      version: "4.0",
+      rawSdk: fullSdk,
+      unsupported: "silent",
+    });
+    const explanation = registry.explain("overlay.marker");
+    expect(explanation.family).toBe("overlay");
+    expect(explanation.status).toBe("native");
+    expect(explanation.runtimeOnly).toBe(false);
+    expect(explanation.supported).toBe(true);
+    expect(explanation.reason).toBe("supported");
+
+    const missing = registry.explain("layer.geojson");
+    expect(missing.supported).toBe(true);
+
+    const noMember = createCapabilityRegistry({
+      engine: "jsapi-v4",
+      version: "4.0",
+      rawSdk: { Map: class {} },
+      unsupported: "silent",
+    }).explain("service.geocoder");
+    expect(noMember.supported).toBe(false);
+    expect(noMember.reason).toBe("raw-member-missing");
+  });
+
+  it("descriptor() 暴露只读描述符，且条目 id / 描述 / engine 完整", () => {
+    const registry = createCapabilityRegistry({
+      engine: "jsapi-v4",
+      version: "4.0",
+      rawSdk: fullSdk,
+      unsupported: "silent",
+    });
+    for (const id of CAPABILITY_IDS) {
+      const descriptor = registry.descriptor(id);
+      expect(descriptor, `${id} 缺少 descriptor`).toBeDefined();
+      expect(descriptor?.id).toBe(id);
+      expect(descriptor?.description.length).toBeGreaterThan(0);
+      expect(descriptor?.engines.length).toBeGreaterThan(0);
+      expect(CAPABILITY_FAMILIES).toContain(descriptor?.family);
+      expect(CAPABILITY_STATUSES).toContain(descriptor?.status);
+    }
+    expect(CAPABILITY_IDS.length).toBe(new Set(CAPABILITY_IDS).size);
+  });
+
+  it("语义命名：id 前缀与 family 一致", () => {
+    for (const id of CAPABILITY_IDS) {
+      const prefix = (id as Capability).split(".")[0];
+      const family = CAPABILITY_CATALOG[id].family;
+      if (family === "runtime") {
+        expect(prefix).toBe("runtime");
+      } else {
+        expect(prefix).toBe(family);
+      }
+    }
   });
 });

@@ -263,6 +263,10 @@ export const sidebarConfigZh: DefaultTheme.Sidebar = {
           text: "AI 开发与官方 Skill",
           link: "ai-development",
         },
+        {
+          text: "Capability Catalog 能力矩阵",
+          link: "capability-matrix",
+        },
       ],
     },
   ],

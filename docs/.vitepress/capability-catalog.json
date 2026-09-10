@@ -1,0 +1,881 @@
+{
+  "version": "3.0.0-beta.0",
+  "source": "packages/baidu-map-gl-vue/src/driver/capability/catalog.ts",
+  "families": [
+    "map",
+    "overlay",
+    "layer",
+    "service",
+    "panorama",
+    "runtime"
+  ],
+  "statuses": [
+    "native",
+    "extended",
+    "experimental",
+    "unsupported"
+  ],
+  "engines": [
+    "webgl-v1",
+    "jsapi-v3",
+    "jsapi-v4"
+  ],
+  "capabilities": [
+    {
+      "id": "map.view-state",
+      "family": "map",
+      "status": "native",
+      "runtimeOnly": true,
+      "engines": [
+        "webgl-v1",
+        "jsapi-v3",
+        "jsapi-v4"
+      ],
+      "rawMembers": [
+        "getCenter",
+        "setCenter"
+      ],
+      "description": "视图中心读写（getCenter / setCenter）"
+    },
+    {
+      "id": "map.zoom",
+      "family": "map",
+      "status": "native",
+      "runtimeOnly": true,
+      "engines": [
+        "webgl-v1",
+        "jsapi-v3",
+        "jsapi-v4"
+      ],
+      "rawMembers": [
+        "getZoom",
+        "setZoom"
+      ],
+      "description": "缩放级别读写（getZoom / setZoom）"
+    },
+    {
+      "id": "map.center-and-zoom",
+      "family": "map",
+      "status": "native",
+      "runtimeOnly": true,
+      "engines": [
+        "webgl-v1",
+        "jsapi-v4"
+      ],
+      "rawMembers": [
+        "centerAndZoom"
+      ],
+      "description": "一次调用同时设置中心与缩放（centerAndZoom）"
+    },
+    {
+      "id": "map.bounds",
+      "family": "map",
+      "status": "native",
+      "runtimeOnly": true,
+      "engines": [
+        "webgl-v1",
+        "jsapi-v3",
+        "jsapi-v4"
+      ],
+      "rawMembers": [
+        "getBounds",
+        "setBounds"
+      ],
+      "description": "可视范围读写（getBounds / setBounds）"
+    },
+    {
+      "id": "map.viewport",
+      "family": "map",
+      "status": "native",
+      "runtimeOnly": true,
+      "engines": [
+        "jsapi-v4"
+      ],
+      "rawMembers": [
+        "getViewport",
+        "setViewport"
+      ],
+      "description": "视口（中心 + 缩放 + 旋转 + 倾斜）读写（getViewport / setViewport）"
+    },
+    {
+      "id": "map.heading",
+      "family": "map",
+      "status": "native",
+      "runtimeOnly": true,
+      "engines": [
+        "webgl-v1",
+        "jsapi-v4"
+      ],
+      "rawMembers": [
+        "setHeading"
+      ],
+      "description": "地图旋转角（setHeading）"
+    },
+    {
+      "id": "map.tilt",
+      "family": "map",
+      "status": "native",
+      "runtimeOnly": true,
+      "engines": [
+        "webgl-v1",
+        "jsapi-v4"
+      ],
+      "rawMembers": [
+        "setTilt"
+      ],
+      "description": "地图倾斜角（setTilt）"
+    },
+    {
+      "id": "map.fly-to",
+      "family": "map",
+      "status": "extended",
+      "runtimeOnly": true,
+      "engines": [
+        "webgl-v1",
+        "jsapi-v3",
+        "jsapi-v4"
+      ],
+      "rawMembers": [
+        "panTo"
+      ],
+      "fallback": {
+        "via": "panTo"
+      },
+      "description": "平滑飞行定位；v4 原生 flyTo，迁移期经 panTo 回退"
+    },
+    {
+      "id": "map.animate",
+      "family": "map",
+      "status": "native",
+      "runtimeOnly": true,
+      "engines": [
+        "jsapi-v4"
+      ],
+      "rawMembers": [
+        "startViewAnimation",
+        "cancelViewAnimation"
+      ],
+      "description": "视角关键帧动画（startViewAnimation / cancelViewAnimation）"
+    },
+    {
+      "id": "map.screenshot",
+      "family": "map",
+      "status": "native",
+      "runtimeOnly": true,
+      "engines": [
+        "webgl-v1",
+        "jsapi-v4"
+      ],
+      "rawMembers": [
+        "getScreenshot"
+      ],
+      "description": "地图截图（getScreenshot）"
+    },
+    {
+      "id": "map.check-resize",
+      "family": "map",
+      "status": "native",
+      "runtimeOnly": true,
+      "engines": [
+        "webgl-v1",
+        "jsapi-v3",
+        "jsapi-v4"
+      ],
+      "rawMembers": [
+        "checkResize"
+      ],
+      "description": "容器尺寸变化后重算视图（checkResize）"
+    },
+    {
+      "id": "map.pixel-conversion",
+      "family": "map",
+      "status": "native",
+      "runtimeOnly": true,
+      "engines": [
+        "jsapi-v4"
+      ],
+      "rawMembers": [
+        "pointToPixel",
+        "pixelToPoint"
+      ],
+      "description": "经纬度与像素互转（pointToPixel / pixelToPoint）"
+    },
+    {
+      "id": "map.style",
+      "family": "map",
+      "status": "native",
+      "runtimeOnly": true,
+      "engines": [
+        "webgl-v1",
+        "jsapi-v4"
+      ],
+      "rawMembers": [
+        "setMapStyle"
+      ],
+      "description": "个性化地图样式（setMapStyle）"
+    },
+    {
+      "id": "map.destroy",
+      "family": "map",
+      "status": "native",
+      "runtimeOnly": true,
+      "engines": [
+        "jsapi-v4"
+      ],
+      "rawMembers": [
+        "destroy"
+      ],
+      "description": "销毁地图并释放资源（v4 destroy）"
+    },
+    {
+      "id": "overlay.marker",
+      "family": "overlay",
+      "status": "native",
+      "runtimeOnly": false,
+      "engines": [
+        "webgl-v1",
+        "jsapi-v3",
+        "jsapi-v4"
+      ],
+      "rawMembers": [
+        "Marker"
+      ],
+      "description": "点标记（Marker）"
+    },
+    {
+      "id": "overlay.label",
+      "family": "overlay",
+      "status": "native",
+      "runtimeOnly": false,
+      "engines": [
+        "webgl-v1",
+        "jsapi-v3",
+        "jsapi-v4"
+      ],
+      "rawMembers": [
+        "Label"
+      ],
+      "description": "文本标注（Label）"
+    },
+    {
+      "id": "overlay.info-window",
+      "family": "overlay",
+      "status": "native",
+      "runtimeOnly": false,
+      "engines": [
+        "webgl-v1",
+        "jsapi-v3",
+        "jsapi-v4"
+      ],
+      "rawMembers": [
+        "InfoWindow"
+      ],
+      "description": "信息窗口（InfoWindow）"
+    },
+    {
+      "id": "overlay.circle",
+      "family": "overlay",
+      "status": "native",
+      "runtimeOnly": false,
+      "engines": [
+        "webgl-v1",
+        "jsapi-v3",
+        "jsapi-v4"
+      ],
+      "rawMembers": [
+        "Circle"
+      ],
+      "description": "圆（Circle）"
+    },
+    {
+      "id": "overlay.polyline",
+      "family": "overlay",
+      "status": "native",
+      "runtimeOnly": false,
+      "engines": [
+        "webgl-v1",
+        "jsapi-v3",
+        "jsapi-v4"
+      ],
+      "rawMembers": [
+        "Polyline"
+      ],
+      "description": "折线（Polyline）"
+    },
+    {
+      "id": "overlay.polygon",
+      "family": "overlay",
+      "status": "native",
+      "runtimeOnly": false,
+      "engines": [
+        "webgl-v1",
+        "jsapi-v3",
+        "jsapi-v4"
+      ],
+      "rawMembers": [
+        "Polygon"
+      ],
+      "description": "多边形（Polygon）"
+    },
+    {
+      "id": "overlay.rectangle",
+      "family": "overlay",
+      "status": "native",
+      "runtimeOnly": false,
+      "engines": [
+        "webgl-v1",
+        "jsapi-v4"
+      ],
+      "rawMembers": [
+        "Rectangle"
+      ],
+      "description": "矩形（Rectangle）"
+    },
+    {
+      "id": "overlay.custom-dom",
+      "family": "overlay",
+      "status": "native",
+      "runtimeOnly": false,
+      "engines": [
+        "webgl-v1",
+        "jsapi-v4"
+      ],
+      "rawMembers": [
+        "CustomOverlay"
+      ],
+      "description": "自定义 DOM 覆盖物（CustomOverlay）"
+    },
+    {
+      "id": "overlay.ground",
+      "family": "overlay",
+      "status": "native",
+      "runtimeOnly": false,
+      "engines": [
+        "webgl-v1",
+        "jsapi-v4"
+      ],
+      "rawMembers": [
+        "GroundOverlay"
+      ],
+      "description": "地面叠加层（GroundOverlay）"
+    },
+    {
+      "id": "overlay.point-collection",
+      "family": "overlay",
+      "status": "native",
+      "runtimeOnly": true,
+      "engines": [
+        "webgl-v1",
+        "jsapi-v4"
+      ],
+      "rawMembers": [
+        "PointCollection"
+      ],
+      "description": "海量点（PointCollection）；官方 4.0.4 文档引用但未声明类型"
+    },
+    {
+      "id": "overlay.context-menu",
+      "family": "overlay",
+      "status": "native",
+      "runtimeOnly": false,
+      "engines": [
+        "webgl-v1",
+        "jsapi-v4"
+      ],
+      "rawMembers": [
+        "ContextMenu",
+        "MenuItem"
+      ],
+      "description": "右键菜单（ContextMenu / MenuItem）"
+    },
+    {
+      "id": "overlay.prism",
+      "family": "overlay",
+      "status": "experimental",
+      "runtimeOnly": false,
+      "engines": [
+        "webgl-v1",
+        "jsapi-v4"
+      ],
+      "rawMembers": [
+        "Prism"
+      ],
+      "description": "3D 棱柱（Prism）"
+    },
+    {
+      "id": "overlay.bezier-curve",
+      "family": "overlay",
+      "status": "experimental",
+      "runtimeOnly": false,
+      "engines": [
+        "webgl-v1",
+        "jsapi-v4"
+      ],
+      "rawMembers": [
+        "BezierCurve"
+      ],
+      "description": "贝塞尔曲线（BezierCurve）"
+    },
+    {
+      "id": "overlay.marker-3d",
+      "family": "overlay",
+      "status": "experimental",
+      "runtimeOnly": true,
+      "engines": [
+        "jsapi-v4"
+      ],
+      "rawMembers": [
+        "Marker3D"
+      ],
+      "description": "3D 标记（Marker3D）；官方 4.0.4 文档引用但未声明类型"
+    },
+    {
+      "id": "overlay.mapvgl",
+      "family": "overlay",
+      "status": "unsupported",
+      "runtimeOnly": true,
+      "engines": [
+        "webgl-v1",
+        "jsapi-v3",
+        "jsapi-v4"
+      ],
+      "rawMembers": [],
+      "description": "MapVGL 渲染叠加层；迁移结论待定（M8），本阶段明确不支持"
+    },
+    {
+      "id": "layer.tile",
+      "family": "layer",
+      "status": "native",
+      "runtimeOnly": false,
+      "engines": [
+        "webgl-v1",
+        "jsapi-v3",
+        "jsapi-v4"
+      ],
+      "rawMembers": [
+        "TileLayer"
+      ],
+      "description": "瓦片图层（TileLayer）"
+    },
+    {
+      "id": "layer.traffic",
+      "family": "layer",
+      "status": "native",
+      "runtimeOnly": false,
+      "engines": [
+        "webgl-v1",
+        "jsapi-v3",
+        "jsapi-v4"
+      ],
+      "rawMembers": [
+        "TrafficLayer"
+      ],
+      "description": "实时路况图层（TrafficLayer）"
+    },
+    {
+      "id": "layer.geojson",
+      "family": "layer",
+      "status": "native",
+      "runtimeOnly": false,
+      "engines": [
+        "webgl-v1",
+        "jsapi-v4"
+      ],
+      "rawMembers": [
+        "GeoJSONLayer"
+      ],
+      "description": "GeoJSON 图层（GeoJSONLayer）"
+    },
+    {
+      "id": "layer.point-icon",
+      "family": "layer",
+      "status": "native",
+      "runtimeOnly": false,
+      "engines": [
+        "webgl-v1",
+        "jsapi-v4"
+      ],
+      "rawMembers": [
+        "PointIconLayer"
+      ],
+      "description": "点图标图层（PointIconLayer）"
+    },
+    {
+      "id": "layer.point-shape",
+      "family": "layer",
+      "status": "native",
+      "runtimeOnly": false,
+      "engines": [
+        "webgl-v1",
+        "jsapi-v4"
+      ],
+      "rawMembers": [
+        "PointShapeLayer"
+      ],
+      "description": "点形状图层（PointShapeLayer）"
+    },
+    {
+      "id": "layer.district",
+      "family": "layer",
+      "status": "native",
+      "runtimeOnly": false,
+      "engines": [
+        "jsapi-v4"
+      ],
+      "rawMembers": [
+        "DistrictLayer"
+      ],
+      "description": "行政区划图层（DistrictLayer）"
+    },
+    {
+      "id": "layer.line",
+      "family": "layer",
+      "status": "experimental",
+      "runtimeOnly": false,
+      "engines": [
+        "jsapi-v4"
+      ],
+      "rawMembers": [
+        "LineLayer"
+      ],
+      "description": "线图层（LineLayer）"
+    },
+    {
+      "id": "layer.fill",
+      "family": "layer",
+      "status": "experimental",
+      "runtimeOnly": false,
+      "engines": [
+        "jsapi-v4"
+      ],
+      "rawMembers": [
+        "FillLayer"
+      ],
+      "description": "面图层（FillLayer）"
+    },
+    {
+      "id": "layer.mvt",
+      "family": "layer",
+      "status": "experimental",
+      "runtimeOnly": false,
+      "engines": [
+        "jsapi-v4"
+      ],
+      "rawMembers": [
+        "MVTLayer"
+      ],
+      "description": "MVT 矢量瓦片图层（MVTLayer）"
+    },
+    {
+      "id": "layer.dom",
+      "family": "layer",
+      "status": "experimental",
+      "runtimeOnly": false,
+      "engines": [
+        "jsapi-v4"
+      ],
+      "rawMembers": [
+        "DOMLayer"
+      ],
+      "description": "DOM 图层（DOMLayer）"
+    },
+    {
+      "id": "layer.cluster",
+      "family": "layer",
+      "status": "extended",
+      "runtimeOnly": true,
+      "engines": [
+        "webgl-v1",
+        "jsapi-v3",
+        "jsapi-v4"
+      ],
+      "rawMembers": [],
+      "description": "聚合图层；优先使用 SDK 原生能力，缺失时由项目提供 fallback 聚类"
+    },
+    {
+      "id": "service.local-search",
+      "family": "service",
+      "status": "native",
+      "runtimeOnly": false,
+      "engines": [
+        "webgl-v1",
+        "jsapi-v3",
+        "jsapi-v4"
+      ],
+      "rawMembers": [
+        "LocalSearch"
+      ],
+      "description": "本地检索（LocalSearch）"
+    },
+    {
+      "id": "service.autocomplete",
+      "family": "service",
+      "status": "native",
+      "runtimeOnly": false,
+      "engines": [
+        "webgl-v1",
+        "jsapi-v3",
+        "jsapi-v4"
+      ],
+      "rawMembers": [
+        "Autocomplete"
+      ],
+      "description": "输入提示（Autocomplete）"
+    },
+    {
+      "id": "service.driving-route",
+      "family": "service",
+      "status": "native",
+      "runtimeOnly": false,
+      "engines": [
+        "webgl-v1",
+        "jsapi-v3",
+        "jsapi-v4"
+      ],
+      "rawMembers": [
+        "DrivingRoute"
+      ],
+      "description": "驾车路线规划（DrivingRoute）"
+    },
+    {
+      "id": "service.walking-route",
+      "family": "service",
+      "status": "native",
+      "runtimeOnly": false,
+      "engines": [
+        "webgl-v1",
+        "jsapi-v3",
+        "jsapi-v4"
+      ],
+      "rawMembers": [
+        "WalkingRoute"
+      ],
+      "description": "步行路线规划（WalkingRoute）"
+    },
+    {
+      "id": "service.riding-route",
+      "family": "service",
+      "status": "native",
+      "runtimeOnly": false,
+      "engines": [
+        "webgl-v1",
+        "jsapi-v3",
+        "jsapi-v4"
+      ],
+      "rawMembers": [
+        "RidingRoute"
+      ],
+      "description": "骑行路线规划（RidingRoute）"
+    },
+    {
+      "id": "service.transit-route",
+      "family": "service",
+      "status": "native",
+      "runtimeOnly": false,
+      "engines": [
+        "webgl-v1",
+        "jsapi-v3",
+        "jsapi-v4"
+      ],
+      "rawMembers": [
+        "TransitRoute"
+      ],
+      "description": "公交路线规划（TransitRoute）"
+    },
+    {
+      "id": "service.truck-route",
+      "family": "service",
+      "status": "experimental",
+      "runtimeOnly": false,
+      "engines": [
+        "webgl-v1",
+        "jsapi-v4"
+      ],
+      "rawMembers": [
+        "TruckRoute"
+      ],
+      "description": "货车路线规划；官方 4.0.4 未声明 TruckRoute 类，可用性待服务模块核查"
+    },
+    {
+      "id": "service.geocoder",
+      "family": "service",
+      "status": "native",
+      "runtimeOnly": false,
+      "engines": [
+        "webgl-v1",
+        "jsapi-v3",
+        "jsapi-v4"
+      ],
+      "rawMembers": [
+        "Geocoder"
+      ],
+      "description": "地理编码 / 逆地理编码（Geocoder）"
+    },
+    {
+      "id": "service.geolocation",
+      "family": "service",
+      "status": "native",
+      "runtimeOnly": false,
+      "engines": [
+        "webgl-v1",
+        "jsapi-v3",
+        "jsapi-v4"
+      ],
+      "rawMembers": [
+        "Geolocation"
+      ],
+      "description": "浏览器定位（Geolocation）"
+    },
+    {
+      "id": "service.local-city",
+      "family": "service",
+      "status": "native",
+      "runtimeOnly": false,
+      "engines": [
+        "webgl-v1",
+        "jsapi-v3",
+        "jsapi-v4"
+      ],
+      "rawMembers": [
+        "LocalCity"
+      ],
+      "description": "IP 定位城市（LocalCity）"
+    },
+    {
+      "id": "service.boundary",
+      "family": "service",
+      "status": "native",
+      "runtimeOnly": false,
+      "engines": [
+        "webgl-v1",
+        "jsapi-v3",
+        "jsapi-v4"
+      ],
+      "rawMembers": [
+        "Boundary"
+      ],
+      "description": "行政区边界（Boundary）"
+    },
+    {
+      "id": "service.convertor",
+      "family": "service",
+      "status": "native",
+      "runtimeOnly": false,
+      "engines": [
+        "webgl-v1",
+        "jsapi-v3",
+        "jsapi-v4"
+      ],
+      "rawMembers": [
+        "Convertor"
+      ],
+      "description": "坐标转换（Convertor）"
+    },
+    {
+      "id": "service.track-animation",
+      "family": "service",
+      "status": "unsupported",
+      "runtimeOnly": true,
+      "engines": [
+        "webgl-v1",
+        "jsapi-v3",
+        "jsapi-v4"
+      ],
+      "rawMembers": [],
+      "description": "轨迹动画（BMapGLLib 插件）；迁移结论待定（M8），本阶段明确不支持"
+    },
+    {
+      "id": "panorama.viewer",
+      "family": "panorama",
+      "status": "native",
+      "runtimeOnly": false,
+      "engines": [
+        "webgl-v1",
+        "jsapi-v4"
+      ],
+      "rawMembers": [
+        "Panorama"
+      ],
+      "description": "全景查看器（Panorama）"
+    },
+    {
+      "id": "panorama.service",
+      "family": "panorama",
+      "status": "native",
+      "runtimeOnly": false,
+      "engines": [
+        "webgl-v1",
+        "jsapi-v4"
+      ],
+      "rawMembers": [
+        "PanoramaService"
+      ],
+      "description": "全景服务（PanoramaService）"
+    },
+    {
+      "id": "panorama.label",
+      "family": "panorama",
+      "status": "experimental",
+      "runtimeOnly": false,
+      "engines": [
+        "jsapi-v4"
+      ],
+      "rawMembers": [
+        "PanoramaLabel"
+      ],
+      "description": "全景标注（PanoramaLabel）"
+    },
+    {
+      "id": "runtime.resource-scope",
+      "family": "runtime",
+      "status": "extended",
+      "runtimeOnly": true,
+      "engines": [
+        "webgl-v1",
+        "jsapi-v3",
+        "jsapi-v4"
+      ],
+      "rawMembers": [],
+      "description": "项目资源生命周期作用域（监听器/覆盖物/图层的统一释放路径）"
+    },
+    {
+      "id": "runtime.capability-override",
+      "family": "runtime",
+      "status": "extended",
+      "runtimeOnly": true,
+      "engines": [
+        "webgl-v1",
+        "jsapi-v3",
+        "jsapi-v4"
+      ],
+      "rawMembers": [],
+      "description": "运行时能力 override（显式修正能力探测结果）"
+    },
+    {
+      "id": "runtime.fake-sdk",
+      "family": "runtime",
+      "status": "experimental",
+      "runtimeOnly": true,
+      "engines": [
+        "webgl-v1",
+        "jsapi-v3",
+        "jsapi-v4"
+      ],
+      "rawMembers": [],
+      "description": "Fake SDK 测试替身（M3A.3 双 Driver 行为验证）"
+    },
+    {
+      "id": "runtime.async-task",
+      "family": "runtime",
+      "status": "experimental",
+      "runtimeOnly": true,
+      "engines": [
+        "webgl-v1",
+        "jsapi-v3",
+        "jsapi-v4"
+      ],
+      "rawMembers": [],
+      "description": "异步任务控制器（服务与动画的取消/状态统一）"
+    }
+  ]
+}
