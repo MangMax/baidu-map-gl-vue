@@ -67,7 +67,6 @@ export type {
   SdkConflictInfo,
   SdkConflictPolicy,
   SdkLoader,
-  SdkRegistryEntry,
   SdkRegistryLoadRequest,
   SdkRegistryOptions,
 } from "./loader/SdkRegistry";

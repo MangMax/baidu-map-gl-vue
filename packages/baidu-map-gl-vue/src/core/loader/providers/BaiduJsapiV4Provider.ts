@@ -17,7 +17,6 @@ import { createLoadedJsapiV4 } from "./loaded";
 import {
   JSAPI_V4_DOMAIN,
   assertSupportedJsapiV4Version,
-  readJsapiV4Global,
   requireJsapiV4Global,
 } from "./namespace";
 import { reuseExistingJsapiV4 } from "./reuse";
@@ -79,7 +78,10 @@ export class BaiduJsapiV4Provider implements JsapiV4Provider {
         src: url.toString(),
         callbackName,
         callbackParam: options.callbackParam,
-        exportGetter: readJsapiV4Global,
+        // 校验必须发生在底层「成功提交」之前：否则 Provider 侧校验失败时，底层已经把
+        // 这次加载记为成功并缓存，重试会直接命中缓存、不再插入 script，失败的 script
+        // 也不会被回收（见 #57 评审 P2）。
+        exportGetter: () => requireJsapiV4Global(this.id),
         ...scriptOptions(options),
       },
       signal,

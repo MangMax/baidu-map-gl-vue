@@ -117,6 +117,26 @@ describe("BaiduJsapiV4Provider", () => {
     expect(globalCallback(callbackName)).toBeUndefined();
   });
 
+  it("脚本就绪但命名空间不可用时失败，重试会重新插入 script", async () => {
+    const created = trackScripts();
+    const provider = baiduJsapiV4Provider({ registry: newDomain() });
+
+    const first = provider.load({ ak: AK });
+    await Promise.resolve();
+    // 回调到达时脚本已执行完，但全局命名空间仍不可用（如 AK 无权限 / 脚本行为异常）。
+    invokeGlobalCallback(jsonpCallbackNameOf(created[0]));
+    await expect(first).rejects.toThrow(/namespace is missing/);
+    // 失败必须连底层资源一起回收：script 移除、成功缓存不得残留。
+    expect(created[0].parentNode).toBeNull();
+
+    const second = provider.load({ ak: AK });
+    await Promise.resolve();
+    expect(created).toHaveLength(2);
+    installGlobal(COMPLETE_NAMESPACE);
+    invokeGlobalCallback(jsonpCallbackNameOf(created[1]));
+    await expect(second).resolves.toMatchObject({ engine: "jsapi-v4" });
+  });
+
   it("命名空间缺少关键成员时失败，且不残留全局 callback", async () => {
     const created = trackScripts();
     const provider = baiduJsapiV4Provider({ registry: newDomain() });
@@ -334,6 +354,24 @@ describe("CustomScriptV4Provider", () => {
     expect(loaded.load.mode).toBe("jsonp");
     // metadata 中的入口 URL 已剔除回调参数。
     expect(loaded.load.apiUrl).not.toContain(options.callbackName);
+  });
+
+  it("load 模式下普通 callback 参数参与配置身份，jsonp 模式下由 Loader 接管", () => {
+    const loadA = customScriptV4Provider("/sdk.js?callback=tenantA", { registry: newDomain() });
+    const loadB = customScriptV4Provider("/sdk.js?callback=tenantB", { registry: newDomain() });
+    // load 模式没有库管理的回调，该参数只是普通 query：不同入口必须是不同配置。
+    expect(loadA.getCacheKey({})).not.toBe(loadB.getCacheKey({}));
+
+    const jsonpA = customScriptV4Provider("/sdk.js?callback=tenantA", {
+      registry: newDomain(),
+      mode: "jsonp",
+    });
+    const jsonpB = customScriptV4Provider("/sdk.js?callback=tenantB", {
+      registry: newDomain(),
+      mode: "jsonp",
+    });
+    // jsonp 模式下该参数会被本次回调名覆盖，因此不参与身份判定。
+    expect(jsonpA.getCacheKey({})).toBe(jsonpB.getCacheKey({}));
   });
 
   it("空 scriptSrc 直接拒绝", () => {

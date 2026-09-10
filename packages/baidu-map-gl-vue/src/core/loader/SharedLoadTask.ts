@@ -327,7 +327,13 @@ export class SharedLoadTask {
       try {
         result = this.options.exportGetter();
       } catch (cause) {
-        this.fail(new BMapError("BMAP_SDK_LOAD_FAILED", "SDK export getter failed", { cause }));
+        // exportGetter 是调用方的「就绪校验点」：它抛出的 BMapError 已带明确原因
+        // （缺成员 / 版本不符等），直接透传，避免包一层后丢失细节。
+        this.fail(
+          cause instanceof BMapError
+            ? cause
+            : new BMapError("BMAP_SDK_LOAD_FAILED", "SDK export getter failed", { cause }),
+        );
         return;
       }
     }

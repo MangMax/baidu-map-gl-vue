@@ -160,6 +160,94 @@ describe("SdkRegistry", () => {
     expect(new SdkRegistry({ domain: "BMap" }).policy).toBe("throw");
   });
 
+  it("rejects a second consumer that aborts, without touching the others", async () => {
+    const deferred = createDeferred<unknown>();
+    const loader = vi.fn(() => deferred.promise);
+    const registry = new SdkRegistry({ domain: "BMap" });
+    const c1 = new AbortController();
+    const c2 = new AbortController();
+
+    const p1 = registry.load({ fingerprint: CONFIG_A, loader }, c1.signal);
+    const p2 = registry.load({ fingerprint: CONFIG_A, loader }, c2.signal);
+
+    c1.abort();
+    await expect(p1).rejects.toMatchObject({ code: "BMAP_PROVIDER_ABORTED" });
+
+    const value = { Map: 1 };
+    deferred.resolve(value);
+    // 未取消的消费者不受影响：取消必须与消费者一一对应，而不是由第一个调用者控制所有人。
+    await expect(p2).resolves.toBe(value);
+  });
+
+  it("cancels the underlying task only after the last consumer leaves", async () => {
+    const registry = new SdkRegistry({ domain: "BMap" });
+    const c1 = new AbortController();
+    const c2 = new AbortController();
+    let underlyingAborted = false;
+    const loader = vi.fn(
+      (signal?: AbortSignal) =>
+        new Promise((_resolve, reject) => {
+          signal?.addEventListener(
+            "abort",
+            () => {
+              underlyingAborted = true;
+              reject(new BMapError("BMAP_PROVIDER_ABORTED", "aborted"));
+            },
+            { once: true },
+          );
+        }),
+    );
+
+    const p1 = registry.load({ fingerprint: CONFIG_A, loader }, c1.signal);
+    const p2 = registry.load({ fingerprint: CONFIG_A, loader }, c2.signal);
+    // 条目先登记、任务按微任务启动：并发调用只会启动一次 loader。
+    await Promise.resolve();
+    expect(loader).toHaveBeenCalledTimes(1);
+
+    c1.abort();
+    await expect(p1).rejects.toMatchObject({ code: "BMAP_PROVIDER_ABORTED" });
+    expect(underlyingAborted).toBe(false);
+
+    c2.abort();
+    await expect(p2).rejects.toMatchObject({ code: "BMAP_PROVIDER_ABORTED" });
+    expect(underlyingAborted).toBe(true);
+    // 最后一个消费者离开后条目释放，允许下次重试。
+    expect(registry.size).toBe(0);
+    await expect(registry.load({ fingerprint: CONFIG_A, loader: vi.fn(async () => "sdk") })).resolves.toBe(
+      "sdk",
+    );
+  });
+
+  it("rejects a concurrent request with a different config before starting its loader", async () => {
+    const deferred = createDeferred<unknown>();
+    const loaderA = vi.fn(() => deferred.promise);
+    const loaderB = vi.fn(async () => "sdk-b");
+    const registry = new SdkRegistry({ domain: "BMap" });
+
+    const p1 = registry.load({ fingerprint: CONFIG_A, loader: loaderA });
+    const p2 = registry.load({ fingerprint: CONFIG_B, loader: loaderB });
+
+    // 域内已有正在加载的配置：不兼容的请求必须在启动 loader 之前被拒绝。
+    await expect(p2).rejects.toMatchObject({ code: "BMAP_SDK_CONFIG_CONFLICT" });
+    expect(loaderB).not.toHaveBeenCalled();
+
+    deferred.resolve("sdk-a");
+    await expect(p1).resolves.toBe("sdk-a");
+  });
+
+  it("frees the in-flight config after a failure so a retry can start", async () => {
+    const registry = new SdkRegistry({ domain: "BMap" });
+    const failing = vi.fn(async () => {
+      throw new Error("first fail");
+    });
+
+    await expect(registry.load({ fingerprint: CONFIG_A, loader: failing })).rejects.toThrow(
+      "first fail",
+    );
+    // 占用已释放：另一份配置现在可以正常加载。
+    await expect(registry.load({ fingerprint: CONFIG_B, loader: async () => "b" })).resolves.toBe("b");
+  });
+
   it("keeps enforcement after clear() and isolates domains", async () => {
     const registry = new SdkRegistry({ domain: "BMap" });
     await registry.load({ fingerprint: CONFIG_A, loader: async () => "a" });

@@ -190,6 +190,28 @@ describe("createLoadedJsapiV4", () => {
     expect(loaded.load.apiUrl).toMatch(/^https?:\/\/.+\/bmap-v4\.js$/);
   });
 
+  it("apiUrl 自带 AK 时按 URL 参数脱敏，akRef 指向真正生效的 AK", () => {
+    const loaded = createLoadedJsapiV4({
+      providerId: "custom-script-v4",
+      mode: "jsonp",
+      version: "4.0",
+      versionSource: "url",
+      // 应用默认 AK 与入口自带的 AK 是两个不同的值：两个都不能泄漏。
+      options: { ak: "DefaultAk123456" },
+      fingerprint: "fp",
+      apiUrl: "https://sdk.example.com/api?ak=UrlAk654321",
+      namespace: { Map: 1 },
+    });
+
+    expect(loaded.load.apiUrl).not.toContain("UrlAk654321");
+    expect(loaded.load.apiUrl).not.toContain("DefaultAk123456");
+    expect(loaded.load.apiUrl).toContain("ak=***4321");
+    // URL 自带的 AK 会覆盖 options.ak，akRef 必须反映真实使用的那一个。
+    expect(loaded.load.akRef).toBe("***4321");
+    expect(JSON.stringify(loaded.load)).not.toContain("Ak654321");
+    expect(JSON.stringify(loaded.load)).not.toContain("Ak123456");
+  });
+
   it("akRef 只保留末四位", () => {
     expect(akRef("abcdef123456")).toBe("***3456");
     expect(akRef(undefined)).toBe("none");

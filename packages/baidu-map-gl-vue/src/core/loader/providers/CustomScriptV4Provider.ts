@@ -13,12 +13,16 @@ import { SdkRegistry, getProcessSdkRegistry } from "../SdkRegistry";
 import { ScriptLoader, scriptOptions } from "../ScriptLoader";
 import type { ScriptLoaderOptions } from "../SharedLoadTask";
 import type { BMapLoadOptions } from "../url";
-import { appendCallback, createCallbackName, fingerprintConfig } from "../url";
+import {
+  DEFAULT_CALLBACK_PARAM,
+  appendCallback,
+  createCallbackName,
+  fingerprintConfig,
+} from "../url";
 import { createLoadedJsapiV4 } from "./loaded";
 import {
   JSAPI_V4_DOMAIN,
   assertSupportedJsapiV4Version,
-  readJsapiV4Global,
   requireJsapiV4Global,
   resolveExistingJsapiV4Version,
 } from "./namespace";
@@ -60,7 +64,11 @@ export class CustomScriptV4Provider implements JsapiV4Provider {
   }
 
   getCacheKey(options: BMapLoadOptions): string {
-    return fingerprintConfig({ ...options, apiUrl: this.scriptSrc });
+    // only JSONP 模式下回调参数由 Loader 管理（会被本次回调名覆盖），必须从身份中剔除；
+    // `load` 模式下它只是入口 URL 的普通 query，漏掉会把不同租户入口合并成同一配置。
+    const managedCallbackParam =
+      this.mode === "jsonp" ? (options.callbackParam ?? DEFAULT_CALLBACK_PARAM) : null;
+    return fingerprintConfig({ ...options, apiUrl: this.scriptSrc }, managedCallbackParam);
   }
 
   load(options: BMapLoadOptions, signal?: AbortSignal): Promise<LoadedJsapiV4> {
@@ -97,10 +105,15 @@ export class CustomScriptV4Provider implements JsapiV4Provider {
           src,
           callbackName,
           callbackParam: options.callbackParam,
-          exportGetter: readJsapiV4Global,
+          exportGetter: () => requireJsapiV4Global(this.id),
           ...scriptOptions(options),
         }
-      : { mode: "load", src, exportGetter: readJsapiV4Global, ...scriptOptions(options) };
+      : {
+          mode: "load",
+          src,
+          exportGetter: () => requireJsapiV4Global(this.id),
+          ...scriptOptions(options),
+        };
 
     await this.loader.load(loadOptions, signal);
 

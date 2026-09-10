@@ -5,7 +5,7 @@
  * load metadata」的形状、脱敏规则与来源标注完全一致，不会随 Provider 漂移。
  */
 import { redactAk } from "../../logger";
-import { normalizeApiUrl, type BMapLoadOptions } from "../url";
+import { normalizeApiUrl, resolveBrowserUrl, type BMapLoadOptions } from "../url";
 import { JSAPI_V4_DOMAIN } from "./namespace";
 import type {
   JsapiV4LoadMetadata,
@@ -18,18 +18,43 @@ import type {
 /** 复用页面已有全局时，metadata 中入口 URL 的占位值。 */
 export const EXISTING_GLOBAL_URL = "existing-global";
 
-/** 报错与 metadata 中使用的 AK 引用：只保留末四位。 */
+/** AK 引用：只保留末四位。 */
 export function akRef(ak?: string): string {
   return ak ? `***${ak.slice(-4)}` : "none";
 }
 
+/** 读取 URL 里的 `ak` 参数值；没有则返回 `undefined`。 */
+function readAkParam(url: string): string | undefined {
+  try {
+    return resolveBrowserUrl(url).searchParams.get("ak") ?? undefined;
+  } catch {
+    // 非法 URL：交给其它脱敏路径处理。
+    return undefined;
+  }
+}
+
 /**
- * URL 脱敏：已知 AK 直接替换；AK 过短（不可能是真实 AK）或未知时退回模式匹配，
- * 避免把测试里的短串当作 AK 误伤 URL。
+ * URL 脱敏，两条路径都要走：
+ *
+ * 1. **按 URL 参数**脱敏真实的 `ak`——入口自带 AK 时它以 URL 为准，此时 `options.ak`
+ *    可能完全是另一个值，只做「替换已知 AK 字符串」会把它整段漏出去；
+ * 2. 再兜底替换已知 AK 字符串（可能出现在路径、其它参数或无法解析的 URL 中）。
  */
 function redactUrl(url: string, ak?: string): string {
   if (!url) return url;
-  return redactAk(url, ak && ak.length >= 6 ? ak : null);
+  let redacted = url;
+  const embedded = readAkParam(url);
+  if (embedded) {
+    try {
+      const parsed = resolveBrowserUrl(url);
+      parsed.searchParams.set("ak", akRef(embedded));
+      redacted = parsed.toString();
+    } catch {
+      /* 非法 URL 走第 2 步 */
+    }
+  }
+  // AK 过短（不可能是真实 AK）或未知时退回模式匹配，避免误伤 URL。
+  return redactAk(redacted, ak && ak.length >= 6 ? ak : null);
 }
 
 export interface CreateLoadedJsapiV4Input {
@@ -49,16 +74,16 @@ export interface CreateLoadedJsapiV4Input {
 export function createLoadedJsapiV4(input: CreateLoadedJsapiV4Input): LoadedJsapiV4 {
   const { options } = input;
   const source = input.apiUrl ?? options.apiUrl;
-  const normalized = source
-    ? normalizeApiUrl(source, options.callbackParam)
-    : EXISTING_GLOBAL_URL;
+  const normalized = source ? normalizeApiUrl(source, options.callbackParam) : EXISTING_GLOBAL_URL;
+  // URL 自带 AK 时会覆盖 `options.ak`，`akRef` 必须反映真正生效的那一个。
+  const embeddedAk = readAkParam(normalized);
   const metadata: JsapiV4LoadMetadata = {
     providerId: input.providerId,
     domain: JSAPI_V4_DOMAIN,
     mode: input.mode,
     versionSource: input.versionSource,
     apiUrl: redactUrl(normalized, options.ak),
-    akRef: akRef(options.ak),
+    akRef: embeddedAk ? akRef(embeddedAk) : akRef(options.ak),
     fingerprint: input.fingerprint,
     loadedAt: input.loadedAt ?? Date.now(),
   };
