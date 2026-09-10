@@ -16,11 +16,15 @@
  * 只识别真正的标识符 / `window["BMapGL"]` 字符串键节点。注释、正则字面量、
  * 普通字符串与词法歧义（`/[/*]/`、`if (x) /re/` 等）天然不参与匹配，
  * 不会出现“正则被误判为注释而吞掉后续代码”的漏报。
- * `.vue` 文件只解析其 `<script>` 区块，并把行列映射回源文件。
+ * `.vue` 文件用 `vue/compiler-sfc` 的官方解析器提取 `<script>`/`<script setup>`
+ * 区块（正确处理 `</script >`、属性值内的 `>`、HTML 注释等），再把区块内容
+ * 交给同一 AST 检查，并按 `block.loc.start.offset` 映射回源文件。
+ * SFC 解析失败时明确报错退出,绝不静默放行。
  */
 import { readdirSync, readFileSync, statSync } from "node:fs";
 import { join, resolve } from "node:path";
 import * as ts from "typescript";
+import { parse as parseSfc, type SFCBlock } from "vue/compiler-sfc";
 
 const ROOT = resolve(import.meta.dirname, "..");
 const PKG = join(ROOT, "packages/baidu-map-gl-vue/src");
@@ -93,20 +97,36 @@ function scanTypeScript(file: string, text: string, violations: Violation[]): vo
   collectFromAst(ast, file, text, 0, violations);
 }
 
-function scanVue(file: string, text: string, violations: Violation[]): void {
-  const scriptRe = /<script\b([^>]*)>([\s\S]*?)<\/script>/gi;
-  let match: RegExpExecArray | null;
-  while ((match = scriptRe.exec(text)) !== null) {
-    const attrs = match[1] ?? "";
-    const content = match[2] ?? "";
-    const contentStart = match.index + match[0].indexOf(">") + 1;
-    const kind = /\blang\s*=\s*["']tsx["']/.test(attrs)
-      ? ts.ScriptKind.TSX
-      : /\blang\s*=\s*["']jsx["']/.test(attrs)
-        ? ts.ScriptKind.JSX
-        : ts.ScriptKind.TS;
-    const ast = ts.createSourceFile(file, content, ts.ScriptTarget.Latest, true, kind);
-    collectFromAst(ast, file, text, contentStart, violations);
+function scanVue(file: string, text: string, violations: Violation[], failures: string[]): void {
+  let descriptor;
+  let errors;
+  try {
+    ({ descriptor, errors } = parseSfc(text, { filename: file }));
+  } catch (error) {
+    failures.push(`${file}: SFC parse threw: ${(error as Error)?.message ?? String(error)}`);
+    return;
+  }
+  if (errors.length > 0 || !descriptor) {
+    const message = errors
+      .map((e) => ("message" in e ? e.message : String(e)))
+      .filter(Boolean)
+      .join("; ");
+    failures.push(`${file}: SFC parse failed${message ? `: ${message}` : ""}`);
+    return;
+  }
+  const blocks: SFCBlock[] = [descriptor.script, descriptor.scriptSetup].filter(
+    (b): b is SFCBlock => Boolean(b),
+  );
+  for (const block of blocks) {
+    const kind =
+      block.lang === "tsx"
+        ? ts.ScriptKind.TSX
+        : block.lang === "jsx"
+          ? ts.ScriptKind.JSX
+          : ts.ScriptKind.TS;
+    const ast = ts.createSourceFile(file, block.content, ts.ScriptTarget.Latest, true, kind);
+    // block.loc.start.offset 指向脚本内容起点,直接映射回源文件行列
+    collectFromAst(ast, file, text, block.loc.start.offset, violations);
   }
 }
 
@@ -124,6 +144,7 @@ function collectFiles(dir: string): string[] {
 }
 
 const violations: Violation[] = [];
+const failures: string[] = [];
 
 const dirs =
   process.argv[2] === "--dir"
@@ -135,7 +156,7 @@ for (const dir of dirs) {
     const rel = file.startsWith(ROOT) ? file.slice(ROOT.length + 1) : file;
     const text = readFileSync(file, "utf8");
     if (file.endsWith(".vue")) {
-      scanVue(rel, text, violations);
+      scanVue(rel, text, violations, failures);
     } else {
       scanTypeScript(rel, text, violations);
     }
@@ -151,6 +172,14 @@ if (violations.length > 0) {
   console.error(
     "Access the SDK only via Driver/Loader boundaries; probe the global via hasExistingGlobalSdk() (core/loader/Provider.ts).",
   );
+  process.exit(1);
+}
+
+if (failures.length > 0) {
+  console.error("raw SDK static scan FAILED (unparsable input; refusing to pass silently):");
+  for (const f of failures) {
+    console.error(`  ${f}`);
+  }
   process.exit(1);
 }
 

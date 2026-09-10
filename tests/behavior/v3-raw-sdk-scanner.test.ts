@@ -89,6 +89,68 @@ describe("check-raw-sdk scanner", () => {
     expect(r.output).toMatch(/Comp\.vue:3/);
   });
 
+  it("结束标签带空白(`</script >` / 标签名后换行)仍能提取脚本并拦截(PR #47 三审样例)", () => {
+    const dir = makeFixture({
+      "EndSpace.vue": [
+        '<script setup lang="ts">',
+        "const sdk = window.BMapGL;",
+        "</script >",
+        "<template><div/></template>",
+      ].join("\n"),
+      "EndNewline.vue": [
+        '<script setup lang="ts">',
+        "const sdk = window.BMapGL;",
+        "</script",
+        ">",
+        "<template><div/></template>",
+      ].join("\n"),
+    });
+    const r = scanDir(dir);
+    expect(r.code).toBe(1);
+    expect(r.output).toMatch(/EndSpace\.vue:2/);
+    expect(r.output).toMatch(/EndNewline\.vue:2/);
+  });
+
+  it("起始标签 generic 属性值内的 `>` 不再截断脚本内容(同行脚本仍被拦截)", () => {
+    const dir = makeFixture({
+      "Generic.vue": [
+        '<script setup lang="ts" generic="T extends Record<string, unknown>">const sdk = window.BMapGL;',
+        "</script>",
+        "<template><div/></template>",
+      ].join("\n"),
+    });
+    const r = scanDir(dir);
+    expect(r.code).toBe(1);
+    expect(r.output).toMatch(/Generic\.vue:1/);
+  });
+
+  it("HTML 注释中的脚本示例不误报(官方 SFC 解析忽略注释)", () => {
+    const dir = makeFixture({
+      "Comment.vue": [
+        '<script setup lang="ts">',
+        "const ok = 1;",
+        "</script>",
+        "<template>",
+        "  <!-- <script>const sdk = window.BMapGL;</script> -->",
+        "  <div/>",
+        "</template>",
+      ].join("\n"),
+    });
+    const r = scanDir(dir);
+    expect(r.code).toBe(0);
+    expect(r.output).toContain("scan OK");
+  });
+
+  it("无法解析的 SFC 明确报错退出,不按无违规静默放行", () => {
+    const dir = makeFixture({
+      "Unclosed.vue": '<script setup lang="ts">\nconst sdk = 1\n',
+    });
+    const r = scanDir(dir);
+    expect(r.code).toBe(1);
+    expect(r.output).toContain("unparsable input");
+    expect(r.output).toContain("Unclosed.vue");
+  });
+
   it("window['BMapGL'] 动态访问按越界拦截", () => {
     const dir = makeFixture({ "dynamic.ts": 'const sdk = window["BMapGL"];\n' });
     const r = scanDir(dir);
