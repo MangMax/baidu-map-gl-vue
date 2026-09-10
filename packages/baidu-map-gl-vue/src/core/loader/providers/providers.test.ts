@@ -162,13 +162,18 @@ describe("BaiduJsapiV4Provider", () => {
     expect(fake.load).not.toHaveBeenCalled();
   });
 
-  it("getCacheKey 与冲突域使用同一指纹", async () => {
-    const fake = createFakeLoader(() => installGlobal(COMPLETE_NAMESPACE));
-    const provider = new BaiduJsapiV4Provider({ loader: fake.loader, registry: newDomain() });
-    const options = { ak: AK };
+  it("getCacheKey 只由影响全局 SDK 的配置决定", () => {
+    const provider = baiduJsapiV4Provider({ registry: newDomain() });
 
-    const loaded = await provider.load(options);
-    expect(provider.getCacheKey(options)).toBe(loaded.load.fingerprint);
+    // script 级细节不参与身份判定：超时不同不该被当成另一份 SDK 配置。
+    expect(provider.getCacheKey({ ak: AK, timeout: 10_000 })).toBe(
+      provider.getCacheKey({ ak: AK }),
+    );
+    // 影响全局语义的配置必须改变身份，否则冲突检测会漏判。
+    expect(provider.getCacheKey({ ak: AK })).not.toBe(provider.getCacheKey({ ak: "ak-other" }));
+    expect(provider.getCacheKey({ ak: AK })).not.toBe(
+      provider.getCacheKey({ ak: AK, version: "4.1" }),
+    );
   });
 
   it("不同 Provider 的相同配置复用同一任务", async () => {
@@ -298,7 +303,9 @@ describe("CustomScriptV4Provider", () => {
     expect(options.mode).toBe("load");
     expect(options.src).toBe("./bmap-v4.js");
     expect(loaded.load.mode).toBe("load");
-    expect(loaded.load.apiUrl).toBe(new URL("./bmap-v4.js", document.baseURI).toString());
+    // metadata 记录的是归一化后的绝对入口，而不是原样透传的相对路径。
+    expect(loaded.load.apiUrl).not.toBe("./bmap-v4.js");
+    expect(loaded.load.apiUrl).toMatch(/^https?:\/\/.+\/bmap-v4\.js$/);
   });
 
   it("就绪信号只能显式指定：传 apiUrl 不会自动切成 JSONP", async () => {

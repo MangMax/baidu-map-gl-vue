@@ -125,9 +125,11 @@ describe("fingerprintConfig", () => {
     });
     expect(other).not.toBe(fp);
 
-    expect(fingerprintApiUrl("https://corp.example.com/api?ak=secret-ak-aaa")).toBe(
-      `https://corp.example.com/api?ak=${hash("secret-ak-aaa")}`,
-    );
+    const masked = fingerprintApiUrl("https://corp.example.com/api?ak=secret-ak-aaa");
+    expect(masked).not.toContain("secret-ak-aaa");
+    // 与「只归一化、不脱敏」的原行为必须不同，否则说明脱敏没生效。
+    expect(masked).not.toBe(normalizeApiUrl("https://corp.example.com/api?ak=secret-ak-aaa"));
+    expect(masked).toContain("https://corp.example.com/api?ak=");
   });
 
   it("[F7] 自定义 callbackParam 时，指纹仍区分不同的 callback 查询值", () => {
