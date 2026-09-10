@@ -42,6 +42,8 @@ const emit = defineEmits<{
 
 const ctx = useRequiredMapContext();
 const scope = new ResourceScope({ label: "context-menu" });
+// 每个菜单实例独立 child scope:重建时释放旧菜单的 SDK 事件绑定,避免堆积
+let menuScope: ResourceScope | null = null;
 // 最近父 Overlay 实例(优先 TargetContext,其次兼容旧 overlayContextKey;不在 overlay 下则为 null)
 // shallowRef 响应父 Marker 晚于自身就绪,watch immediate 自动原子挂载
 const parentOverlay = useParentOverlayHandle();
@@ -129,6 +131,9 @@ function detach() {
 function rebuildMenu() {
   if (!readyCtx) return;
   detach();
+  // 释放旧菜单实例 child scope(含其 open/close 事件绑定),再 fork 新实例 scope
+  menuScope?.dispose();
+  menuScope = null;
   contextMenu = buildMenu(readyCtx.client);
   bindMenuOpenClose(contextMenu);
   if (currentTarget && props.visible !== false) {
@@ -138,9 +143,10 @@ function rebuildMenu() {
 
 function bindMenuOpenClose(menu: OverlayHandle) {
   // open/close 只对应 SDK 菜单真正展开/关闭事件，不对应 attach/detach
+  const instanceScope = menuScope ?? (menuScope = scope.fork("context-menu-instance"));
   try {
-    scope.add(readyCtx!.client.driver.events.on(menu, "open", () => emit("open")));
-    scope.add(readyCtx!.client.driver.events.on(menu, "close", () => emit("close")));
+    instanceScope.add(readyCtx!.client.driver.events.on(menu, "open", () => emit("open")));
+    instanceScope.add(readyCtx!.client.driver.events.on(menu, "close", () => emit("close")));
   } catch {
     /* 无事件能力的 SDK 忽略 */
   }
@@ -195,6 +201,8 @@ onUnmounted(() => {
   contextMenu = null;
   currentTarget = null;
   readyCtx = null;
+  menuScope?.dispose();
+  menuScope = null;
   scope.dispose();
 });
 

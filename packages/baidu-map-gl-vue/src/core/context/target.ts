@@ -13,7 +13,7 @@ import {
   type InjectionKey,
   type ShallowRef,
 } from "vue";
-import type { SdkHandle } from "../../driver/types/handles";
+import type { OverlayHandle, SdkHandle } from "../../driver/types/handles";
 import type { MapContext } from "./types";
 import { useRequiredMapContext } from "./inject";
 import { overlayContextKey } from "./types";
@@ -23,8 +23,8 @@ export type TargetKind = "map" | "marker" | "overlay" | "clusterer" | "layer";
 export interface TargetContext {
   readonly kind: Readonly<ShallowRef<TargetKind>>;
   readonly target: Readonly<ShallowRef<SdkHandle<string> | null>>;
-  add(resource: SdkHandle<string>): void;
-  remove(resource: SdkHandle<string>): void;
+  add(resource: OverlayHandle): void;
+  remove(resource: OverlayHandle): void;
 }
 
 export const targetContextKey: InjectionKey<TargetContext> = Symbol(
@@ -76,20 +76,14 @@ export function useResolvedTarget(
       const map = mapCtx.map.value;
       const client = mapCtx.client.value;
       if (!map || !client) return;
-      client.driver.overlays.add(
-        { kind: "map", handle: map } as never,
-        resource as never,
-      );
+      client.driver.overlays.add({ kind: "map", handle: map }, resource);
     },
     remove: (resource) => {
       const map = mapCtx.map.value;
       const client = mapCtx.client.value;
       if (!map || !client) return;
       try {
-        client.driver.overlays.remove(
-          { kind: "map", handle: map } as never,
-          resource as never,
-        );
+        client.driver.overlays.remove({ kind: "map", handle: map }, resource);
       } catch {
         /* 忽略 teardown 竞态 */
       }

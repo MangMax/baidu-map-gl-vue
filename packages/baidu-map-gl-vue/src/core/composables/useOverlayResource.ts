@@ -12,6 +12,7 @@ import { onMounted, onUnmounted, shallowRef, markRaw, type ShallowRef } from "vu
 import { useRequiredMapContext } from "../../core/context/inject";
 import { ResourceScope } from "../../core/lifecycle/ResourceScope";
 import { BMapError } from "../../core/errors/BMapError";
+import type { OverlayHandle } from "../../driver/types/handles";
 import type { MapReadyContext } from "../../core/context/types";
 
 export interface OverlayLifecycle<Props, Resource> {
@@ -165,5 +166,5 @@ export function useOverlayResource<Props, Resource>(
 
 /** 通用的 overlay 移除 helper:经 Driver 从地图 removeOverlay */
 export function removeOverlay(resource: unknown, ctx: MapReadyContext) {
-  ctx.client.driver.overlays.remove({ kind: "map", handle: ctx.map }, resource as never);
+  ctx.client.driver.overlays.remove({ kind: "map", handle: ctx.map }, resource as OverlayHandle);
 }

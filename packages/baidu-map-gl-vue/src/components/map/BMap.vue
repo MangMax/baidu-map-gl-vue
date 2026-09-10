@@ -28,6 +28,7 @@ import type { BMapLoadOptions } from "../../core/loader/url";
 import {
   baiduCdnProvider,
   existingGlobalProvider,
+  hasExistingGlobalSdk,
 } from "../../core/loader/Provider";
 import type { BMapClient, CreateBMapClientOptions } from "../../client/types";
 import { normalizeMapMouseEvent } from "../../driver/normalize";
@@ -128,9 +129,9 @@ if (props.client) {
     definition: { provider: existingGlobalProvider(), loadOptions: {} },
   });
   ownClientContext = true;
-} else if (typeof window !== "undefined" && (window as unknown as { BMapGL?: unknown }).BMapGL) {
-  // 向后兼容:默认不静默读取 window.BMapGL,仅在全局已存在时回退并 warn
-  logger.warn("BMap resolved window.BMapGL fallback; prefer <BMapProvider> or app.use(createBMapPlugin(...))");
+} else if (hasExistingGlobalSdk()) {
+  // 向后兼容:默认不静默读取全局 SDK,仅在已存在时经 Loader 边界回退并 warn
+  logger.warn("BMap resolved existing global SDK fallback; prefer <BMapProvider> or app.use(createBMapPlugin(...))");
   clientContext = createClientContext({
     definition: { provider: existingGlobalProvider(), loadOptions: {} },
   });
@@ -453,14 +454,14 @@ provide(mapContextKey, context);
       const m = map.value;
       const c = client.value;
       if (!m || !c) return;
-      c.driver.overlays.add({ kind: "map", handle: m } as never, resource as never);
+      c.driver.overlays.add({ kind: "map", handle: m }, resource);
     },
     remove: (resource) => {
       const m = map.value;
       const c = client.value;
       if (!m || !c) return;
       try {
-        c.driver.overlays.remove({ kind: "map", handle: m } as never, resource as never);
+        c.driver.overlays.remove({ kind: "map", handle: m }, resource);
       } catch {
         /* ignore */
       }

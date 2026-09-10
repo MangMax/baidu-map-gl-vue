@@ -11,7 +11,9 @@ import { renderToString } from 'vue/server-renderer'
 import { mount, flushPromises } from '@vue/test-utils'
 import BMap from '../../packages/baidu-map-gl-vue/src/components/map/BMap.vue'
 import BMapProvider from '../../packages/baidu-map-gl-vue/src/components/provider/BMapProvider.vue'
+import BMarker from '../../packages/baidu-map-gl-vue/src/components/overlays/BMarker.vue'
 import { MapRuntime } from '../../packages/baidu-map-gl-vue/src/core/runtime/MapRuntime'
+import { createClientContext } from '../../packages/baidu-map-gl-vue/src/core/context/client'
 import { getFakeBMapGl, resetLifecycleState } from '../../packages/test-utils'
 
 const fake = getFakeBMapGl()
@@ -151,5 +153,112 @@ describe('KeepAlive', () => {
     show.value = false
     await nextTick()
     wrapper.unmount()
+  })
+})
+
+describe('PRE audit: context isolation & resource exit', () => {
+  beforeEach(() => resetLifecycleState())
+
+  it('100 次 overlay 创建/重建/卸载后无资源泄漏', async () => {
+    fake.stats.reset()
+    const el = host()
+    const show = ref(true)
+    const clicking = ref(false)
+    const prov = provider()
+    const MarkerHost = defineComponent({
+      setup: () => () =>
+        h(BMap, { provider: prov }, () =>
+          show.value
+            ? [h(BMarker, { position: { lng: 116.4, lat: 39.9 }, enableClicking: clicking.value })]
+            : [],
+        ),
+    })
+    const wrapper = mount(MarkerHost, { attachTo: el })
+    await flushPromises()
+    await nextTick()
+    expect(fake.stats.mapsCreated).toBe(1)
+    // 基线:map click 监听在 runtime.resources 中存活,卸载 marker 不应影响它
+    const listenerBaseline = fake.stats.listeners
+
+    for (let i = 0; i < 100; i++) {
+      // 卸载(实例 scope 释放)
+      show.value = false
+      await nextTick()
+      await flushPromises()
+      expect(fake.stats.overlaysCreated - fake.stats.overlaysRemoved).toBe(0)
+      // 重新创建
+      show.value = true
+      await nextTick()
+      await flushPromises()
+      expect(fake.stats.overlaysCreated - fake.stats.overlaysRemoved).toBe(1)
+      // 重建(enableClicking 变化触发 rebuild:旧 instance scope 释放再 fork 新实例 scope)
+      clicking.value = i % 2 === 0
+      await nextTick()
+      await flushPromises()
+      expect(fake.stats.overlaysCreated - fake.stats.overlaysRemoved).toBe(1)
+    }
+
+    // 100 轮创建/重建后 marker 仍在:SDK listener 不随轮次累积(回到基线)
+    expect(fake.stats.listeners).toBe(listenerBaseline)
+    show.value = false
+    await nextTick()
+    await flushPromises()
+    wrapper.unmount()
+    await nextTick()
+    expect(fake.stats.mapsCreated - fake.stats.mapsDestroyed).toBe(0)
+    expect(fake.stats.listeners).toBe(0)
+    el.remove()
+  })
+
+  it('多地图上下文互不隔离污染(实例级 client/scope)', async () => {
+    fake.stats.reset()
+    const elA = host()
+    const elB = host()
+    const wrapperA = mount(BMap, { attachTo: elA, props: { provider: provider() } })
+    const wrapperB = mount(BMap, { attachTo: elB, props: { provider: provider() } })
+    await flushPromises()
+    expect(fake.stats.mapsCreated).toBe(2)
+
+    // 卸载 A:B 仍 ready,overlay 计数不归零
+    wrapperA.unmount()
+    await nextTick()
+    expect(fake.stats.mapsDestroyed).toBe(1)
+    expect((wrapperB.vm as never as { getMapInstance(): unknown }).getMapInstance()).toBeTruthy()
+
+    wrapperB.unmount()
+    await nextTick()
+    expect(fake.stats.mapsCreated - fake.stats.mapsDestroyed).toBe(0)
+    elA.remove()
+    elB.remove()
+  })
+
+  it('client context 与 runtime dispose 幂等(重复调用无副作用)', async () => {
+    const ctx = createClientContext({
+      definition: { provider: { load: async () => ({ ok: 1 }) }, loadOptions: {} },
+    })
+    await ctx.load()
+    expect(ctx.status.value).toBe('ready')
+    ctx.dispose()
+    ctx.dispose()
+    ctx.dispose()
+    expect(ctx.status.value).toBe('disposed')
+
+    const rt = new MapRuntime({
+      clientFactory: (async () => ({
+        driver: {
+          map: {
+            create: (c: HTMLElement) => ({ raw: new (fake as any).Map(c, {}) }),
+            destroy: () => {},
+            initializeView: () => {},
+            checkResize: () => {},
+          },
+        },
+      }) as never) as never,
+      container: document.createElement('div'),
+    })
+    await rt.mount()
+    rt.dispose()
+    rt.dispose()
+    expect(rt.status.value).toBe('disposed')
   })
 })
