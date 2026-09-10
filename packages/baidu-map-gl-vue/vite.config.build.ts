@@ -18,15 +18,32 @@ import { resolve } from 'node:path'
 
 const root = resolve(import.meta.dirname)
 
+/**
+ * 从类型边界文件源码中提取会被打包内联的 `declare global` augmentation 块。
+ *
+ * 上游 unplugin-dts 用 `s.slice(node.pos, node.end + 1)` 收集该块，只会额外带上
+ * `}` 后的一个字符（LF 文件是 `\n`，CRLF 文件是 `\r`），所以这里必须 `trimEnd()`
+ * 去掉末尾换行，才能同时匹配 LF 与 CRLF 源文件。
+ */
+export function extractJsapiV4Augmentation(source: string): string {
+  const start = source.lastIndexOf('declare global {')
+  return start === -1 ? '' : source.slice(start).trimEnd()
+}
+
+/** 从声明产物中剔除 augmentation 块；返回 `undefined` 表示无需修改。 */
+export function stripJsapiV4Augmentation(
+  content: string,
+  augmentation: string,
+): string | undefined {
+  if (!augmentation || !content.includes(augmentation)) return undefined
+  return `${content.replace(augmentation, '').trimEnd()}\n`
+}
+
 // 类型边界补丁只服务类型检查与 TS 声明 emit，必须保留在声明构建的 Program 中；
 // 但 API Extractor 会把 Program 内的全局 augmentation 内联进每个公共 dist/*.d.ts，
 // 因此在写入阶段从公共声明里剔除该 augmentation 块，避免向消费者泄漏 BMap.*。
 const jsapiV4TypesReference = resolve(root, 'src/driver/jsapi-v4/types-reference.d.ts')
-const jsapiV4Augmentation = (() => {
-  const source = readFileSync(jsapiV4TypesReference, 'utf8')
-  const start = source.lastIndexOf('declare global {')
-  return start === -1 ? '' : source.slice(start)
-})()
+const jsapiV4Augmentation = extractJsapiV4Augmentation(readFileSync(jsapiV4TypesReference, 'utf8'))
 
 export default defineConfig({
   plugins: [
@@ -46,9 +63,8 @@ export default defineConfig({
       exclude: ['src/**/*.test.ts', 'src/**/__tests__/**'],
       beforeWriteFile: (filePath, content) => {
         if (filePath.endsWith('driver/jsapi-v4/types-reference.d.ts')) return false
-        if (jsapiV4Augmentation && content.includes(jsapiV4Augmentation)) {
-          return { content: `${content.replace(jsapiV4Augmentation, '').trimEnd()}\n` }
-        }
+        const stripped = stripJsapiV4Augmentation(content, jsapiV4Augmentation)
+        if (stripped !== undefined) return { content: stripped }
       },
       // 保留声明与源码结构对应,便于调试
       copyDtsFiles: true,
