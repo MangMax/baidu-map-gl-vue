@@ -8,6 +8,9 @@
  * - docs/.vitepress/component-index.json(文档组件索引)
  *
  * 生成文件顶部带 "Generated file. Do not edit directly."
+ *
+ * `--check` 只读校验:不写盘,直接比对生成内容与磁盘内容,发现漂移即失败。
+ * (此前的 `--check` 先写盘再比对刚写出的内容,恒等于无漂移,是一道失效门禁。)
  */
 import { readFileSync, writeFileSync, existsSync } from 'node:fs'
 import { resolve, dirname } from 'node:path'
@@ -16,6 +19,7 @@ import { freshModuleUrl } from './fresh-module-url.mts'
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..')
 const manifestSrc = resolve(root, 'packages/baidu-map-gl-vue/src/manifest.ts')
+const check = process.argv.includes('--check')
 
 // 动态加载 manifest(纯数据 .ts,node --experimental-strip-types 可解析;
 // 避免正则对 oxfmt 格式化后的多行/双引号格式敏感)。
@@ -25,13 +29,16 @@ const { componentManifest } = (await import(freshModuleUrl(manifestSrc))) as {
 }
 const names = componentManifest.map((c) => ({ name: c.name, exportName: c.exportName }))
 
+const componentsIndexPath = resolve(root, 'packages/baidu-map-gl-vue/src/components/index.ts')
+const volarDtsPath = resolve(root, 'packages/baidu-map-gl-vue/volar.d.ts')
+const componentIndexJsonPath = resolve(root, 'docs/.vitepress/component-index.json')
+
 // 1) components/index.ts
 const componentsIndex = [
   '// Generated file. Do not edit directly.',
   ...names.map((c) => `export { default as ${c.exportName} } from './${toPath(c.exportName)}'`),
   '',
 ].join('\n')
-writeFileSync(resolve(root, 'packages/baidu-map-gl-vue/src/components/index.ts'), componentsIndex)
 
 // 2) volar.d.ts(精确类型:Volar 通过 typeof import 解析组件真实 props/emits)
 //    vue-tsc 2(新 Volar)读 module 'vue';v2 时代读 '@vue/runtime-core';双声明兼容
@@ -51,33 +58,67 @@ const volarDts = [
   'export {}',
   '',
 ].join('\n')
-writeFileSync(resolve(root, 'packages/baidu-map-gl-vue/volar.d.ts'), volarDts)
 
-// 3) component index json
-const json = { version: '3.0.0-beta.0', generatedAt: new Date().toISOString(), components: names.map((c) => c.name) }
-writeFileSync(resolve(root, 'docs/.vitepress/component-index.json'), JSON.stringify(json, null, 2) + '\n')
+// 3) component index json(generatedAt 为生成时刻,比对时忽略)
+const json = {
+  version: '3.0.0-beta.0',
+  generatedAt: new Date().toISOString(),
+  components: names.map((c) => c.name),
+}
+const componentIndexJson = JSON.stringify(json, null, 2) + '\n'
+
+if (!check) {
+  writeFileSync(componentsIndexPath, componentsIndex)
+  writeFileSync(volarDtsPath, volarDts)
+  writeFileSync(componentIndexJsonPath, componentIndexJson)
+}
 
 console.log(`[generate-manifest] ${names.length} components`)
-console.log(`  wrote src/components/index.ts`)
-console.log(`  wrote volar.d.ts`)
-console.log(`  wrote docs/.vitepress/component-index.json`)
-console.log('  CHECK MODE: run with --check to verify no drift')
+const verb = check ? 'checked' : 'wrote'
+console.log(`  ${verb} src/components/index.ts`)
+console.log(`  ${verb} volar.d.ts`)
+console.log(`  ${verb} docs/.vitepress/component-index.json`)
 
-// --check 模式
-if (process.argv.includes('--check')) {
-  const current = readFileSync(resolve(root, 'packages/baidu-map-gl-vue/src/components/index.ts'), 'utf-8')
-  if (current !== componentsIndex) {
-    console.error('[generate-manifest] DRIFT in components/index.ts')
-    process.exit(1)
-  }
-  const currentDts = existsSync(resolve(root, 'packages/baidu-map-gl-vue/volar.d.ts'))
-    ? readFileSync(resolve(root, 'packages/baidu-map-gl-vue/volar.d.ts'), 'utf-8')
+if (!check) {
+  console.log('  CHECK MODE: run with --check to verify no drift')
+}
+
+// --check 模式:只读比对,不写盘
+if (check) {
+  const drift: string[] = []
+
+  const currentIndex = existsSync(componentsIndexPath) ? readFileSync(componentsIndexPath, 'utf-8') : ''
+  if (currentIndex !== componentsIndex) drift.push('src/components/index.ts')
+
+  const currentDts = existsSync(volarDtsPath) ? readFileSync(volarDtsPath, 'utf-8') : ''
+  if (currentDts !== volarDts) drift.push('volar.d.ts')
+
+  // generatedAt 每次生成都不同,只比对稳定字段
+  const currentJson = existsSync(componentIndexJsonPath)
+    ? readFileSync(componentIndexJsonPath, 'utf-8')
     : ''
-  if (currentDts !== volarDts) {
-    console.error('[generate-manifest] DRIFT in volar.d.ts')
+  if (!jsonMatches(currentJson, json)) drift.push('docs/.vitepress/component-index.json')
+
+  if (drift.length > 0) {
+    console.error('[generate-manifest] DRIFT detected in:')
+    for (const file of drift) console.error(`  ${file}`)
+    console.error('  run: pnpm generate:manifest')
     process.exit(1)
   }
   console.log('[generate-manifest] OK, no drift.')
+}
+
+/** 忽略易变字段(generatedAt)后比较 JSON 内容。 */
+function jsonMatches(current: string, expected: Record<string, unknown>): boolean {
+  if (!current) return false
+  try {
+    const parsed = JSON.parse(current) as Record<string, unknown>
+    const strip = (value: Record<string, unknown>): string =>
+      JSON.stringify(value, (key, val) => (key === 'generatedAt' ? undefined : val))
+    return strip(parsed) === strip(expected)
+  } catch {
+    return false
+  }
 }
 
 function toPath(exportName: string): string {
