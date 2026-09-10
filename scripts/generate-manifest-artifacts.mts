@@ -9,8 +9,12 @@
  *
  * 生成文件顶部带 "Generated file. Do not edit directly."
  *
- * `--check` 只读校验:不写盘,直接比对生成内容与磁盘内容,发现漂移即失败。
- * (此前的 `--check` 先写盘再比对刚写出的内容,恒等于无漂移,是一道失效门禁。)
+ * `--check` 对**受版本控制的**生成文件（`src/components/index.ts`、
+ * `docs/.vitepress/component-index.json`）做只读比对，发现漂移即失败。
+ * （此前的 `--check` 先写盘再比对刚写出的内容，恒等于无漂移，是一道失效门禁。）
+ *
+ * `volar.d.ts` 被 `.gitignore` 忽略，属于「只生成、不提交」的发布产物，没有可比对的
+ * 版本控制基线，因此两种模式下都直接生成而不是当作漂移目标。
  */
 import { readFileSync, writeFileSync, existsSync } from 'node:fs'
 import { resolve, dirname } from 'node:path'
@@ -67,31 +71,30 @@ const json = {
 }
 const componentIndexJson = JSON.stringify(json, null, 2) + '\n'
 
+// volar.d.ts 不在版本控制内(见 .gitignore)，是纯发布产物：两种模式都生成。
+// 保留这一行为也确保 `pnpm pack` 之前该文件存在，发布产物内容不变。
+writeFileSync(volarDtsPath, volarDts)
+
 if (!check) {
   writeFileSync(componentsIndexPath, componentsIndex)
-  writeFileSync(volarDtsPath, volarDts)
   writeFileSync(componentIndexJsonPath, componentIndexJson)
 }
 
 console.log(`[generate-manifest] ${names.length} components`)
-const verb = check ? 'checked' : 'wrote'
-console.log(`  ${verb} src/components/index.ts`)
-console.log(`  ${verb} volar.d.ts`)
-console.log(`  ${verb} docs/.vitepress/component-index.json`)
+console.log(`  ${check ? 'checked' : 'wrote'} src/components/index.ts`)
+console.log(`  wrote volar.d.ts (generated artifact, not tracked)`)
+console.log(`  ${check ? 'checked' : 'wrote'} docs/.vitepress/component-index.json`)
 
 if (!check) {
   console.log('  CHECK MODE: run with --check to verify no drift')
 }
 
-// --check 模式:只读比对,不写盘
+// --check 模式:只读比对受版本控制的文件,不写盘
 if (check) {
   const drift: string[] = []
 
   const currentIndex = existsSync(componentsIndexPath) ? readFileSync(componentsIndexPath, 'utf-8') : ''
   if (currentIndex !== componentsIndex) drift.push('src/components/index.ts')
-
-  const currentDts = existsSync(volarDtsPath) ? readFileSync(volarDtsPath, 'utf-8') : ''
-  if (currentDts !== volarDts) drift.push('volar.d.ts')
 
   // generatedAt 每次生成都不同,只比对稳定字段
   const currentJson = existsSync(componentIndexJsonPath)
