@@ -95,6 +95,8 @@ export function getFakeBMapGl(): FakeBMapGlApi {
 
 export function resetLifecycleState() {
   fake.stats.reset()
+  fake.createdMaps.length = 0
+  fake.createdContextMenus.length = 0
 }
 
 /** 测试环境里用这段代码注册 window 计数器(由 v3 运行时调用) */

@@ -77,16 +77,30 @@ describe('BContextMenu v3', () => {
     )
     await flushPromises()
     await flushPromises()
-    // 基线:marker 事件 + context menu open/close
+    // 基线:marker 事件 + context menu open/close(菜单已接入 fake.stats 计数)
     const baseline = fake.stats.listeners
     expect(baseline).toBeGreaterThan(0)
+    expect(fake.createdContextMenus).toHaveLength(1)
+    const firstMenu = fake.createdContextMenus[0]
+    // 当前菜单持有 open/close 两个监听
+    expect(firstMenu.getListenerCount()).toBe(2)
 
+    const seenMenus: unknown[] = [firstMenu]
     for (let i = 0; i < 10; i++) {
       menuItems.value = [{ text: `item-${i}`, callback: () => {} }]
       await nextTick()
       await flushPromises()
+      // 每次原子重建产出新菜单实例,旧实例监听被释放,新实例持有 2 个监听
+      expect(fake.createdContextMenus).toHaveLength(i + 2)
+      const currentMenu = fake.createdContextMenus[fake.createdContextMenus.length - 1]
+      expect(seenMenus[seenMenus.length - 1]).not.toBe(currentMenu)
+      seenMenus.push(currentMenu)
+      expect(currentMenu.getListenerCount()).toBe(2)
+      for (const old of seenMenus.slice(0, -1)) {
+        expect((old as { getListenerCount(): number }).getListenerCount()).toBe(0)
+      }
     }
-    // 每次原子重建释放旧菜单实例 scope:listener 总数稳定,不随轮次累积
+    // 全局 listener 总数稳定,不随轮次累积
     expect(fake.stats.listeners).toBe(baseline)
 
     wrapper.unmount()

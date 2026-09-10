@@ -1061,6 +1061,8 @@ export interface FakeBMapGlApi {
   stats: FakeStatsImpl
   /** 测试辅助:记录已创建的 Map 实例 */
   createdMaps: FakeMap[]
+  /** 测试辅助:记录已创建的 ContextMenu 实例(含重建产生的每个实例) */
+  createdContextMenus: FakeContextMenu[]
 }
 
 function withStatsCounter<T extends FakeEventTarget>(instance: T, stats: FakeStatsImpl): T {
@@ -1074,6 +1076,7 @@ function withStatsCounter<T extends FakeEventTarget>(instance: T, stats: FakeSta
 export function createFakeBMapGl(): FakeBMapGlApi {
   const stats = new FakeStatsImpl()
   const createdMaps: FakeMap[] = []
+  const createdContextMenus: FakeContextMenu[] = []
   const api: FakeBMapGlApi = {
     Map: class extends FakeMap {
       constructor(container: string | HTMLElement, opts?: Record<string, unknown>) {
@@ -1135,7 +1138,14 @@ export function createFakeBMapGl(): FakeBMapGlApi {
     Geolocation: FakeGeolocation,
     Geocoder: FakeGeocoder,
     Convertor: FakeConvertor,
-    ContextMenu: FakeContextMenu,
+    ContextMenu: class extends FakeContextMenu {
+      constructor() {
+        super()
+        // 与 Marker 等一致:接入全局 listener 统计,菜单重建泄漏可被观测
+        withStatsCounter(this, stats)
+        createdContextMenus.push(this)
+      }
+    },
     MenuItem: FakeMenuItem,
     TrackAnimation: FakeTrackAnimation,
     ZoomControl: FakeZoomControl,
@@ -1175,6 +1185,7 @@ export function createFakeBMapGl(): FakeBMapGlApi {
     BMAP_SATELLITE_MAP: 'BMAP_SATELLITE_MAP',
     stats,
     createdMaps,
+    createdContextMenus,
   }
   return api
 }
