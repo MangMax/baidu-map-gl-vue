@@ -154,7 +154,7 @@ function main(): void {
       console.error(`  ${v.file}:${v.line}:${v.column} -> ${v.text}  [${v.rule}]`);
     }
     console.error(
-      "Access the SDK only via Driver/Loader boundaries; probe the global via hasExistingGlobalSdk() (core/loader/Provider.ts). Boundary spec: scripts/raw-sdk-boundary.mts.",
+      "Access the SDK only via Driver/Loader boundaries; probe the global only from core/loader (hasExistingGlobalSdk() for the migration path, readJsapiV4Global() for JSAPI 4.0). Boundary spec: scripts/raw-sdk-boundary.mts.",
     );
     process.exit(1);
   }

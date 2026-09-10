@@ -109,6 +109,26 @@ export function normalizeApiUrl(apiUrl?: string, callbackParam?: string): string
 }
 
 /**
+ * 指纹用的 apiUrl 归一：在 `normalizeApiUrl` 的基础上，把内嵌的 `ak` 参数值换成哈希。
+ *
+ * 调用方可能把 AK 直接写在 `apiUrl` 里（企业自托管入口很常见），而归一后的 apiUrl 会
+ * 进入 fingerprint，fingerprint 又会进入 load metadata 与冲突日志——原样保留即等于
+ * 泄漏。这里用哈希而不是掩码：不同 AK 仍必须产生不同指纹，否则冲突会被漏判。
+ */
+export function fingerprintApiUrl(apiUrl?: string, callbackParam?: string): string {
+  const normalized = normalizeApiUrl(apiUrl, callbackParam);
+  try {
+    const url = resolveBrowserUrl(normalized);
+    const embedded = url.searchParams.get("ak");
+    if (embedded) url.searchParams.set("ak", hash(embedded));
+    return url.toString();
+  } catch {
+    // 非法 URL 交给加载流程报告错误，fingerprint 保留归一化后的原始输入。
+    return normalized;
+  }
+}
+
+/**
  * 计算配置 fingerprint，用于 SDK Registry 去重 / 冲突检测。
  *
  * 覆盖影响全局 SDK 语义的所有配置（版本、AK、apiUrl、语言）；AK 仅以哈希出现，
@@ -118,7 +138,7 @@ export function fingerprintConfig(options: BMapLoadOptions): string {
   const parts = [
     `v:${options.version ?? DEFAULT_VERSION}`,
     `ak:${options.ak ? hash(options.ak) : "none"}`,
-    `url:${normalizeApiUrl(options.apiUrl, options.callbackParam)}`,
+    `url:${fingerprintApiUrl(options.apiUrl, options.callbackParam)}`,
   ];
   if (options.language) parts.push(`lang:${options.language}`);
   return parts.join("|");
@@ -131,4 +151,14 @@ export function hash(input: string): string {
     h = (h * 33) ^ input.charCodeAt(i);
   }
   return (h >>> 0).toString(36);
+}
+
+/**
+ * 生成一次性 JSONP 回调名（挂到全局的函数名）。
+ *
+ * 名字只需要在本次加载的生命周期内唯一，`prefix` 用于排障时区分调用方；
+ * 加载结束（成功 / 失败 / 取消）由 SharedLoadTask 负责把该全局名释放干净。
+ */
+export function createCallbackName(prefix: string): string {
+  return `${prefix}${Math.random().toString(36).slice(2, 10)}`;
 }

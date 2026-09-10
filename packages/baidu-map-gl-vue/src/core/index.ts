@@ -25,24 +25,60 @@ export {
   existingGlobalProvider,
 } from "./loader/Provider";
 export type { BMapProvider } from "./loader/Provider";
-export { ScriptLoader, getScriptKey } from "./loader/ScriptLoader";
+export {
+  BaiduJsapiV4Provider,
+  CustomScriptV4Provider,
+  ExistingGlobalV4Provider,
+  baiduJsapiV4Provider,
+  createLoadedJsapiV4,
+  customScriptV4Provider,
+  existingGlobalV4Provider,
+  readJsapiV4Global,
+  reuseExistingJsapiV4,
+} from "./loader/providers/index";
+export type {
+  CreateLoadedJsapiV4Input,
+  CustomScriptV4ProviderOptions,
+  JsapiV4Engine,
+  JsapiV4LoadMetadata,
+  JsapiV4LoadMode,
+  JsapiV4Namespace,
+  JsapiV4Provider,
+  JsapiV4ProviderId,
+  JsapiV4ProviderOptions,
+  JsapiV4ScriptMode,
+  JsapiV4VersionSource,
+  LoadedJsapiV4,
+  ReuseExistingJsapiV4Input,
+} from "./loader/providers/index";
+export { ScriptLoader, getScriptKey, scriptOptions } from "./loader/ScriptLoader";
 export type {
   ScriptJsonpModeOptions,
   ScriptLoadModeOptions,
   ScriptLoaderBaseOptions,
   ScriptLoaderMode,
   ScriptLoaderOptions,
+  ScriptRuntimeOptions,
 } from "./loader/ScriptLoader";
 export { SharedLoadTask } from "./loader/SharedLoadTask";
 export type { SharedLoadTaskHooks, SharedLoadTaskState } from "./loader/SharedLoadTask";
-export { SdkRegistry } from "./loader/SdkRegistry";
-export type { SdkRegistryEntry, SdkLoader } from "./loader/SdkRegistry";
+export { SdkRegistry, getProcessSdkRegistry, resetProcessSdkRegistryForTests } from "./loader/SdkRegistry";
+export type {
+  SdkConflictInfo,
+  SdkConflictPolicy,
+  SdkLoader,
+  SdkRegistryEntry,
+  SdkRegistryLoadRequest,
+  SdkRegistryOptions,
+} from "./loader/SdkRegistry";
 export {
   DEFAULT_API_URL,
   DEFAULT_CALLBACK_PARAM,
   DEFAULT_VERSION,
   appendCallback,
   createBaiduSdkUrl,
+  createCallbackName,
+  fingerprintApiUrl,
   fingerprintConfig,
   hash,
   normalizeApiUrl,

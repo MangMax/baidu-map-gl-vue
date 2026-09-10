@@ -1,0 +1,40 @@
+/**
+ * 复用页面已有全局
+ *
+ * 「探测 → 校验 → 组装」是三个 v4 Provider 共用的第一步：页面里可能已经由宿主
+ * 页面、其他构建产物或其他 Provider 加载好 `BMap`，此时不应该再插入 script，而是
+ * 校验结构、解析版本来源后直接复用。抽在这里，避免三个 Provider 各写一份而漂移。
+ */
+import type { BMapLoadOptions } from "../url";
+import { createLoadedJsapiV4 } from "./loaded";
+import { assertJsapiV4Namespace, readJsapiV4Global, resolveExistingJsapiV4Version } from "./namespace";
+import type { JsapiV4ProviderId, LoadedJsapiV4 } from "./types";
+
+export interface ReuseExistingJsapiV4Input {
+  readonly providerId: JsapiV4ProviderId;
+  readonly options: BMapLoadOptions;
+  readonly fingerprint: string;
+}
+
+/**
+ * 全局已就绪时返回结构化结果；全局尚不存在时返回 `undefined`，由调用方继续走
+ * script 加载路径。命名空间不完整或版本不是 4.x 时直接抛错（可重试）。
+ */
+export function reuseExistingJsapiV4(
+  input: ReuseExistingJsapiV4Input,
+): LoadedJsapiV4 | undefined {
+  const present = readJsapiV4Global();
+  if (present === undefined) return undefined;
+
+  const namespace = assertJsapiV4Namespace(present, input.providerId);
+  const version = resolveExistingJsapiV4Version(namespace, input.providerId, input.options.version);
+  return createLoadedJsapiV4({
+    providerId: input.providerId,
+    mode: "existing-global",
+    version: version.version,
+    versionSource: version.source,
+    options: input.options,
+    fingerprint: input.fingerprint,
+    namespace,
+  });
+}

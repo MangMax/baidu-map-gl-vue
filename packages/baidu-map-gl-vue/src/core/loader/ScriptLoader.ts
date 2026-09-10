@@ -12,8 +12,8 @@
  */
 import { BMapError } from "../errors/BMapError";
 import { SharedLoadTask } from "./SharedLoadTask";
-import type { ScriptLoaderOptions } from "./SharedLoadTask";
-import { DEFAULT_CALLBACK_PARAM, resolveBrowserUrl } from "./url";
+import type { ScriptLoaderBaseOptions, ScriptLoaderOptions } from "./SharedLoadTask";
+import { DEFAULT_CALLBACK_PARAM, resolveBrowserUrl, type BMapLoadOptions } from "./url";
 
 export type {
   ScriptJsonpModeOptions,
@@ -55,6 +55,23 @@ export function getScriptKey(options: ScriptLoaderOptions): string {
     integrity: options.integrity,
     crossOrigin: options.crossOrigin,
   });
+}
+
+/** script 级运行时配置（不含 src / 就绪信号），Provider 之间共用同一映射。 */
+export type ScriptRuntimeOptions = Pick<
+  ScriptLoaderBaseOptions,
+  "timeout" | "nonce" | "integrity" | "crossOrigin" | "referrerPolicy"
+>;
+
+/** 把 `BMapLoadOptions` 上 script 级配置映射到 Loader 选项。 */
+export function scriptOptions(options: BMapLoadOptions): ScriptRuntimeOptions {
+  return {
+    timeout: options.timeout,
+    nonce: options.nonce,
+    integrity: options.integrity,
+    crossOrigin: options.crossOrigin,
+    referrerPolicy: options.referrerPolicy,
+  };
 }
 
 export class ScriptLoader {
