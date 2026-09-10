@@ -248,6 +248,59 @@ describe("SdkRegistry", () => {
     await expect(registry.load({ fingerprint: CONFIG_B, loader: async () => "b" })).resolves.toBe("b");
   });
 
+  it("releases the entry synchronously so an immediate retry starts a new task", async () => {
+    const registry = new SdkRegistry({ domain: "BMap" });
+    const c1 = new AbortController();
+    const hangingLoader = vi.fn(
+      (signal?: AbortSignal) =>
+        new Promise((_resolve, reject) => {
+          signal?.addEventListener(
+            "abort",
+            () => reject(new BMapError("BMAP_PROVIDER_ABORTED", "aborted")),
+            { once: true },
+          );
+        }),
+    );
+
+    const first = registry.load({ fingerprint: CONFIG_A, loader: hangingLoader }, c1.signal);
+    await Promise.resolve();
+
+    c1.abort();
+    // 不等待任何异步收尾：立即用同一配置重试，必须启动新任务而不是订阅已取消的任务。
+    const retry = vi.fn(async () => "sdk-retry");
+    const same = registry.load({ fingerprint: CONFIG_A, loader: retry });
+
+    await expect(first).rejects.toMatchObject({ code: "BMAP_PROVIDER_ABORTED" });
+    await expect(same).resolves.toBe("sdk-retry");
+    expect(retry).toHaveBeenCalledTimes(1);
+  });
+
+  it("releases the occupancy synchronously so another config can load right away", async () => {
+    const registry = new SdkRegistry({ domain: "BMap" });
+    const c1 = new AbortController();
+    const hangingLoader = vi.fn(
+      (signal?: AbortSignal) =>
+        new Promise((_resolve, reject) => {
+          signal?.addEventListener(
+            "abort",
+            () => reject(new BMapError("BMAP_PROVIDER_ABORTED", "aborted")),
+            { once: true },
+          );
+        }),
+    );
+
+    const first = registry.load({ fingerprint: CONFIG_A, loader: hangingLoader }, c1.signal);
+    await Promise.resolve();
+
+    c1.abort();
+    const other = vi.fn(async () => "sdk-other");
+    const second = registry.load({ fingerprint: CONFIG_B, loader: other });
+
+    await expect(first).rejects.toMatchObject({ code: "BMAP_PROVIDER_ABORTED" });
+    await expect(second).resolves.toBe("sdk-other");
+    expect(other).toHaveBeenCalledTimes(1);
+  });
+
   it("keeps enforcement after clear() and isolates domains", async () => {
     const registry = new SdkRegistry({ domain: "BMap" });
     await registry.load({ fingerprint: CONFIG_A, loader: async () => "a" });

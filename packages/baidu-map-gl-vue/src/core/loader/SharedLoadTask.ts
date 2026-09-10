@@ -28,8 +28,19 @@ export interface ScriptLoaderBaseOptions {
   referrerPolicy?: ReferrerPolicy;
   /** 成功后是否保留 script 元素；默认 `keep`（百度主 SDK 行为）。失败一律移除。 */
   retention?: "keep" | "remove-after-load";
-  /** 从全局读取导出对象；JSONP 回调带实参时以实参优先。 */
+  /**
+   * 从全局读取导出对象；JSONP 回调带实参时以实参优先。
+   *
+   * 它只是**取值**的兜底，不是必经的校验步骤——回调带实参时根本不会执行。
+   * 需要「脚本加载成功 ≠ SDK 可用」的把关时请用 `assertReady`。
+   */
   exportGetter?: () => unknown;
+  /**
+   * 成功前校验（必经）：结果已确定（回调实参优先，否则 `exportGetter`）但**尚未提交成功**。
+   *
+   * 抛出即视为本次加载失败：不写成功缓存、移除 script、任务进入失败路径，因此可重试。
+   */
+  assertReady?: (result: unknown) => void;
 }
 
 export interface ScriptLoadModeOptions extends ScriptLoaderBaseOptions {
@@ -333,6 +344,20 @@ export class SharedLoadTask {
           cause instanceof BMapError
             ? cause
             : new BMapError("BMAP_SDK_LOAD_FAILED", "SDK export getter failed", { cause }),
+        );
+        return;
+      }
+    }
+    // 成功前校验是**必经**的：无论结果来自回调实参还是 exportGetter 都会执行，
+    // 因此「脚本加载成功但 SDK 不可用」不会先写入成功缓存（否则重试会命中缓存）。
+    if (this.options.assertReady) {
+      try {
+        this.options.assertReady(result);
+      } catch (cause) {
+        this.fail(
+          cause instanceof BMapError
+            ? cause
+            : new BMapError("BMAP_SDK_LOAD_FAILED", "SDK ready assertion failed", { cause }),
         );
         return;
       }

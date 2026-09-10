@@ -22,6 +22,7 @@ import { BMapError } from "../../errors/BMapError";
 import { BaiduJsapiV4Provider, baiduJsapiV4Provider } from "./BaiduJsapiV4Provider";
 import { existingGlobalV4Provider } from "./ExistingGlobalV4Provider";
 import { CustomScriptV4Provider, customScriptV4Provider } from "./CustomScriptV4Provider";
+import { resetRejectedJsapiV4GlobalsForTests } from "./namespace";
 
 const COMPLETE_NAMESPACE = { Map: () => {}, Point: () => {}, Marker: () => {} };
 const AK = "ak-abcdef123456";
@@ -68,7 +69,9 @@ function createFakeLoader(onReady?: () => void) {
     void options;
     onReady?.();
   });
-  return { load, loader: { load } as unknown as ScriptLoader };
+  // `clear` 属于 ScriptLoader 的公开面（Provider 在失败时用它失效过期缓存）。
+  const clear = vi.fn();
+  return { load, clear, loader: { load, clear } as unknown as ScriptLoader };
 }
 
 function newDomain(): SdkRegistry {
@@ -79,6 +82,8 @@ afterEach(() => {
   delete (globalThis as { BMap?: unknown }).BMap;
   delete (document as unknown as Record<string, unknown>).body;
   resetGlobalCallbackRegistryForTests();
+  // 残留标记是 realm 级 WeakSet：用例之间清空，避免互相影响。
+  resetRejectedJsapiV4GlobalsForTests();
 });
 
 describe("BaiduJsapiV4Provider", () => {
@@ -137,6 +142,60 @@ describe("BaiduJsapiV4Provider", () => {
     await expect(second).resolves.toMatchObject({ engine: "jsapi-v4" });
   });
 
+  it("带实参的 JSONP 回调同样必须通过成功前校验", async () => {
+    const created = trackScripts();
+    const provider = baiduJsapiV4Provider({ registry: newDomain() });
+
+    const first = provider.load({ ak: AK });
+    await Promise.resolve();
+    const name = jsonpCallbackNameOf(created[0]);
+    // 非标准 / 自托管入口可能给回调传实参：校验不能因此被绕过（回调实参优先只是取值约定）。
+    (window as unknown as Record<string, (payload: unknown) => void>)[name]({ ok: true });
+
+    await expect(first).rejects.toThrow(/namespace is missing/);
+    expect(created[0].parentNode).toBeNull();
+
+    // 失败未写入底层成功缓存：重试必须重新插入 script，并且这次能够成功。
+    const second = provider.load({ ak: AK });
+    await Promise.resolve();
+    expect(created).toHaveLength(2);
+    installGlobal(COMPLETE_NAMESPACE);
+    invokeGlobalCallback(jsonpCallbackNameOf(created[1]));
+    await expect(second).resolves.toMatchObject({ engine: "jsapi-v4" });
+  });
+
+  it("自建脚本残留的残缺全局不阻断重试，也不会被删除", async () => {
+    const created = trackScripts();
+    const provider = baiduJsapiV4Provider({ registry: newDomain() });
+    const partial = { Map: () => {}, Point: () => {} };
+
+    const first = provider.load({ ak: AK });
+    await Promise.resolve();
+    installGlobal(partial);
+    invokeGlobalCallback(jsonpCallbackNameOf(created[0]));
+    await expect(first).rejects.toThrow(/Marker/);
+    expect(created[0].parentNode).toBeNull();
+
+    // 不手动清理全局：第二次调用仍须有机会重新插入 script。
+    const second = provider.load({ ak: AK });
+    await Promise.resolve();
+    expect(created).toHaveLength(2);
+    installGlobal(COMPLETE_NAMESPACE);
+    invokeGlobalCallback(jsonpCallbackNameOf(created[1]));
+    await expect(second).resolves.toMatchObject({ engine: "jsapi-v4" });
+    // 宿主 / 外部对象没有被本库删除。
+    expect(partial).toBeDefined();
+  });
+
+  it("宿主预先存在的残缺全局明确失败，且不插入 script", async () => {
+    installGlobal({ Map: () => {}, Point: () => {} });
+    const fake = createFakeLoader();
+    const provider = new BaiduJsapiV4Provider({ loader: fake.loader, registry: newDomain() });
+
+    await expect(provider.load({ ak: AK })).rejects.toThrow(/Marker/);
+    expect(fake.load).not.toHaveBeenCalled();
+  });
+
   it("命名空间缺少关键成员时失败，且不残留全局 callback", async () => {
     const created = trackScripts();
     const provider = baiduJsapiV4Provider({ registry: newDomain() });
@@ -161,7 +220,7 @@ describe("BaiduJsapiV4Provider", () => {
       installGlobal(COMPLETE_NAMESPACE);
     });
     const provider = new BaiduJsapiV4Provider({
-      loader: { load } as unknown as ScriptLoader,
+      loader: { load, clear: vi.fn() } as unknown as ScriptLoader,
       registry: domain,
     });
 
@@ -377,6 +436,29 @@ describe("CustomScriptV4Provider", () => {
   it("空 scriptSrc 直接拒绝", () => {
     expect(() => customScriptV4Provider("")).toThrow(BMapError);
     expect(() => customScriptV4Provider("")).toThrow(/non-empty scriptSrc/);
+  });
+
+  it("自托管入口的版本校验也发生在成功提交之前（失败可重试）", async () => {
+    const created = trackScripts();
+    const provider = customScriptV4Provider("https://sdk.example.com/api?v=4.0", {
+      registry: newDomain(),
+      mode: "load",
+    });
+
+    const first = provider.load({ ak: AK });
+    await Promise.resolve();
+    // 成员完整但版本不是 4.x：必须在底层提交成功之前被拒绝。
+    installGlobal({ ...COMPLETE_NAMESPACE, VERSION: "3.0" });
+    created[0].dispatchEvent(new Event("load"));
+    await expect(first).rejects.toThrow(/not JSAPI 4\.0/);
+    expect(created[0].parentNode).toBeNull();
+
+    const second = provider.load({ ak: AK });
+    await Promise.resolve();
+    expect(created).toHaveLength(2);
+    installGlobal(COMPLETE_NAMESPACE);
+    created[1].dispatchEvent(new Event("load"));
+    await expect(second).resolves.toMatchObject({ engine: "jsapi-v4" });
   });
 
   it("自托管入口的版本以全局自述为准", async () => {

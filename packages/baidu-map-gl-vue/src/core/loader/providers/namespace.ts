@@ -113,6 +113,64 @@ export function probeJsapiV4Version(value: unknown): string | undefined {
   return undefined;
 }
 
+/* -------------------------------------------------------------------------- */
+/* 失败残留标记                                                                */
+/* -------------------------------------------------------------------------- */
+
+/**
+ * 本 realm 内「由本库某次加载产生、但未通过校验」的全局对象。
+ *
+ * 用来区分两种残缺全局：
+ * - **宿主预先提供**的全局残缺 → 明确失败，不替宿主做决定；
+ * - **本库本次加载留下**的残缺残留（例如脚本先补了部分成员、或加载本身失败）
+ *   → 不该阻断重试，调用方应能重新插入 script。
+ *
+ * 只按对象身份记录，用 `WeakSet` 不阻止回收；**从不删除**任何全局对象。
+ */
+let rejectedGlobals = new WeakSet<object>();
+
+function isObjectLike(value: unknown): value is object {
+  return (typeof value === "object" && value !== null) || typeof value === "function";
+}
+
+/** 标记一个全局对象为「本库本次加载产生的残缺残留」。 */
+export function markRejectedJsapiV4Global(value: unknown): void {
+  if (isObjectLike(value)) rejectedGlobals.add(value);
+}
+
+export function isRejectedJsapiV4Global(value: unknown): boolean {
+  return isObjectLike(value) && rejectedGlobals.has(value);
+}
+
+/** 仅测试使用：清空残留标记。 */
+export function resetRejectedJsapiV4GlobalsForTests(): void {
+  rejectedGlobals = new WeakSet<object>();
+}
+
+/**
+ * 「就绪」判定，用作 Loader 的成功前校验（`assertReady`）。
+ *
+ * 与直接调用 `requireJsapiV4Global` 的区别：失败时会把**当前全局**登记为本次加载残留——
+ * 全局存在却不满足契约，说明多半是这次脚本的产物（分阶段初始化 / 版本不符），
+ * 因此不该在下次重试时被 `reuseExistingJsapiV4` 当成宿主全局而挡掉加载。
+ * 宿主提供的可用全局不会走到这里（能复用就复用了）。
+ *
+ * @param extra 额外的契约检查（例如「全局自述版本必须是 4.x」）
+ */
+export function assertJsapiV4Ready(
+  providerId: string,
+  extra?: (namespace: Record<string, unknown>) => void,
+): Record<string, unknown> {
+  try {
+    const namespace = requireJsapiV4Global(providerId);
+    extra?.(namespace);
+    return namespace;
+  } catch (error) {
+    markRejectedJsapiV4Global(readJsapiV4Global());
+    throw error;
+  }
+}
+
 /**
  * 校验版本号确实属于 JSAPI 4.0（Stable 单引擎基线）。
  * 不匹配即失败——否则会把 `BMapGL` / 3.0 时代的全局当成 v4 使用。

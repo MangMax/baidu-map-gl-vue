@@ -33,6 +33,7 @@ export {
   createLoadedJsapiV4,
   customScriptV4Provider,
   existingGlobalV4Provider,
+  loadJsapiV4Script,
   readJsapiV4Global,
   reuseExistingJsapiV4,
 } from "./loader/providers/index";
@@ -48,6 +49,7 @@ export type {
   JsapiV4ProviderOptions,
   JsapiV4ScriptMode,
   JsapiV4VersionSource,
+  LoadJsapiV4ScriptInput,
   LoadedJsapiV4,
   ReuseExistingJsapiV4Input,
 } from "./loader/providers/index";

@@ -13,6 +13,8 @@ export {
 } from "./CustomScriptV4Provider";
 export { createLoadedJsapiV4 } from "./loaded";
 export type { CreateLoadedJsapiV4Input } from "./loaded";
+export { loadJsapiV4Script } from "./load";
+export type { LoadJsapiV4ScriptInput } from "./load";
 export { reuseExistingJsapiV4 } from "./reuse";
 export type { ReuseExistingJsapiV4Input } from "./reuse";
 export {
@@ -20,11 +22,15 @@ export {
   JSAPI_V4_REQUIRED_MEMBERS,
   JSAPI_V4_VERSION_PROBE_KEYS,
   assertJsapiV4Namespace,
+  assertJsapiV4Ready,
   assertJsapiV4Version,
   findMissingJsapiV4Members,
   isJsapiV4Namespace,
+  isRejectedJsapiV4Global,
+  markRejectedJsapiV4Global,
   probeJsapiV4Version,
   readJsapiV4Global,
+  resetRejectedJsapiV4GlobalsForTests,
   resolveExistingJsapiV4Version,
 } from "./namespace";
 export type {

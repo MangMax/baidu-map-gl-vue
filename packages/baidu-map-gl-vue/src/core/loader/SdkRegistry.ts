@@ -8,6 +8,9 @@
  *   就被拒绝，避免首次并发请求不同 AK / 版本时各自插入一个 script；
  * - 同一 fingerprint 只启动一次底层任务，但**每个消费者独立订阅**：`signal` 一一对应，
  *   取消某个消费者不影响其它消费者，只有最后一个消费者离开时才取消底层任务；
+ * - 最后一个消费者取消时**同步**释放条目与配置占用（不等底层 Promise 异步收尾），
+ *   因此「abort 之后同一同步回合内重试」既不会命中已取消的任务，也不会被过期占用挡住；
+ *   旧任务的异步收尾带代次所有权检查，不会清掉新任务的状态；
  * - 加载只接受**请求级 loader**，registry 不再持有具体加载实现，也不再读取
  *   `window` / `document`，因此 SSR 导入安全、可脱离 DOM 单测；
  * - 失败 / 取消后条目与占用一并释放，允许下一次重试，不残留半成品状态。
@@ -165,7 +168,7 @@ export class SdkRegistry {
     if (signal?.aborted) return Promise.reject(createConsumerAbortError());
 
     const entry = existing ?? this.start<T>(request, fingerprint);
-    return this.subscribe(entry, signal) as Promise<T>;
+    return this.subscribe(entry, fingerprint, signal) as Promise<T>;
   }
 
   /** 移除全部条目（测试 / 强制重新加载用）；不改变域内已就绪配置。 */
@@ -204,24 +207,45 @@ export class SdkRegistry {
   }
 
   private settle(entry: RegistryEntry, fingerprint: string, ok: boolean, value: unknown): void {
+    // 只有仍是该指纹当前任务的 entry 才有权更新域状态：任务可能已被取消并被新任务取代，
+    // 此时异步 settle 不得清掉新任务的占用、也不得登记过期结果。
+    const isCurrent = this.entries.get(fingerprint) === entry;
     entry.settled = true;
     if (ok) {
       entry.status = "ready";
       entry.result = value;
       // 先登记「已就绪配置」，再唤醒消费者，避免消费者重入时读到空的占用。
-      this.loadedFingerprint ??= fingerprint;
-    } else if (this.entries.get(fingerprint) === entry) {
+      if (isCurrent) this.loadedFingerprint ??= fingerprint;
+    } else if (isCurrent) {
       // 失败后移除，允许下次重试。
       this.entries.delete(fingerprint);
     }
+    if (isCurrent && this.occupiedFingerprint === fingerprint) {
+      this.occupiedFingerprint = undefined;
+    }
+  }
+
+  /**
+   * 同步释放一个被取消的任务：**不能**等底层 Promise 异步 settle。
+   * 否则「abort 之后同一同步回合内重试」会命中已取消的 entry，或被尚未释放的占用挡住。
+   */
+  private cancelEntry(entry: RegistryEntry, fingerprint: string): void {
+    entry.settled = true;
+    if (this.entries.get(fingerprint) === entry) this.entries.delete(fingerprint);
     if (this.occupiedFingerprint === fingerprint) this.occupiedFingerprint = undefined;
+    // 聚合信号驱动底层任务取消（ScriptLoader 会据此取消共享 script）。
+    entry.controller.abort();
   }
 
   /**
    * 为单个消费者登记等待。`signal` 只影响该消费者；
-   * 同一任务上的最后一个消费者离开时才 abort 聚合信号，取消底层任务。
+   * 同一任务上的最后一个消费者离开时，才同步释放 entry / 占用并取消底层任务。
    */
-  private subscribe(entry: RegistryEntry, signal?: AbortSignal): Promise<unknown> {
+  private subscribe(
+    entry: RegistryEntry,
+    fingerprint: string,
+    signal?: AbortSignal,
+  ): Promise<unknown> {
     entry.consumers++;
     return new Promise<unknown>((resolve, reject) => {
       let done = false;
@@ -230,7 +254,7 @@ export class SdkRegistry {
         done = true;
         signal?.removeEventListener("abort", onAbort);
         entry.consumers--;
-        if (entry.consumers === 0 && !entry.settled) entry.controller.abort();
+        if (entry.consumers === 0 && !entry.settled) this.cancelEntry(entry, fingerprint);
       };
       const onAbort = () => {
         if (done) return;

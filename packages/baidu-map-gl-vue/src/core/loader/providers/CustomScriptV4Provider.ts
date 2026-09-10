@@ -11,7 +11,6 @@
 import { BMapError } from "../../errors/BMapError";
 import { SdkRegistry, getProcessSdkRegistry } from "../SdkRegistry";
 import { ScriptLoader, scriptOptions } from "../ScriptLoader";
-import type { ScriptLoaderOptions } from "../SharedLoadTask";
 import type { BMapLoadOptions } from "../url";
 import {
   DEFAULT_CALLBACK_PARAM,
@@ -20,10 +19,11 @@ import {
   fingerprintConfig,
 } from "../url";
 import { createLoadedJsapiV4 } from "./loaded";
+import { loadJsapiV4Script } from "./load";
 import {
   JSAPI_V4_DOMAIN,
+  assertJsapiV4Ready,
   assertSupportedJsapiV4Version,
-  requireJsapiV4Global,
   resolveExistingJsapiV4Version,
 } from "./namespace";
 import { reuseExistingJsapiV4 } from "./reuse";
@@ -64,7 +64,7 @@ export class CustomScriptV4Provider implements JsapiV4Provider {
   }
 
   getCacheKey(options: BMapLoadOptions): string {
-    // only JSONP 模式下回调参数由 Loader 管理（会被本次回调名覆盖），必须从身份中剔除；
+    // 只有 JSONP 模式下回调参数由 Loader 管理（会被本次回调名覆盖），必须从身份中剔除；
     // `load` 模式下它只是入口 URL 的普通 query，漏掉会把不同租户入口合并成同一配置。
     const managedCallbackParam =
       this.mode === "jsonp" ? (options.callbackParam ?? DEFAULT_CALLBACK_PARAM) : null;
@@ -99,25 +99,30 @@ export class CustomScriptV4Provider implements JsapiV4Provider {
     const src = callbackName
       ? appendCallback(target, callbackName, options.callbackParam)
       : target;
-    const loadOptions: ScriptLoaderOptions = callbackName
-      ? {
-          mode: "jsonp",
-          src,
-          callbackName,
-          callbackParam: options.callbackParam,
-          exportGetter: () => requireJsapiV4Global(this.id),
-          ...scriptOptions(options),
-        }
-      : {
-          mode: "load",
-          src,
-          exportGetter: () => requireJsapiV4Global(this.id),
-          ...scriptOptions(options),
-        };
 
-    await this.loader.load(loadOptions, signal);
+    // 成功前校验（必经）：成员完整性 + 版本来源都算「就绪」的一部分。
+    // 版本策略与 CDN 不同——自托管入口不由我们拼 `v=`，因此以全局自述为准。
+    const assertReady = () => {
+      assertJsapiV4Ready(this.id, (namespace) => {
+        resolveExistingJsapiV4Version(namespace, this.id, options.version);
+      });
+    };
+    const namespace = await loadJsapiV4Script({
+      loader: this.loader,
+      providerId: this.id,
+      signal,
+      loadOptions: callbackName
+        ? {
+            mode: "jsonp",
+            src,
+            callbackName,
+            callbackParam: options.callbackParam,
+            assertReady,
+            ...scriptOptions(options),
+          }
+        : { mode: "load", src, assertReady, ...scriptOptions(options) },
+    });
 
-    const namespace = requireJsapiV4Global(this.id);
     // 自托管入口不由我们拼 `v=`，因此版本以全局自述为准，读不到才回退声明值。
     const resolved = resolveExistingJsapiV4Version(namespace, this.id, options.version);
     return createLoadedJsapiV4({

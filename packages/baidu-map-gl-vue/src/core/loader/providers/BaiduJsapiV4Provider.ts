@@ -14,10 +14,11 @@ import { ScriptLoader, scriptOptions } from "../ScriptLoader";
 import type { BMapLoadOptions } from "../url";
 import { DEFAULT_VERSION, createBaiduSdkUrl, createCallbackName, fingerprintConfig } from "../url";
 import { createLoadedJsapiV4 } from "./loaded";
+import { loadJsapiV4Script } from "./load";
 import {
   JSAPI_V4_DOMAIN,
+  assertJsapiV4Ready,
   assertSupportedJsapiV4Version,
-  requireJsapiV4Global,
 } from "./namespace";
 import { reuseExistingJsapiV4 } from "./reuse";
 import type { JsapiV4Provider, JsapiV4ProviderOptions, LoadedJsapiV4 } from "./types";
@@ -72,20 +73,23 @@ export class BaiduJsapiV4Provider implements JsapiV4Provider {
       },
       callbackName,
     );
-    await this.loader.load(
-      {
+    const namespace = await loadJsapiV4Script({
+      loader: this.loader,
+      providerId: this.id,
+      signal,
+      loadOptions: {
         mode: "jsonp",
         src: url.toString(),
         callbackName,
         callbackParam: options.callbackParam,
-        // 校验必须发生在底层「成功提交」之前：否则 Provider 侧校验失败时，底层已经把
-        // 这次加载记为成功并缓存，重试会直接命中缓存、不再插入 script，失败的 script
-        // 也不会被回收（见 #57 评审 P2）。
-        exportGetter: () => requireJsapiV4Global(this.id),
+        // 成功前校验（必经）：命名空间缺失 / 不完整都算本次加载失败——
+        // 底层因此不写成功缓存、移除 script，重试才会真的重新插入。
+        assertReady: () => {
+          assertJsapiV4Ready(this.id);
+        },
         ...scriptOptions(options),
       },
-      signal,
-    );
+    });
 
     return createLoadedJsapiV4({
       providerId: this.id,
@@ -96,7 +100,7 @@ export class BaiduJsapiV4Provider implements JsapiV4Provider {
       options,
       fingerprint,
       apiUrl: url.toString(),
-      namespace: requireJsapiV4Global(this.id),
+      namespace,
     });
   }
 }

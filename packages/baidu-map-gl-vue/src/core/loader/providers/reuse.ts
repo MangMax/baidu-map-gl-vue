@@ -7,7 +7,12 @@
  */
 import type { BMapLoadOptions } from "../url";
 import { createLoadedJsapiV4 } from "./loaded";
-import { assertJsapiV4Namespace, readJsapiV4Global, resolveExistingJsapiV4Version } from "./namespace";
+import {
+  assertJsapiV4Namespace,
+  isRejectedJsapiV4Global,
+  readJsapiV4Global,
+  resolveExistingJsapiV4Version,
+} from "./namespace";
 import type { JsapiV4ProviderId, LoadedJsapiV4 } from "./types";
 
 export interface ReuseExistingJsapiV4Input {
@@ -18,7 +23,11 @@ export interface ReuseExistingJsapiV4Input {
 
 /**
  * 全局已就绪时返回结构化结果；全局尚不存在时返回 `undefined`，由调用方继续走
- * script 加载路径。命名空间不完整或版本不是 4.x 时直接抛错（可重试）。
+ * script 加载路径。命名空间不完整或版本不是 4.x 时，按来源分别处理：
+ *
+ * - **宿主提供**的全局不可用 → 直接抛错（不替宿主做决定）；
+ * - **本库本次加载残留**的全局不可用（见 `markRejectedJsapiV4Global`）→ 返回 `undefined`，
+ *   让调用方重新插入 script；否则一次失败就会永久挡住重试。
  */
 export function reuseExistingJsapiV4(
   input: ReuseExistingJsapiV4Input,
@@ -26,15 +35,24 @@ export function reuseExistingJsapiV4(
   const present = readJsapiV4Global();
   if (present === undefined) return undefined;
 
-  const namespace = assertJsapiV4Namespace(present, input.providerId);
-  const version = resolveExistingJsapiV4Version(namespace, input.providerId, input.options.version);
-  return createLoadedJsapiV4({
-    providerId: input.providerId,
-    mode: "existing-global",
-    version: version.version,
-    versionSource: version.source,
-    options: input.options,
-    fingerprint: input.fingerprint,
-    namespace,
-  });
+  try {
+    const namespace = assertJsapiV4Namespace(present, input.providerId);
+    const version = resolveExistingJsapiV4Version(
+      namespace,
+      input.providerId,
+      input.options.version,
+    );
+    return createLoadedJsapiV4({
+      providerId: input.providerId,
+      mode: "existing-global",
+      version: version.version,
+      versionSource: version.source,
+      options: input.options,
+      fingerprint: input.fingerprint,
+      namespace,
+    });
+  } catch (error) {
+    if (isRejectedJsapiV4Global(present)) return undefined;
+    throw error;
+  }
 }
