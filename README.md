@@ -102,10 +102,6 @@ v3 架构：所有 raw `BMapGL` 调用收进 `src/driver`（geometry/map/overlay
 - 官方类型包 `@baidumap/jsapi-v4-types` 精确锁定为开发期依赖，不进入运行时 bundle；官方 Skill `bmap-jsapi-v4` 通过 `skills` CLI 管理，仅作开发参考。
 - 完整决策、回滚边界与非目标见 [ADR 2026-09-10](./docs/adr/2026-09-10-jsapi-v4-only-baseline.md)。
 
-### Roadmap
-
-v3 按「前置审计 → v4 决策与边界 → v4 Loader/Provider → v4 Driver → 默认切换与删除 BMapGL → Vue Map/Overlay API → 原生数据/服务/插件 → 包与发布冻结 → Stable」推进，总追踪见 [issue #12](https://github.com/MangMax/baidu-map-gl-vue/issues/12)。
-
 ## <img src="https://raw.githubusercontent.com/Tarikul-Islam-Anik/Animated-Fluent-Emojis/master/Emojis/Objects/Hammer%20and%20Wrench.png" alt="Hammer and Wrench" width="25" height="25" /> 开发参与贡献
 
 ```bash
