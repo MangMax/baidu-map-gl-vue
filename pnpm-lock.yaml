@@ -239,6 +239,9 @@ importers:
         specifier: ^3.5.0
         version: 3.5.42(typescript@5.9.3)
     devDependencies:
+      '@baidumap/jsapi-v4-types':
+        specifier: 4.0.4
+        version: 4.0.4
       '@microsoft/api-extractor':
         specifier: ^7.52.0
         version: 7.59.0(@types/node@26.4.1)
@@ -780,6 +783,9 @@ packages:
 
   '@baidumap/jsapi-plugin-draw@2.0.0':
     resolution: {integrity: sha512-K9XpDpralI2hQimIwzMktm+D859NbInOu7hnT0x7WysyB5upWTJ+yr13WyL/0QTx7SkbASCuEkUizpkjTBrFlg==}
+
+  '@baidumap/jsapi-v4-types@4.0.4':
+    resolution: {integrity: sha512-zE4IDAzHK5MQJ17GIyu/m004cqWm843enqpP7xd5lkQwMsuNqrvgBxv+JbviQHJZOpp4T4mqQkabd5p/DLEkMA==}
 
   '@blazediff/core@1.9.1':
     resolution: {integrity: sha512-ehg3jIkYKulZh+8om/O25vkvSsXXwC+skXmyA87FFx6A/45eqOkZsBltMw/TVteb0mloiGT8oGRTcjRAz66zaA==}
@@ -5137,6 +5143,8 @@ snapshots:
       '@babel/helper-validator-identifier': 7.29.7
 
   '@baidumap/jsapi-plugin-draw@2.0.0': {}
+
+  '@baidumap/jsapi-v4-types@4.0.4': {}
 
   '@blazediff/core@1.9.1': {}
 

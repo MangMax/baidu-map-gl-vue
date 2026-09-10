@@ -30,8 +30,13 @@ export default defineConfig({
       bundleTypes: {
         bundledPackages: ['mitt'],
       },
-      // 不生成多余 .test.d.ts
-      exclude: ['src/**/*.test.ts', 'src/**/__tests__/**'],
+      // 不生成多余 .test.d.ts；类型边界 augmentation 只服务类型检查，
+      // 不进入公共声明产物（避免向消费者泄漏全局 BMap.* 与官方类型包引用）
+      exclude: [
+        'src/**/*.test.ts',
+        'src/**/__tests__/**',
+        'src/driver/jsapi-v4/types-reference.d.ts',
+      ],
       // 保留声明与源码结构对应,便于调试
       copyDtsFiles: true,
       insertTypesEntry: true,

@@ -1,0 +1,11 @@
+{
+  "version": 1,
+  "skills": {
+    "bmap-jsapi-v4": {
+      "source": "baidu-maps/jsapi-skills",
+      "sourceType": "github",
+      "skillPath": "skills/bmap-jsapi-v4/SKILL.md",
+      "computedHash": "21865b2c047f41f2da047394e81b31c4d6746d248c6960c40c53941034b0566e"
+    }
+  }
+}
