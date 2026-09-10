@@ -16,6 +16,7 @@
 import { existsSync, readFileSync, writeFileSync } from 'node:fs'
 import { dirname, relative, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
+import { freshModuleUrl } from './fresh-module-url.mts'
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..')
 const catalogPath = resolve(
@@ -34,7 +35,9 @@ interface Descriptor {
   runtimeOnly: boolean
 }
 
-const catalog = (await import(catalogPath + '?t=' + Date.now())) as {
+// 用 file: URL 而非 `catalogPath + '?t='`，否则 Windows 上会因
+// `C:\...` 被判为非法 scheme（ERR_UNSUPPORTED_ESM_URL_SCHEME）。
+const catalog = (await import(freshModuleUrl(catalogPath))) as {
   CAPABILITY_CATALOG: Record<string, Descriptor>
   CAPABILITY_IDS: readonly string[]
   CAPABILITY_FAMILIES: readonly string[]

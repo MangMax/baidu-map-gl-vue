@@ -12,13 +12,15 @@
 import { readFileSync, writeFileSync, existsSync } from 'node:fs'
 import { resolve, dirname } from 'node:path'
 import { fileURLToPath } from 'node:url'
+import { freshModuleUrl } from './fresh-module-url.mts'
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..')
 const manifestSrc = resolve(root, 'packages/baidu-map-gl-vue/src/manifest.ts')
 
 // 动态加载 manifest(纯数据 .ts,node --experimental-strip-types 可解析;
-// 避免正则对 oxfmt 格式化后的多行/双引号格式敏感)
-const { componentManifest } = (await import(manifestSrc + '?t=' + Date.now())) as {
+// 避免正则对 oxfmt 格式化后的多行/双引号格式敏感)。
+// 必须走 file: URL,直接拼 `path + '?t='` 在 Windows 上会被 ESM 加载器拒绝。
+const { componentManifest } = (await import(freshModuleUrl(manifestSrc))) as {
   componentManifest: { name: string; exportName: string }[]
 }
 const names = componentManifest.map((c) => ({ name: c.name, exportName: c.exportName }))
