@@ -59,9 +59,10 @@
 - 接入位置：`packages/baidu-map-gl-vue/tsconfig.build.json` → `compilerOptions.types`。
 - 边界文件：`packages/baidu-map-gl-vue/src/driver/jsapi-v4/types-reference.d.ts`。
   - 以 `/// <reference types="@baidumap/jsapi-v4-types" />` 声明唯一合法的全局 `BMap` 来源；
-  - 集中存放官方声明缺口的最小 augmentation，并注明「升级后重新核对、官方补齐即删除」。
+  - 集中存放官方声明缺口的最小 augmentation，并注明「升级后重新核对、官方补齐即删除」；
+  - 保留在声明构建的编译输入中（不得用 `exclude` 将其移出 Program），仅在声明写入阶段过滤，避免公共 `dist/*.d.ts` 泄漏 `BMap.*` 或官方类型包引用。
 - 迁移期冲突处理：构建 tsconfig 的 `include` 暂时收窄为 `types/shared/**/*.d.ts`，避免旧 `types/BMapGL` 的全局常量与官方 `BMap` 声明冲突；`types/BMapGL` 将在 M3A.3 删除。
-- 已验证：`pnpm typecheck:v3` 在 `skipLibCheck: false` 下通过；类型包为纯 `.d.ts`，构建产物不含其运行时代码。
+- 已验证：`pnpm typecheck:v3` 在 `skipLibCheck: false` 下通过；类型包为纯 `.d.ts`，构建产物与 npm tarball 均不含其运行时代码或 `BMap.*` 声明，consumer 包类型检查通过。
 
 ## Skill 使用细则
 
