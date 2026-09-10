@@ -3,7 +3,7 @@
   "description": "A Vue 3 baidu map gl Component Library. ",
   "version": "2.6.5",
   "scripts": {
-    "test:unit": "vitest run tests/behavior tests/__smoke__.test.ts",
+    "test:unit": "vitest run tests/behavior tests/__smoke__.test.ts packages",
     "test:performance": "vitest run tests/performance",
     "verify:manifest": "node scripts/collect-api-manifest.mts --check",
     "check:raw-sdk": "node --experimental-strip-types scripts/check-raw-sdk.mts",

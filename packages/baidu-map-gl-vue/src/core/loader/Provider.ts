@@ -1,15 +1,24 @@
 /**
  * BMapProvider
  *
- * Provider 是唯一允许处理 `window.BMapGL` 的边界。
+ * Provider 是唯一允许处理全局 SDK 命名空间的边界。
  * 内置实现:
- * - BaiduCdnProvider:在线 CDN 加载
- * - ExistingGlobalProvider:使用已存在的全局 BMapGL
+ * - BaiduCdnProvider:在线 CDN 加载（JSAPI 4.0 入口，见 url.ts）
+ * - ExistingGlobalProvider:使用已存在的全局 SDK
  * - CustomScriptProvider:离线/私有 apiUrl 或自定义 script
+ *
+ * NOTE(#17): v4 Provider（`LoadedJsapiV4`、默认全局与 Registry 收口）由 M3A.1 的
+ * SDK Registry / Provider issue 完成；此处仅适配本 issue 重构后的 Loader API，
+ * 全局读取保持向前兼容（优先 `BMap`，回退迁移期 `BMapGL`）。
  */
 import { BMapError } from "../errors/BMapError";
-import { createBaiduSdkUrl, appendCallback, fingerprintConfig, type BMapLoadOptions } from "./url";
-import { ScriptLoader } from "./ScriptLoader";
+import {
+  appendCallback,
+  createBaiduSdkUrl,
+  fingerprintConfig,
+  type BMapLoadOptions,
+} from "./url";
+import { ScriptLoader, type ScriptLoaderOptions } from "./ScriptLoader";
 import { SdkRegistry, getProcessSdkRegistry, type SdkLoader } from "./SdkRegistry";
 
 export interface BMapProvider {
@@ -20,6 +29,23 @@ export interface BMapProvider {
 
 function isClient(): boolean {
   return typeof window !== "undefined";
+}
+
+/** 迁移期全局读取：v4 目标为 `BMap`，旧实现暴露 `BMapGL`。 */
+function readGlobalSdk(): unknown {
+  const g = window as unknown as { BMap?: unknown; BMapGL?: unknown };
+  return g.BMap ?? g.BMapGL;
+}
+
+/** 把 `BMapLoadOptions` 上 script 级配置映射到 Loader 选项。 */
+function scriptOptions(options: BMapLoadOptions) {
+  return {
+    timeout: options.timeout,
+    nonce: options.nonce,
+    integrity: options.integrity,
+    crossOrigin: options.crossOrigin,
+    referrerPolicy: options.referrerPolicy,
+  };
 }
 
 export class BaiduCdnProvider implements BMapProvider {
@@ -36,26 +62,26 @@ export class BaiduCdnProvider implements BMapProvider {
     const sdkLoader: SdkLoader = async (options, signal) => {
       const callbackName = `__bmap_init_${Math.random().toString(36).slice(2, 10)}`;
       const url = createBaiduSdkUrl(
-        { ak: options.ak ?? "", version: options.version ?? "1.0" },
+        {
+          ak: options.ak ?? "",
+          apiUrl: options.apiUrl,
+          version: options.version,
+          callbackParam: options.callbackParam,
+        },
         callbackName,
       );
-      await this.loader.load(
-        {
-          src: url.toString(),
-          callbackName,
-          addCalToWindow: true,
-          exportGetter: () => (window as any).BMapGL,
-          timeout: options.timeout,
-          nonce: options.nonce,
-          integrity: options.integrity,
-          crossOrigin: options.crossOrigin,
-          referrerPolicy: options.referrerPolicy,
-        },
-        signal,
-      );
-      const api = (window as any).BMapGL;
+      const loadOptions: ScriptLoaderOptions = {
+        mode: "jsonp",
+        src: url.toString(),
+        callbackName,
+        callbackParam: options.callbackParam,
+        exportGetter: readGlobalSdk,
+        ...scriptOptions(options),
+      };
+      await this.loader.load(loadOptions, signal);
+      const api = readGlobalSdk();
       if (!api)
-        throw new BMapError("BMAP_SDK_LOAD_FAILED", "BMap SDK did not expose window.BMapGL");
+        throw new BMapError("BMAP_SDK_LOAD_FAILED", "BMap SDK did not expose global namespace");
       return api;
     };
     // 同 realm 进程级共享 registry（显式注入优先）
@@ -77,10 +103,10 @@ export class ExistingGlobalProvider implements BMapProvider {
     return "existing-global";
   }
   async load(): Promise<unknown> {
-    if (!isClient() || !(window as unknown as { BMapGL?: unknown }).BMapGL) {
-      throw new BMapError("BMAP_SDK_LOAD_FAILED", "window.BMapGL is not present");
+    if (!isClient() || !readGlobalSdk()) {
+      throw new BMapError("BMAP_SDK_LOAD_FAILED", "global BMap SDK is not present");
     }
-    return (window as unknown as { BMapGL: unknown }).BMapGL;
+    return readGlobalSdk();
   }
 }
 
@@ -100,29 +126,28 @@ export class CustomScriptProvider implements BMapProvider {
       return;
     }
     const sdkLoader: SdkLoader = async (options, signal) => {
-      const callbackName = options.apiUrl
+      // 只有离线 apiUrl 场景才走 JSONP；否则以 script load 事件就绪。
+      const useJsonp = Boolean(options.apiUrl);
+      const callbackName = useJsonp
         ? `__bmap_offline_${Math.random().toString(36).slice(2, 10)}`
         : undefined;
-      const src = options.apiUrl
-        ? appendCallback(this.scriptSrc || options.apiUrl, callbackName!)
+      const src = useJsonp
+        ? appendCallback(this.scriptSrc || options.apiUrl!, callbackName!, options.callbackParam)
         : this.scriptSrc;
-      await this.loader.load(
-        {
-          src,
-          callbackName,
-          addCalToWindow: Boolean(callbackName),
-          exportGetter: () => (window as any).BMapGL,
-          timeout: options.timeout,
-          nonce: options.nonce,
-          integrity: options.integrity,
-          crossOrigin: options.crossOrigin,
-          referrerPolicy: options.referrerPolicy,
-        },
-        signal,
-      );
-      const api = (window as any).BMapGL;
+      const loadOptions: ScriptLoaderOptions = callbackName
+        ? {
+            mode: "jsonp",
+            src,
+            callbackName,
+            callbackParam: options.callbackParam,
+            exportGetter: readGlobalSdk,
+            ...scriptOptions(options),
+          }
+        : { mode: "load", src, exportGetter: readGlobalSdk, ...scriptOptions(options) };
+      await this.loader.load(loadOptions, signal);
+      const api = readGlobalSdk();
       if (!api)
-        throw new BMapError("BMAP_SDK_LOAD_FAILED", "Custom SDK did not expose window.BMapGL");
+        throw new BMapError("BMAP_SDK_LOAD_FAILED", "Custom SDK did not expose global namespace");
       return api;
     };
     // custom-script 按 scriptSrc 命名空间共享，避免与 cdn loader 混用
@@ -143,6 +168,7 @@ export class CustomScriptProvider implements BMapProvider {
 }
 
 export function baiduCdnProvider(options?: Partial<BMapLoadOptions>): BaiduCdnProvider {
+  void options;
   return new BaiduCdnProvider();
 }
 
@@ -152,11 +178,11 @@ export function existingGlobalProvider(): ExistingGlobalProvider {
 
 /**
  * 全局 SDK 存在性探测（Loader 边界内）。
- * 组件/Composable/Runtime 不得直接读 `window.BMapGL`，统一经此判断。
+ * 组件/Composable/Runtime 不得直接读全局命名空间，统一经此判断。
  */
 export function hasExistingGlobalSdk(): boolean {
   if (!isClient()) return false;
-  return Boolean((window as unknown as { BMapGL?: unknown }).BMapGL);
+  return Boolean(readGlobalSdk());
 }
 
 export function customScriptProvider(scriptSrc: string): CustomScriptProvider {

@@ -1,200 +1,122 @@
 /**
  * ScriptLoader
  *
- * 进程级 script 加载器,支持:
- * - timeout / abort
- * - CSP nonce、SRI integrity、crossOrigin、referrerPolicy
- * - JSONP callback 唯一性与清理
- * - 失败后从缓存移除,允许重试
- * - SSR 安全(不执行加载)
+ * 进程级 script 加载器（M3A1-01 / issue #16）：
+ * - 模式由显式的 `mode: "load" | "jsonp"` 决定，不再隐式推断；
+ * - 相同配置并发调用共用一个底层 `<script>`（SharedLoadTask）；
+ * - 每个消费者使用独立 `AbortSignal`，取消互不影响；
+ * - 失败 / 超时 / 取消后移除缓存，允许重试；
+ * - SSR 安全（不执行加载）。
  *
- * Promise 创建后立即缓存，同 key 并发只创建一个 script。
- * 全路径释放，无残留 callback / listener / 超时 script。
+ * 资源释放见 `SharedLoadTask`：全路径清理 callback、abort listener、timer 与 script。
  */
 import { BMapError } from "../errors/BMapError";
+import { SharedLoadTask } from "./SharedLoadTask";
+import type { ScriptLoaderOptions } from "./SharedLoadTask";
+import { DEFAULT_CALLBACK_PARAM, resolveBrowserUrl } from "./url";
 
-export interface ScriptLoaderOptions {
-  src: string;
-  /** 全局 callback 名(JSONP),为空则用 onload */
-  callbackName?: string;
-  /** callback 挂载到 window 的 target(默认为 callbackName) */
-  addCalToWindow?: boolean;
-  exportGetter?: () => unknown;
-  timeout?: number;
-  nonce?: string;
-  integrity?: string;
-  crossOrigin?: "anonymous" | "use-credentials";
-  referrerPolicy?: ReferrerPolicy;
-  /** 成功后是否保留 script 元素。百度主 SDK 默认保留，失败 script 一律移除。 */
-  retention?: "keep" | "remove-after-load";
+export type {
+  ScriptJsonpModeOptions,
+  ScriptLoadModeOptions,
+  ScriptLoaderBaseOptions,
+  ScriptLoaderMode,
+  ScriptLoaderOptions,
+  SharedLoadTaskHooks,
+  SharedLoadTaskState,
+} from "./SharedLoadTask";
+export { SharedLoadTask } from "./SharedLoadTask";
+
+function isBrowser(): boolean {
+  return typeof window !== "undefined" && typeof document !== "undefined";
 }
 
-export interface ScriptRequestFingerprint {
-  src: string;
-  mode: "load" | "jsonp";
-  callbackParam?: string;
-  integrity?: string;
-  crossOrigin?: string;
-}
-
-const isClient = typeof window !== "undefined";
-
-/** 逻辑缓存 key：随机 callback 不参与 key，只区分 src/模式/完整性策略 */
-export function getScriptKey(input: {
-  src: string;
-  callbackName?: string;
-  addCalToWindow?: boolean;
-  integrity?: string;
-  crossOrigin?: string;
-}): string {
-  let src = input.src;
+/**
+ * 逻辑缓存 key：只区分 src / 模式 / 完整性策略。
+ *
+ * `src` 经 `resolveBrowserUrl` 归一，保证相对路径与绝对路径指向同一配置时去重。
+ * 仅在 `jsonp` 模式下剔除 **Loader 自己管理**的回调参数——它的取值是每次加载的
+ * 实现细节；`load` 模式下 `callback` 只是普通查询参数，必须完整保留。
+ * 自定义 `callbackParam` 时只剔除该参数名，`callback` 等其它参数一律保留。
+ */
+export function getScriptKey(options: ScriptLoaderOptions): string {
+  let src = options.src;
   try {
-    const url = new URL(src, typeof document !== "undefined" ? document.baseURI : "http://localhost/");
-    // Provider 将随机 callback 写入 URL；它是本次 script 的实现细节，不得破坏去重。
-    url.searchParams.delete(input.addCalToWindow === false ? "__unused_callback__" : "callback");
+    const url = resolveBrowserUrl(src);
+    if (options.mode === "jsonp") {
+      url.searchParams.delete(options.callbackParam ?? DEFAULT_CALLBACK_PARAM);
+    }
     src = url.toString();
   } catch {
     // 保留原 src，让非法 URL 继续由浏览器/加载流程报告错误。
   }
   return JSON.stringify({
     src,
-    mode: input.addCalToWindow === false ? "load" : "jsonp",
-    callbackParam: input.addCalToWindow === false ? undefined : "__bmap_callback__",
-    integrity: input.integrity,
-    crossOrigin: input.crossOrigin,
-  } satisfies ScriptRequestFingerprint);
+    mode: options.mode,
+    integrity: options.integrity,
+    crossOrigin: options.crossOrigin,
+  });
 }
 
 export class ScriptLoader {
-  private readonly cache = new Map<string, Promise<Record<string, unknown>>>();
+  /** 进行中的共享任务（创建即登记，保证并发同配置只创建一个 script）。 */
+  private readonly inFlight = new Map<string, SharedLoadTask>();
+  /** 成功结果缓存：全局 SDK 只需加载一次。 */
+  private readonly completed = new Map<string, unknown>();
 
-  load(options: ScriptLoaderOptions, signal?: AbortSignal): Promise<Record<string, unknown>> {
-    if (!isClient) {
+  load(options: ScriptLoaderOptions, signal?: AbortSignal): Promise<unknown> {
+    if (!isBrowser()) {
       return Promise.reject(
         new BMapError("BMAP_SDK_LOAD_FAILED", "SDK load requires a browser environment"),
       );
     }
+    // 已取消的 signal 优先于成功缓存：命中缓存也必须拒绝当前消费者，
+    // 但不清理共享缓存（其它消费者仍可复用）。
     if (signal?.aborted) {
       return Promise.reject(
         new BMapError("BMAP_PROVIDER_ABORTED", "SDK load aborted before start"),
       );
     }
     const key = getScriptKey(options);
-    const existing = this.cache.get(key);
-    if (existing) return existing;
-
-    // 先占位缓存，再执行真实加载，保证并发只创建一个 script
-    let resolveEntry!: (v: Record<string, unknown>) => void;
-    let rejectEntry!: (e: unknown) => void;
-    const pending = new Promise<Record<string, unknown>>((resolve, reject) => {
-      resolveEntry = resolve;
-      rejectEntry = reject;
-    });
-    // 占位期间失败允许重试
-    pending.catch(() => {
-      if (this.cache.get(key) === pending) {
-        this.cache.delete(key);
-      }
-    });
-    this.cache.set(key, pending);
-
-    const script = document.createElement("script");
-    script.src = options.src;
-    script.type = "text/javascript";
-    script.async = true;
-    if (options.integrity) script.integrity = options.integrity;
-    if (options.crossOrigin) script.crossOrigin = options.crossOrigin;
-    if (options.referrerPolicy) script.referrerPolicy = options.referrerPolicy;
-    if (options.nonce) script.nonce = options.nonce;
-
-    // 随机 callback 只是本次 script 元素的内部实现，不参与逻辑缓存 key
-    const callbackName =
-      options.callbackName ?? `__bmap_cb_${Math.random().toString(36).slice(2, 10)}`;
-    const useJsonp = options.addCalToWindow !== false;
-    const retention = options.retention ?? "keep";
-    let settled = false;
-    let resolvedSuccessfully = false;
-    let timeoutId: number | undefined;
-
-    const cleanup = () => {
-      if (timeoutId !== undefined) {
-        clearTimeout(timeoutId);
-        timeoutId = undefined;
-      }
-      signal?.removeEventListener("abort", onAbort);
-      script.removeEventListener("load", onLoad);
-      script.removeEventListener("error", onError);
-      if (!resolvedSuccessfully) {
-        // 失败/超时/abort 的 script 一律移除，避免残留执行
-        script.remove();
-      } else if (retention === "remove-after-load") {
-        script.remove();
-      }
-      if ((window as any)[callbackName]) {
-        delete (window as any)[callbackName];
-      }
-    };
-
-    const fail = (err: BMapError) => {
-      if (settled) return;
-      settled = true;
-      cleanup();
-      if (this.cache.get(key) === pending) {
-        this.cache.delete(key);
-      }
-      rejectEntry(err);
-    };
-
-    const succeed = (result: unknown) => {
-      if (settled) return;
-      settled = true;
-      resolvedSuccessfully = true;
-      cleanup();
-      const entry = { [callbackName]: result };
-      // 成功后用已决 Promise 替换占位，保持后续调用复用
-      this.cache.set(key, Promise.resolve(entry));
-      resolveEntry(entry);
-    };
-
-    const onLoad = () => succeed(options.exportGetter?.());
-    const onError = () => {
-      fail(new BMapError("BMAP_SDK_LOAD_FAILED", `Failed to load script: ${options.src}`));
-    };
-    const onAbort = () => {
-      fail(new BMapError("BMAP_PROVIDER_ABORTED", "SDK load aborted"));
-    };
-    const onTimeout = () => {
-      fail(
-        new BMapError(
-          "BMAP_SDK_LOAD_TIMEOUT",
-          `SDK load timed out after ${options.timeout}ms`,
-        ),
-      );
-    };
-
-    if (options.timeout) {
-      timeoutId = window.setTimeout(onTimeout, options.timeout);
+    if (this.completed.has(key)) {
+      return Promise.resolve(this.completed.get(key));
     }
 
-    if (useJsonp) {
-      (window as any)[callbackName] = () => {
-        succeed(options.exportGetter?.());
-      };
-    } else {
-      script.addEventListener("load", onLoad);
+    let task = this.inFlight.get(key);
+    if (!task) {
+      task = new SharedLoadTask(options, {
+        onSuccess: (result) => {
+          if (this.inFlight.get(key) === task) this.inFlight.delete(key);
+          this.completed.set(key, result);
+        },
+        onFailure: () => {
+          // 失败缓存移除：不污染下一次加载。
+          if (this.inFlight.get(key) === task) this.inFlight.delete(key);
+        },
+        onCancelled: () => {
+          if (this.inFlight.get(key) === task) this.inFlight.delete(key);
+        },
+      });
+      // 先登记 in-flight，再执行真实加载。
+      this.inFlight.set(key, task);
     }
-    script.addEventListener("error", onError);
-    signal?.addEventListener("abort", onAbort, { once: true });
-
-    document.body.appendChild(script);
-    return pending;
+    return task.subscribe(signal);
   }
 
-  clear(key: string) {
-    this.cache.delete(key);
+  /** 移除某配置的成功缓存（测试 / 强制重新加载用）。 */
+  clear(key: string): void {
+    this.completed.delete(key);
+    this.inFlight.delete(key);
   }
 
   get size(): number {
-    return this.cache.size;
+    return this.inFlight.size + this.completed.size;
+  }
+
+  get inFlightCount(): number {
+    return this.inFlight.size;
+  }
+
+  get completedCount(): number {
+    return this.completed.size;
   }
 }

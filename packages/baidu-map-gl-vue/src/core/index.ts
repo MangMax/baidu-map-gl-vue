@@ -25,12 +25,31 @@ export {
   existingGlobalProvider,
 } from "./loader/Provider";
 export type { BMapProvider } from "./loader/Provider";
-export { ScriptLoader } from "./loader/ScriptLoader";
-export type { ScriptLoaderOptions } from "./loader/ScriptLoader";
+export { ScriptLoader, getScriptKey } from "./loader/ScriptLoader";
+export type {
+  ScriptJsonpModeOptions,
+  ScriptLoadModeOptions,
+  ScriptLoaderBaseOptions,
+  ScriptLoaderMode,
+  ScriptLoaderOptions,
+} from "./loader/ScriptLoader";
+export { SharedLoadTask } from "./loader/SharedLoadTask";
+export type { SharedLoadTaskHooks, SharedLoadTaskState } from "./loader/SharedLoadTask";
 export { SdkRegistry } from "./loader/SdkRegistry";
 export type { SdkRegistryEntry, SdkLoader } from "./loader/SdkRegistry";
-export { appendCallback, createBaiduSdkUrl, fingerprintConfig, hash } from "./loader/url";
-export type { BMapLoadOptions } from "./loader/url";
+export {
+  DEFAULT_API_URL,
+  DEFAULT_CALLBACK_PARAM,
+  DEFAULT_VERSION,
+  appendCallback,
+  createBaiduSdkUrl,
+  fingerprintConfig,
+  hash,
+  normalizeApiUrl,
+  resolveBaseUrl,
+  resolveBrowserUrl,
+} from "./loader/url";
+export type { BMapLoadOptions, CrossOriginValue } from "./loader/url";
 export { MapRuntime } from "./runtime/MapRuntime";
 export type { MapRuntimeOptions } from "./runtime/MapRuntime";
 export { useMapResource } from "./composables/useMapResource";
