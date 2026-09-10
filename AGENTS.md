@@ -17,7 +17,7 @@
 | SDK version | Stable 目标 `4.0`（加载 `v=4.0`） |
 | 官方类型包 | `@baidumap/jsapi-v4-types` 精确 `4.0.4`（开发期依赖） |
 
-讨论「升级」时必须说明是哪一种版本。详见 `docs/adr/0016-jsapi-v4-only-baseline.md`。
+讨论「升级」时必须说明是哪一种版本。详见 `docs/adr/2026-09-10-jsapi-v4-only-baseline.md`。
 
 ## 不可违背的边界
 
@@ -72,3 +72,9 @@ npx skills update bmap-jsapi-v4
 - 使用规则：仅作为 `v=4.0` + 全局 `BMap` 的 API 参考；不得混用其他版本加载参数/命名空间；不得把 Skill 文件当作源码或运行时依赖。
 - 触发场景：开发、审查或排查百度地图 JavaScript API 4.0、`v=4.0` 加载器或全局 `BMap` 命名空间的代码时，先加载该 Skill 的对应 reference。
 - 详细说明：`docs/zh-CN/contributing/ai-development.md`。
+
+## 文档与 ADR
+
+- ADR 一律使用日期前缀命名：`docs/adr/YYYY-MM-DD-<slug>.md`（同日多条用 `<slug>` 区分）。
+- 涉及 SDK 基线、公共 API 契约、包发布策略的改动必须先写 ADR；已接受的 ADR 不原地改写，用新 ADR 取代。
+- ADR 索引：`docs/adr/README.md`。

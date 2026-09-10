@@ -22,7 +22,7 @@
 </div>
 </p>
 
-面向 Vue 3 的百度地图组件/hooks 库，开箱即用。`v3` 正处于从百度地图 JavaScript GL 版（`BMapGL`）迁移到 **JavaScript API 4.0**（`v=4.0`，全局 `BMap`）的过程中；Stable 将只支持 JSAPI 4.0 单引擎基线，详见 [ADR 0016](./docs/adr/0016-jsapi-v4-only-baseline.md)。
+面向 Vue 3 的百度地图组件/hooks 库，开箱即用。`v3` 正处于从百度地图 JavaScript GL 版（`BMapGL`）迁移到 **JavaScript API 4.0**（`v=4.0`，全局 `BMap`）的过程中；Stable 将只支持 JSAPI 4.0 单引擎基线，详见 [ADR 2026-09-10](./docs/adr/2026-09-10-jsapi-v4-only-baseline.md)。
 
 ## <img src="https://raw.githubusercontent.com/Tarikul-Islam-Anik/Animated-Fluent-Emojis/master/Emojis/Travel%20and%20places/Star.png" alt="Star" width="25" height="25" /> Star
 
@@ -100,7 +100,7 @@ v3 架构：所有 raw `BMapGL` 调用收进 `src/driver`（geometry/map/overlay
 
 - v3 Stable 的目标是 **单引擎**：只支持 `v=4.0` 与全局 `BMap`，不提供 `BMapGL` 回退；需要 `BMapGL` 请停留在 2.x。
 - 官方类型包 `@baidumap/jsapi-v4-types` 精确锁定为开发期依赖，不进入运行时 bundle；官方 Skill `bmap-jsapi-v4` 通过 `skills` CLI 管理，仅作开发参考。
-- 完整决策、回滚边界与非目标见 [ADR 0016](./docs/adr/0016-jsapi-v4-only-baseline.md)。
+- 完整决策、回滚边界与非目标见 [ADR 2026-09-10](./docs/adr/2026-09-10-jsapi-v4-only-baseline.md)。
 
 ### Roadmap
 

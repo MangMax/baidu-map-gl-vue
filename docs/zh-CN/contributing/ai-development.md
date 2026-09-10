@@ -13,7 +13,7 @@
 | SDK version | 百度地图 JSAPI 运行时版本 | Stable 目标 `4.0`（`v=4.0`） |
 | 官方类型包版本 | `@baidumap/jsapi-v4-types` | `4.0.4`（精确锁定） |
 
-决策依据见 [ADR 0016：冻结 JSAPI 4.0 单引擎基线](/adr/0016-jsapi-v4-only-baseline)。
+决策依据见 [ADR 2026-09-10：冻结 JSAPI 4.0 单引擎基线](/adr/2026-09-10-jsapi-v4-only-baseline)。
 
 ## 官方 Skill：`bmap-jsapi-v4`
 

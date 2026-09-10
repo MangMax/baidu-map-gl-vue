@@ -1,10 +1,10 @@
-# ADR 0016：冻结 JSAPI 4.0 单引擎基线
+# ADR 2026-09-10：冻结 JSAPI 4.0 单引擎基线
 
 - 状态：已接受（Accepted）
 - 日期：2026-09-10
 - 计划键：`M3A0-BASELINE`（issue #14，追踪 #12）
 - 取代：无
-- 相关：ADR 0015（若存在）、`packages/baidu-map-gl-vue/src/driver/types/bmap.ts`
+- 相关：`packages/baidu-map-gl-vue/src/driver/types/bmap.ts`
 
 ## 背景
 
