@@ -45,3 +45,6 @@ milestone-docs/
 # DimChrome 本地调试 profile(不提交)
 .dimchrome
 .dimchrome-profile
+
+# WorkBuddy 工作区本地数据(记忆/会话/缓存,不提交)
+.workbuddy/
