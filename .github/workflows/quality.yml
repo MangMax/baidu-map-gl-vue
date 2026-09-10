@@ -48,9 +48,11 @@ jobs:
       - name: Check capability matrix
         run: node --experimental-strip-types scripts/generate-capability-matrix.mts --check
 
-      # 类型边界:skipLibCheck=false 下校验官方类型 + 最小 augmentation 可合并
-      - name: Typecheck v3 (declaration boundary)
-        run: pnpm typecheck:v3
+      # NOTE: `pnpm typecheck:v3` 暂不进门禁 —— 它在 Linux 上无法通过，且原因在上游包：
+      #   @baidumap/jsapi-v4-types@4.0.4 的 index.d.ts:67 引用了 core/displayOptions.d.ts，
+      #   而实际文件名是 core/DisplayOptions.d.ts。macOS 大小写不敏感所以本地"通过"，
+      #   Linux 上解析失败 → DisplayOptions 未声明 → Map.d.ts / MapOptions.d.ts 报 TS2552。
+      #   待上游修正，或本仓库确定 workaround（如 entry 旁路 / skipLibCheck 之外的最小方案）后重新加入。
 
       # Behavior snapshot tests (data-driven, no external network/AK)
       - name: Build v3 artifacts for global bundle tests

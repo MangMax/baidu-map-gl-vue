@@ -71,6 +71,23 @@ npx skills update bmap-jsapi-v4
 - 入口文件 `src/driver/jsapi-v4/types-reference.d.ts` 只用三斜线引用官方类型与 augmentation 目录，本身不再内联声明。
 - 保持 `skipLibCheck: false`。升级类型包后必须重新核对 augmentation，官方补齐的声明要删除。
 
+### 已知问题：官方 `4.0.4` 的大小写引用缺陷
+
+`@baidumap/jsapi-v4-types@4.0.4/index.d.ts:67` 写的是 `/// <reference path="core/displayOptions.d.ts" />`，
+而发布产物中的真实文件名是 `core/DisplayOptions.d.ts`。在 macOS（默认大小写不敏感）上解析正常，
+在 Linux 上则依次报：
+
+```text
+error TS6053: File '.../core/displayOptions.d.ts' not found.
+error TS2552: Cannot find name 'DisplayOptions'.   // Map.d.ts / MapOptions.d.ts
+```
+
+因此 `pnpm typecheck:v3` **只能在大小写不敏感的文件系统上通过**，暂未纳入 CI
+（见 `.github/workflows/quality.yml` 中的 NOTE）。在修复前不要把它加回门禁，否则 CI 必然红。
+
+修复路径：等上游发布修正大小写的版本；或本仓库确定一个最小 workaround（例如绕过官方 `index.d.ts`
+入口、改引用 `core/DisplayOptions.d.ts`），并把结论补进本页与 ADR。
+
 ## SDK 边界：raw SDK 与公共声明
 
 边界配置的单一事实源是 `scripts/raw-sdk-boundary.mts`，源码门禁与公共声明门禁共用同一份规则与检测引擎（`scripts/raw-sdk-detector.mts`）。
@@ -132,7 +149,7 @@ npx skills update bmap-jsapi-v4
 ## 提交前验证
 
 ```bash
-pnpm typecheck:v3          # 官方类型接入后仍要求通过
+pnpm typecheck:v3          # 官方类型接入后仍要求通过（Linux 受上游包大小写缺陷影响，见「已知问题」）
 pnpm test:unit
 pnpm build:v3
 pnpm check:raw-sdk         # 禁区目录 raw SDK 边界
