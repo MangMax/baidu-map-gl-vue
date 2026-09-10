@@ -4,8 +4,6 @@
 
 `baidu-map-gl-vue`：Vue 3 的百度地图组件/hooks 库。
 
-v3 正处于从 JavaScript API GL v1（`BMapGL`）迁移到 JavaScript API 4.0（`v=4.0`，全局 `BMap`）的过程中，Stable 目标是 JSAPI 4.0 单引擎。
-
 工程：pnpm workspace（Node >= 24，pnpm >= 12），Vite + vue-tsc + Vitest + VitePress。
 
 ## 版本模型
@@ -14,7 +12,7 @@ v3 正处于从 JavaScript API GL v1（`BMapGL`）迁移到 JavaScript API 4.0�
 | --- | --- |
 | 组件库版本 | `packages/baidu-map-gl-vue/package.json` |
 | SDK engine（内部） | `webgl-v1` / `jsapi-v3` / `jsapi-v4`（`src/driver`） |
-| SDK version | Stable 目标 `4.0`（`v=4.0`） |
+| SDK version | `4.0`（`v=4.0`） |
 
 讨论「升级」时需说明是哪一种版本。
 
