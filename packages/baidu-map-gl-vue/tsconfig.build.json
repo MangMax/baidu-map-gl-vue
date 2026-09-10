@@ -11,11 +11,11 @@
     "skipLibCheck": false,
     "isolatedModules": true,
     "verbatimModuleSyntax": true,
-    "types": ["vite/client"],
+    "types": ["vite/client", "@baidumap/jsapi-v4-types"],
     "paths": {
       "mitt": ["../../node_modules/mitt/index.d.ts"]
     }
   },
-  "include": ["src/**/*.ts", "src/**/*.vue", "src/**/*.d.ts", "types/**/*.d.ts"],
+  "include": ["src/**/*.ts", "src/**/*.vue", "src/**/*.d.ts", "types/shared/**/*.d.ts"],
   "exclude": ["src/**/*.test.ts", "src/**/__tests__/**", "node_modules"]
 }

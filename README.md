@@ -22,7 +22,7 @@
 </div>
 </p>
 
-基于百度地图 JavaScript GL 版（使用了 WebGL 对地图、覆盖物等进行渲染，支持 3D 视角展示地图） API 封装设计的 Vue3 组件/hooks 库，开箱即用。
+面向 Vue 3 的百度地图组件/hooks 库，开箱即用。`v3` 正处于从百度地图 JavaScript GL 版（`BMapGL`）迁移到 **JavaScript API 4.0**（`v=4.0`，全局 `BMap`）的过程中；Stable 将只支持 JSAPI 4.0 单引擎基线，详见 [ADR 2026-09-10](./docs/adr/2026-09-10-jsapi-v4-only-baseline.md)。
 
 ## <img src="https://raw.githubusercontent.com/Tarikul-Islam-Anik/Animated-Fluent-Emojis/master/Emojis/Travel%20and%20places/Star.png" alt="Star" width="25" height="25" /> Star
 
@@ -85,6 +85,22 @@ v3 架构：所有 raw `BMapGL` 调用收进 `src/driver`（geometry/map/overlay
 
 [中文](https://MangMax.github.io/baidu-map-gl-vue/)
 
+- [从 v2 迁移](https://MangMax.github.io/baidu-map-gl-vue/zh-CN/guide/migration-from-v2)
+- [AI 开发与官方 Skill](https://MangMax.github.io/baidu-map-gl-vue/zh-CN/contributing/ai-development)
+
+## 版本与支持政策
+
+仓库中同时存在三种「版本」，讨论升级时必须区分：**组件库版本**、**SDK engine**（内部 `webgl-v1` / `jsapi-v3` / `jsapi-v4`）与 **SDK version**（百度地图 JSAPI `v=4.0`）。
+
+| 组件库版本 | SDK 基线 | 支持状态 |
+| --- | --- | --- |
+| `baidu-map-gl-vue@2.x` | JSAPI GL v1（`BMapGL`） | 仅安全/关键修复 |
+| `baidu-map-gl-vue@3.0.0-beta.x` | 迁移期：GL v1 过渡 + JSAPI 4.0 目标 | 开发中，API 未冻结 |
+| `baidu-map-gl-vue@3.0.0`（Stable） | JavaScript API 4.0（全局 `BMap`） | 唯一稳定基线 |
+
+- v3 Stable 的目标是 **单引擎**：只支持 `v=4.0` 与全局 `BMap`，不提供 `BMapGL` 回退；需要 `BMapGL` 请停留在 2.x。
+- 官方类型包 `@baidumap/jsapi-v4-types` 精确锁定为开发期依赖，不进入运行时 bundle；官方 Skill `bmap-jsapi-v4` 通过 `skills` CLI 管理，仅作开发参考。
+- 完整决策、回滚边界与非目标见 [ADR 2026-09-10](./docs/adr/2026-09-10-jsapi-v4-only-baseline.md)。
 
 ## <img src="https://raw.githubusercontent.com/Tarikul-Islam-Anik/Animated-Fluent-Emojis/master/Emojis/Objects/Hammer%20and%20Wrench.png" alt="Hammer and Wrench" width="25" height="25" /> 开发参与贡献
 

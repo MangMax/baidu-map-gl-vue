@@ -254,5 +254,16 @@ export const sidebarConfigZh: DefaultTheme.Sidebar = {
         },
       ],
     },
+    {
+      text: "贡献",
+      collapsed: false,
+      base: "/zh-CN/contributing/",
+      items: [
+        {
+          text: "AI 开发与官方 Skill",
+          link: "ai-development",
+        },
+      ],
+    },
   ],
 };

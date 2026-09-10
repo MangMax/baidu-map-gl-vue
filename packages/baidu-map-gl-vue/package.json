@@ -51,6 +51,7 @@
     "node": ">=24"
   },
   "devDependencies": {
+    "@baidumap/jsapi-v4-types": "4.0.4",
     "@microsoft/api-extractor": "^7.52.0",
     "@vitejs/plugin-vue": "^6.0.8",
     "@vue/language-core": "^2.2.0",

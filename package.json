@@ -25,7 +25,9 @@
     "docs:check": "vp run --filter ./docs check",
     "docs:typecheck": "vp run --filter ./docs typecheck",
     "migrate": "node --experimental-strip-types scripts/migrate-v2-to-v3.mts",
-    "changeset": "changeset"
+    "changeset": "changeset",
+    "skills:install": "npx -y skills experimental_install -y",
+    "skills:list": "npx -y skills list"
   },
   "dependencies": {
     "mitt": "^3.0.0",
