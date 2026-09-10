@@ -92,13 +92,15 @@ export function appendCallback(
   return u.toString();
 }
 
-/** 归一化 apiUrl 用于 fingerprint：剔除回调参数，避免随机名污染去重。 */
+/**
+ * 归一化 apiUrl 用于 fingerprint：只剔除**本次真正使用的**回调参数，
+ * 避免随机回调名污染去重；自定义 callbackParam 时不得连带删除 `callback`。
+ */
 export function normalizeApiUrl(apiUrl?: string, callbackParam?: string): string {
   if (!apiUrl) return DEFAULT_API_URL;
   try {
     const url = resolveBrowserUrl(apiUrl);
     url.searchParams.delete(callbackParam ?? DEFAULT_CALLBACK_PARAM);
-    url.searchParams.delete(DEFAULT_CALLBACK_PARAM);
     return url.toString();
   } catch {
     // 非法 URL 交给加载流程报告错误，fingerprint 保留原始输入。

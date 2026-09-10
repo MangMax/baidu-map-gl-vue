@@ -71,6 +71,12 @@ describe("resolveBrowserUrl / normalizeApiUrl", () => {
       "https://x.com/api?ak=a",
     );
   });
+
+  it("[F7] 自定义 callbackParam 时只剔除该参数，保留 callback", () => {
+    expect(normalizeApiUrl("https://x.com/api?callback=profileA&done=ready", "done")).toBe(
+      "https://x.com/api?callback=profileA",
+    );
+  });
 });
 
 describe("appendCallback", () => {
@@ -107,6 +113,20 @@ describe("fingerprintConfig", () => {
     const fp = fingerprintConfig({ ak: "super-secret-ak" });
     expect(fp).not.toContain("super-secret-ak");
     expect(fp).toContain(`ak:${hash("super-secret-ak")}`);
+  });
+
+  it("[F7] 自定义 callbackParam 时，指纹仍区分不同的 callback 查询值", () => {
+    const a = fingerprintConfig({
+      ak: "k",
+      apiUrl: "https://x.com/api?callback=profileA&done=ready",
+      callbackParam: "done",
+    });
+    const b = fingerprintConfig({
+      ak: "k",
+      apiUrl: "https://x.com/api?callback=profileB&done=ready",
+      callbackParam: "done",
+    });
+    expect(a).not.toBe(b);
   });
 });
 

@@ -24,6 +24,7 @@ describe("SharedLoadTask", () => {
   afterEach(() => {
     delete (document as unknown as Record<string, unknown>).body;
     delete (window as unknown as Record<string, unknown>).__cb_ro_unit;
+    delete (window as unknown as Record<string, unknown>).__cb_ext_unit;
     resetGlobalCallbackRegistryForTests();
     vi.restoreAllMocks();
   });
@@ -131,5 +132,29 @@ describe("SharedLoadTask", () => {
     });
     // 已结算结果不被取消影响。
     await expect(task.subscribe()).resolves.toBe("sdk");
+  });
+
+  it("[F6] 外部接管后取消：不触碰外部值，同名重试也不残留过期条目", async () => {
+    trackScripts();
+    const name = "__cb_ext_unit";
+    const options = { mode: "jsonp" as const, src: SRC, callbackName: name, exportGetter: () => "sdk" };
+
+    const task = new SharedLoadTask(options);
+    const controller = new AbortController();
+    const first = task.subscribe(controller.signal);
+
+    const externalNew = () => "externalNew";
+    (window as unknown as Record<string, unknown>)[name] = externalNew;
+    controller.abort();
+    await expect(first).rejects.toMatchObject({ code: "BMAP_PROVIDER_ABORTED" });
+    expect((window as unknown as Record<string, unknown>)[name]).toBe(externalNew);
+
+    // 同名重试：应重新捕获当前外部值，并在结束时恢复它（而不是沿用过期条目）。
+    const retry = new SharedLoadTask(options);
+    const retryPromise = retry.subscribe();
+    (window as unknown as Record<string, () => void>)[name]();
+    await expect(retryPromise).resolves.toBe("sdk");
+    expect((window as unknown as Record<string, unknown>)[name]).toBe(externalNew);
+    Reflect.deleteProperty(window as unknown as object, name);
   });
 });

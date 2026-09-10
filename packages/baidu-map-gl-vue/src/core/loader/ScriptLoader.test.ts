@@ -50,6 +50,9 @@ describe("ScriptLoader — 显式 load/jsonp 模式", () => {
     delete (window as unknown as Record<string, unknown>).__cb_a;
     delete (window as unknown as Record<string, unknown>).__cb_readonly;
     delete (window as unknown as Record<string, unknown>).__cb_shared;
+    delete (window as unknown as Record<string, unknown>).__cb_ext;
+    delete (window as unknown as Record<string, unknown>).__ready_a;
+    delete (window as unknown as Record<string, unknown>).__ready_b;
     delete (document as unknown as Record<string, unknown>).body;
     resetGlobalCallbackRegistryForTests();
     vi.restoreAllMocks();
@@ -360,6 +363,132 @@ describe("ScriptLoader — 显式 load/jsonp 模式", () => {
     await expect(loader.load(options)).resolves.toBe("sdk");
     expect(created).toHaveLength(1);
   });
+
+  it("[F6] 外部接管回调后任务失败，重试成功仍保留外部回调", async () => {
+    const loader = new ScriptLoader();
+    const name = "__cb_ext";
+    const options: ScriptLoaderOptions = {
+      mode: "jsonp",
+      src: `${SRC}?callback=${name}`,
+      callbackName: name,
+      exportGetter: () => "sdk",
+    };
+
+    const first = loader.load(options);
+    // 其它脚本接管全局回调名。
+    const externalNew = () => "externalNew";
+    (window as unknown as Record<string, unknown>)[name] = externalNew;
+
+    created[0].dispatchEvent(new Event("error"));
+    await expect(first).rejects.toMatchObject({ code: "BMAP_SDK_LOAD_FAILED" });
+    expect((window as unknown as Record<string, unknown>)[name]).toBe(externalNew);
+    expect(loader.size).toBe(0);
+
+    // 重试：不得删除外部值，也不得把更早的外部值恢复回来。
+    const retry = loader.load(options);
+    expect(created).toHaveLength(2);
+    (window as unknown as Record<string, () => void>)[name]();
+    await expect(retry).resolves.toBe("sdk");
+    expect((window as unknown as Record<string, unknown>)[name]).toBe(externalNew);
+  });
+
+  it.each(["error", "timeout", "abort"] as const)(
+    "[F6] 外部接管后任务以 %s 结束，重试恢复“最新”外部回调而非更早的值",
+    async (mechanism) => {
+      const loader = new ScriptLoader();
+      const name = "__cb_ext";
+      const externalOld = () => "externalOld";
+      (window as unknown as Record<string, unknown>)[name] = externalOld;
+      const options: ScriptLoaderOptions = {
+        mode: "jsonp",
+        src: `${SRC}?callback=${name}`,
+        callbackName: name,
+        exportGetter: () => "sdk",
+        ...(mechanism === "timeout" ? { timeout: 10 } : {}),
+      };
+
+      const controller = new AbortController();
+      const first = loader.load(options, mechanism === "abort" ? controller.signal : undefined);
+      // 任务已接管全局名。
+      expect((window as unknown as Record<string, unknown>)[name]).not.toBe(externalOld);
+      const externalNew = () => "externalNew";
+      (window as unknown as Record<string, unknown>)[name] = externalNew;
+
+      if (mechanism === "error") created[0].dispatchEvent(new Event("error"));
+      if (mechanism === "abort") controller.abort();
+      const expectedCode =
+        mechanism === "timeout"
+          ? "BMAP_SDK_LOAD_TIMEOUT"
+          : mechanism === "abort"
+            ? "BMAP_PROVIDER_ABORTED"
+            : "BMAP_SDK_LOAD_FAILED";
+      await expect(first).rejects.toMatchObject({ code: expectedCode });
+      expect((window as unknown as Record<string, unknown>)[name]).toBe(externalNew);
+
+      const retry = loader.load(options);
+      expect(created).toHaveLength(2);
+      (window as unknown as Record<string, () => void>)[name]();
+      await expect(retry).resolves.toBe("sdk");
+      // 关键：恢复的是最新外部值 externalNew，不是更早的 externalOld。
+      expect((window as unknown as Record<string, unknown>)[name]).toBe(externalNew);
+    },
+  );
+
+  it("[F6] 外部接管后新任务接管同名回调，两个任务都结束后恢复外部值", async () => {
+    const loader = new ScriptLoader();
+    const name = "__cb_ext";
+    const optionsA: ScriptLoaderOptions = {
+      mode: "jsonp",
+      src: `${SRC}?task=a&callback=${name}`,
+      callbackName: name,
+      exportGetter: () => "A",
+    };
+    const optionsB: ScriptLoaderOptions = {
+      ...optionsA,
+      src: `${SRC}?task=b&callback=${name}`,
+      exportGetter: () => "B",
+    };
+
+    const a = loader.load(optionsA);
+    const externalNew = () => "externalNew";
+    (window as unknown as Record<string, unknown>)[name] = externalNew; // 外部接管
+    const b = loader.load(optionsB); // B 覆盖外部值，需重新捕获 externalNew
+    expect(created).toHaveLength(2);
+
+    created[0].dispatchEvent(new Event("error")); // A 非所有者，不触碰全局
+    await expect(a).rejects.toMatchObject({ code: "BMAP_SDK_LOAD_FAILED" });
+
+    (window as unknown as Record<string, () => void>)[name](); // B 就绪
+    await expect(b).resolves.toBe("B");
+    // 两个任务都结束：恢复的应是 externalNew，而不是删除或更早的值。
+    expect((window as unknown as Record<string, unknown>)[name]).toBe(externalNew);
+  });
+
+  it("[F7] 自定义 callbackParam 的 jsonp 请求不合并 callback 不同的 URL", async () => {
+    const loader = new ScriptLoader();
+    const base: ScriptLoaderOptions = {
+      mode: "jsonp",
+      src: `${SRC}?callback=profileA&done=__ready_a`,
+      callbackName: "__ready_a",
+      callbackParam: "done",
+      exportGetter: () => "A",
+    };
+    const optionsB: ScriptLoaderOptions = {
+      ...base,
+      src: `${SRC}?callback=profileB&done=__ready_b`,
+      callbackName: "__ready_b",
+      exportGetter: () => "B",
+    };
+
+    const a = loader.load(base);
+    const b = loader.load(optionsB);
+    expect(created).toHaveLength(2);
+
+    (window as unknown as Record<string, () => void>).__ready_a();
+    (window as unknown as Record<string, () => void>).__ready_b();
+    await expect(a).resolves.toBe("A");
+    await expect(b).resolves.toBe("B");
+  });
 });
 
 describe("getScriptKey", () => {
@@ -404,5 +533,36 @@ describe("getScriptKey", () => {
     const jsonpA = getScriptKey({ mode: "jsonp", src: `${SRC}?callback=a`, callbackName: "a" });
     const jsonpB = getScriptKey({ mode: "jsonp", src: `${SRC}?callback=b`, callbackName: "b" });
     expect(jsonpA).toBe(jsonpB);
+  });
+
+  it("[F7] jsonp 自定义 callbackParam 只剔除该参数，保留 callback 查询值", () => {
+    const profileA = getScriptKey({
+      mode: "jsonp",
+      src: `${SRC}?callback=profileA&done=ready`,
+      callbackName: "ready",
+      callbackParam: "done",
+    });
+    const profileB = getScriptKey({
+      mode: "jsonp",
+      src: `${SRC}?callback=profileB&done=ready`,
+      callbackName: "ready",
+      callbackParam: "done",
+    });
+    expect(profileA).not.toBe(profileB);
+
+    // 自己管理的 done 仍被归一化：只有 done 取值不同的两个请求共享任务。
+    const doneA = getScriptKey({
+      mode: "jsonp",
+      src: `${SRC}?callback=profileA&done=readyA`,
+      callbackName: "readyA",
+      callbackParam: "done",
+    });
+    const doneB = getScriptKey({
+      mode: "jsonp",
+      src: `${SRC}?callback=profileA&done=readyB`,
+      callbackName: "readyB",
+      callbackParam: "done",
+    });
+    expect(doneA).toBe(doneB);
   });
 });

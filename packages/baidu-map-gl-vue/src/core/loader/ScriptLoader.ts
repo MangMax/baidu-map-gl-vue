@@ -36,17 +36,14 @@ function isBrowser(): boolean {
  * `src` 经 `resolveBrowserUrl` 归一，保证相对路径与绝对路径指向同一配置时去重。
  * 仅在 `jsonp` 模式下剔除 **Loader 自己管理**的回调参数——它的取值是每次加载的
  * 实现细节；`load` 模式下 `callback` 只是普通查询参数，必须完整保留。
+ * 自定义 `callbackParam` 时只剔除该参数名，`callback` 等其它参数一律保留。
  */
 export function getScriptKey(options: ScriptLoaderOptions): string {
   let src = options.src;
   try {
     const url = resolveBrowserUrl(src);
     if (options.mode === "jsonp") {
-      const callbackParam = options.callbackParam ?? DEFAULT_CALLBACK_PARAM;
-      url.searchParams.delete(callbackParam);
-      if (callbackParam !== DEFAULT_CALLBACK_PARAM) {
-        url.searchParams.delete(DEFAULT_CALLBACK_PARAM);
-      }
+      url.searchParams.delete(options.callbackParam ?? DEFAULT_CALLBACK_PARAM);
     }
     src = url.toString();
   } catch {

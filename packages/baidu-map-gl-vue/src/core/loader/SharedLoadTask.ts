@@ -66,14 +66,9 @@ interface Consumer {
 /* 全局回调注册表                                                              */
 /* -------------------------------------------------------------------------- */
 
-interface CallbackSlot {
-  handler: (...args: unknown[]) => void;
-  active: boolean;
-}
-
 interface CallbackEntry {
-  /** 按安装顺序保存的同名回调栈（可能来自多个并发任务）。 */
-  slots: CallbackSlot[];
+  /** 当前在管的同名回调，按安装顺序排列（可能来自多个并发任务）。 */
+  slots: Array<(...args: unknown[]) => void>;
   /** 第一个 Loader 任务接管前，该全局名上的“外部原值”。 */
   foreign: { had: boolean; value: unknown };
 }
@@ -81,7 +76,11 @@ interface CallbackEntry {
 /**
  * 多个任务可能使用同名回调（例如不同 URL 但相同的 callback 名）。
  * 仅保存一个 previous 引用会在交叠失败时把已失效的 handler 重新挂回全局，
- * 因此按名字维护安装栈 + 存活标记。
+ * 因此按名字维护安装栈。
+ *
+ * 关键不变式：条目只在**仍有在管槽位**时存在。外部脚本接管该全局名后，原任务
+ * 释放时既不触碰外部值，也必须把自己的记录回收掉；下次安装会重新捕获当前外部
+ * 值作为 `foreign`，而不会沿用过期条目。
  */
 const callbackRegistry = new Map<string, CallbackEntry>();
 
@@ -98,23 +97,28 @@ function installGlobalCallback(
   name: string,
   handler: (...args: unknown[]) => void,
 ): void {
-  let entry = callbackRegistry.get(name);
-  const isNew = !entry;
+  const existing = callbackRegistry.get(name);
+  let entry = existing;
   if (!entry) {
     entry = { slots: [], foreign: { had: hasOwn(target, name), value: target[name] } };
+  } else if (!entry.slots.some((installed) => installed === target[name])) {
+    // 当前全局值不属于任何在管任务 → 说明被外部脚本接管过；
+    // 以当前值作为新的“外部原值”，不能继续沿用过期条目里的 foreign。
+    entry.foreign = { had: hasOwn(target, name), value: target[name] };
   }
   // 只读属性会抛 TypeError；此处尚未写入任何注册记录。
   target[name] = handler;
-  if (isNew) callbackRegistry.set(name, entry);
-  entry.slots.push({ handler, active: true });
+  if (!existing) callbackRegistry.set(name, entry);
+  entry.slots.push(handler);
 }
 
 /**
  * 释放回调所有权（任务成功 / 失败 / 取消时调用）。
  *
- * - 若全局已被更晚的任务接管，只把自己标记为失效，不触碰全局；
- * - 若自己仍是当前所有者，丢弃栈顶所有已失效槽位；
- * - 仍有存活槽位则回退到它，否则恢复“外部原值”或删除。
+ * 两件事必须分开处理：
+ * 1. 回收自己的注册记录 —— 无论是否还拥有全局值，都要移除槽位并在没有在管任务时
+ *    删除条目，避免过期 `foreign` 影响下一次安装；
+ * 2. 只有在**自己仍是全局值的所有者**时，才回退到仍存活的槽位 / 外部原值 / 删除。
  */
 function releaseGlobalCallback(
   target: Record<string, unknown>,
@@ -127,21 +131,26 @@ function releaseGlobalCallback(
     if (target[name] === handler) delete target[name];
     return;
   }
-  const slot = entry.slots.find((candidate) => candidate.handler === handler);
-  if (slot) slot.active = false;
-  if (target[name] !== handler) return;
 
-  while (entry.slots.length > 0 && !entry.slots[entry.slots.length - 1]!.active) {
-    entry.slots.pop();
+  const wasOwner = target[name] === handler;
+  const index = entry.slots.indexOf(handler);
+  if (index >= 0) entry.slots.splice(index, 1);
+
+  if (wasOwner) {
+    const next = entry.slots[entry.slots.length - 1];
+    if (next) {
+      target[name] = next;
+    } else if (entry.foreign.had) {
+      target[name] = entry.foreign.value;
+    } else {
+      delete target[name];
+    }
   }
-  const top = entry.slots[entry.slots.length - 1];
-  if (top) {
-    target[name] = top.handler;
-    return;
+
+  if (entry.slots.length === 0) {
+    // 已无在管槽位：删除条目，让下一次安装重新捕获当前（可能已被外部替换的）原值。
+    callbackRegistry.delete(name);
   }
-  if (entry.foreign.had) target[name] = entry.foreign.value;
-  else delete target[name];
-  callbackRegistry.delete(name);
 }
 
 /** 仅测试使用：清空回调注册表。 */
