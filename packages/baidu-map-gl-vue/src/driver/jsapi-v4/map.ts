@@ -51,19 +51,16 @@ import type { JsapiV4HandleRegistry } from "./registry";
 /**
  * 语义交互名 → 官方成对方法名（与 4.0 API 参考逐一对应）。
  *
- * `null` = **4.0 没有该成对方法**：`tilt-gestures` 只有构造选项
- * `MapOptions.enableTiltGestures`，官方 4.0 API 参考的 `BMap.Map` 方法表与
- * `@baidumap/jsapi-v4-types@4.0.4` 的 `core/Map.d.ts` 都没有 `enableTiltGestures()` /
- * `disableTiltGestures()`（对比 `enableRotateGestures()` 是有的）。运行时开关因此不可用 →
- * 显式告警，而不是让 `callOptional` 静默吞掉。
+ * **`tilt-gestures` 的成员存在性有分歧，因此这里不预判**：官方 4.0 API 参考的 `BMap.Map`
+ * 方法表与 `@baidumap/jsapi-v4-types@4.0.4` 都没有 `enableTiltGestures()` / `disableTiltGestures()`
+ * （对比 `enableRotateGestures()` 是有的），而公开的 React 参考实现 `huiyan-fe/react-bmap`
+ * 直接调用它们并用 try/catch 吞掉失败。本 Facet 既不臆造声明、也不靠异常控制流：
+ * `setInteraction` 先做**结构性存在判断**，有就调用、没有就告警一次（见实现）。
  *
  * 与 `webgl-v1/map.ts` 的同名映射表**刻意保持两份**：跨引擎抽取会让 #26 待删除的实现
  * 阻塞 v4 底座（见 ADR 2026-09-11-jsapi-v4-driver-foundation「负面 / 成本」）。
  */
-const INTERACTION_METHODS: Record<
-  MapInteraction,
-  { enable: string; disable: string } | null
-> = {
+const INTERACTION_METHODS: Record<MapInteraction, { enable: string; disable: string }> = {
   dragging: { enable: "enableDragging", disable: "disableDragging" },
   "scroll-zoom": { enable: "enableScrollWheelZoom", disable: "disableScrollWheelZoom" },
   "inertial-dragging": { enable: "enableInertialDragging", disable: "disableInertialDragging" },
@@ -75,7 +72,7 @@ const INTERACTION_METHODS: Record<
   rotate: { enable: "enableRotate", disable: "disableRotate" },
   "rotate-gestures": { enable: "enableRotateGestures", disable: "disableRotateGestures" },
   tilt: { enable: "enableTilt", disable: "disableTilt" },
-  "tilt-gestures": null,
+  "tilt-gestures": { enable: "enableTiltGestures", disable: "disableTiltGestures" },
 };
 
 /**
@@ -235,7 +232,8 @@ export function createJsapiV4MapDriver(input: CreateJsapiV4MapDriverInput): MapD
 
   let droppedOptionsWarned = false;
   let trafficWarned = false;
-  let tiltGesturesWarned = false;
+  /** 已告警过的缺失交互方法（按方法名去重；每个 Driver 一份）。 */
+  const warnedInteractionMethods = new Set<string>();
 
   /** 句柄 → 存活的 raw map：所有权校验 + 销毁后拒绝命令。 */
   const resolveLive = (map: MapHandle): object => {
@@ -725,23 +723,27 @@ export function createJsapiV4MapDriver(input: CreateJsapiV4MapDriverInput): MapD
     setInteraction(map, name, enabled) {
       const raw = resolveLive(map);
       const methods = INTERACTION_METHODS[name];
-      if (methods === null) {
-        // v4 没有运行时成对方法（见 INTERACTION_METHODS 注释）：告警一次，不静默吞掉
-        if (!tiltGesturesWarned) {
-          tiltGesturesWarned = true;
-          logger.warn(
-            'MapDriver.setInteraction: JSAPI 4.0 没有 enableTiltGestures()/disableTiltGestures()（只有构造选项 MapOptions.enableTiltGestures），' +
-              `本次 "${name}" 开关被忽略；需要关闭手势倾斜请在构造 options 中显式传入`,
-          );
-        }
-        return;
-      }
       if (!methods) {
         throw new BMapError("BMAP_INVALID_ARGUMENT", `未知交互项: ${String(name)}`, {
           engine: "jsapi-v4",
         });
       }
-      callOptional(raw, enabled ? methods.enable : methods.disable);
+      const method = enabled ? methods.enable : methods.disable;
+      // 结构性存在判断，而不是靠异常分类（ADR 2026-09-11-jsapi-v4-driver-foundation 拒绝
+      // 用异常做控制流）：有就调、没有就告警一次。这样上游文档缺失不会让一个可能可用的
+      // 开关静默失效，也不会臆造类型声明（`tilt-gestures` 的两处官方来源不一致）。
+      const fn = readNamespaceMember(raw, method);
+      if (typeof fn !== "function") {
+        if (!warnedInteractionMethods.has(method)) {
+          warnedInteractionMethods.add(method);
+          logger.warn(
+            `MapDriver.setInteraction: 当前 SDK 没有 ${method}()（官方 4.0 参考与类型包未声明该成员），` +
+              `本次 "${name}" 开关被忽略；若构造期支持，请在 options 中显式传入`,
+          );
+        }
+        return;
+      }
+      sdkCall(method, () => (fn as () => unknown).apply(raw));
     },
 
     setTraffic(map, enabled) {

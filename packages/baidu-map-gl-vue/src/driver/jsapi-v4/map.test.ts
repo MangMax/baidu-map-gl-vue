@@ -41,11 +41,11 @@ const INTERACTION_STATE_KEYS: Record<MapInteraction, string> = {
 };
 
 /**
- * v4 没有成对方法的交互项：`tilt-gestures` 只有构造选项 `MapOptions.enableTiltGestures`
- * （官方 4.0 API 参考与 4.0.4 类型包都没有 `enableTiltGestures()` 方法），因此运行时开关
- * 必须是「告警 + 不生效」，而不是静默 no-op。
+ * v4 的成对方法里，`tilt-gestures` 的存在性在官方来源之间有分歧：
+ * 官方 4.0 API 参考与 4.0.4 类型包未声明 `enableTiltGestures()`，
+ * 而公开的 React 参考实现（`huiyan-fe/react-bmap`）直接调用它。
+ * 因此实现不预判，改为「有就调、没有就告警一次」——两条来源都不会让它静默失效。
  */
-const INTERACTIONS_WITHOUT_V4_METHODS: MapInteraction[] = ["tilt-gestures"];
 
 /** 等 SDK 侧异步步骤（动画的内部 setTimeout 启动、animationstart 之后的微任务）落地。 */
 const sleep = (ms = 5) => new Promise((resolve) => setTimeout(resolve, ms));
@@ -327,12 +327,11 @@ describe("视野 round-trip", () => {
 });
 
 describe("交互开关", () => {
-  it("除 tilt-gestures 外，全部语义交互项都映射到官方成对方法并生效", () => {
+  it("全部语义交互项都映射到官方成对方法并生效", () => {
     const { map, container, fake } = setup();
     const handle = map.create(container);
 
     for (const interaction of MAP_INTERACTIONS) {
-      if (INTERACTIONS_WITHOUT_V4_METHODS.includes(interaction)) continue;
       map.setInteraction(handle, interaction, false);
       expect(fake.createdMaps[0].interactions[INTERACTION_STATE_KEYS[interaction]]).toBe(false);
       map.setInteraction(handle, interaction, true);
@@ -340,18 +339,31 @@ describe("交互开关", () => {
     }
   });
 
-  it("tilt-gestures 在 v4 没有成对方法：告警一次且不产生 SDK 调用", () => {
+  it("SDK 缺某个成对方法时告警一次并跳过，不影响其它交互项", () => {
     const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
-    const { map, container, fake } = setup();
-    const handle = map.create(container);
-    fake.createdMaps[0].callLog.length = 0;
+    const prototype = FakeV4Map.prototype as unknown as Record<string, unknown>;
+    const originalEnable = prototype.enableTiltGestures;
+    delete prototype.enableTiltGestures;
 
-    map.setInteraction(handle, "tilt-gestures", false);
-    map.setInteraction(handle, "tilt-gestures", true);
+    try {
+      const { map, container, fake } = setup();
+      const handle = map.create(container);
 
-    expect(fake.createdMaps[0].interactions.tiltGestures).toBeUndefined();
-    expect(fake.createdMaps[0].callLog).toEqual([]);
-    expect(warn).toHaveBeenCalledTimes(1);
+      expect(() => {
+        map.setInteraction(handle, "tilt-gestures", true); // 缺成员 → 告警
+        map.setInteraction(handle, "tilt-gestures", true); // 同一方法去重 → 不再告警
+        map.setInteraction(handle, "tilt-gestures", false); // 另一侧仍在 → 正常生效
+      }).not.toThrow();
+
+      expect(fake.createdMaps[0].interactions.tiltGestures).toBe(false);
+      expect(warn).toHaveBeenCalledTimes(1);
+
+      // 其它交互项不受影响
+      map.setInteraction(handle, "dragging", false);
+      expect(fake.createdMaps[0].interactions.dragging).toBe(false);
+    } finally {
+      prototype.enableTiltGestures = originalEnable;
+    }
     warn.mockRestore();
   });
 

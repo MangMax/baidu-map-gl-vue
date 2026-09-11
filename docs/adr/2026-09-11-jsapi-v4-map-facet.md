@@ -72,12 +72,14 @@
   `Map#setOptions` 声明；改用官方参考与类型包**都**公开列出的成对方法。
 - 这条判断是刻意的「不做某个转换」：如果真实 runtime 确认存在 `Map#setOptions`，应作为**新的上游缺口
   或新 ADR** 处理（连同 4.0 参考未列出的原因），而不是在这里就地补一条无法验证的声明。
-- **例外只有一个：`tilt-gestures` 在 v4 没有运行时成对方法。** `enableTiltGestures` / `disableTiltGestures`
+- **成员存在性有分歧时用「结构性判断」而不是预判或异常**：`enableTiltGestures` / `disableTiltGestures`
   在官方 4.0 `BMap.Map` 方法表与 `@baidumap/jsapi-v4-types@4.0.4` 的 `core/Map.d.ts` 中都不存在
-  （只有构造选项 `MapOptions.enableTiltGestures`；对比 `enableRotateGestures()` 是存在的）。
-  因此该开关**告警一次 + 不生效**，而不是让 `callOptional` 把它变成静默 no-op；需要关闭手势倾斜时
-  只能在构造 options 里显式传 `enableTiltGestures: false`。
-  其余 11 个语义项与官方方法一一对应（`rotate-gestures` 有 `enableRotateGestures`/`disableRotateGestures`）。
+  （只有构造选项 `MapOptions.enableTiltGestures`；对比 `enableRotateGestures()` 是存在的），
+  但公开的 React 参考实现 `huiyan-fe/react-bmap` 直接调用它们并用 `try/catch` 吞掉失败
+  （见文末「跨 Facet 交接风险」里的交叉验证小节）。
+  本 Facet 的处置是：**`setInteraction` 先做存在判断，有就调用、没有就按方法名告警一次**——
+  既不臆造类型声明、不靠异常做控制流，也不会因为某一处来源缺失就让一个可能可用的开关静默失效。
+  这条规则对全部 12 个语义项一视同仁，不再是 `tilt-gestures` 的特例。
 
 ### 5. 能力守卫：只守卫「引擎/渲染能力相关」的成员
 
@@ -222,7 +224,7 @@ v4 把路况收敛成 `TrafficLayer`（`map.addLayer`），`Map` 自身没有开
 | 视角动画的停止/取消时机 | 未启动的动画改为「启动后微任务取消」，`stopViewAnimation` 不再同步立即生效；`stopViewAnimation` 会停止该地图上所有未结束的动画 | 判断状态请依赖 `animationend` / `animationcancel` |
 | 动画取消失败时替换新动画 | `startViewAnimation` 会抛错且不替换（旧动画仍可停） | 先解决取消失败，或销毁地图重建 |
 | `getHeading()` 返回带符号角度 | v4 的 `setHeading(270)` → `getHeading()` 为 `-90` | 不要用 heading 做 round-trip 判断；类型化事件与状态属 #28 |
-| `setInteraction(map, "tilt-gestures", …)` 在 v4 不生效 | v4 没有该成对方法（只有构造选项） | 告警一次；需要关闭手势倾斜时在构造 options 传 `enableTiltGestures: false` |
+| `setInteraction(map, "tilt-gestures", …)` | 成员存在性在官方来源之间有分歧：有就生效，没有则告警一次并跳过 | #25 的真实 smoke 里确认该成员是否存在；存在即已自动生效，不存在时用构造 options 传 `enableTiltGestures: false` |
 | `noAnimation` prop 未贯通到 `MapView` | 初次视野固定 `noAnimation: true`（既有行为在两个引擎上都是「不读该 prop」） | 属 Vue 层（组件 props → `MapView`）的后续议题，本 issue 不改组件契约 |
 | `map.pixel-conversion` 能力在 webgl-v1 变为可用 | catalog `engines` 由 `V4_ONLY` 放宽为 `WEBGL_V4` | 能力矩阵已随之重生成（`generate:capability-matrix`） |
 
@@ -272,6 +274,41 @@ v4 把路况收敛成 `TrafficLayer`（`map.addLayer`），`Map` 自身没有开
 - **`restrictCenter` / `backgroundColor` / `enableTraffic` 的迁移处置是占位**：分别需要
   `restrictBounds`、容器样式/`DisplayOptions`、`TrafficLayer` 的真实承接，当前只做到「可见 + 不误导」。
 
+## 跨 Facet 交接风险（供 #21~#23 / #25 参考）
+
+对照参考实现 `huiyan-fe/react-bmap` v2.x（同样以 JSAPI 4.0 为目标，`src/drivers/v4Driver.ts` 的
+`destroyMap` 与 `src/components/Map/Map.tsx` 的 cleanup），有三件本 Facet **没有**覆盖、
+但会在后续 Facet 落地时变成问题的事，先记在这里：
+
+1. **销毁前必须先摘掉覆盖物与图层。** 参考实现在 `map.destroy()` 之前 `clearOverlays()` 并逐个
+   `removeLayer()`，注释写明「先移除所有图层，防止 SDK 异步瓦片加载在 destroy 后崩溃」。
+   本仓库 `MapRuntime.dispose()` 的顺序（plugins → controls → layers → overlays → map.destroy）
+   与之一致，但**直接使用 Map Facet 的调用方**没有这层保护：#21（Overlay）/ #22（Layer）落地时
+   必须保证「先 detach 子资源、再销毁 map」。
+2. **destroy 之后 SDK 仍可能回调一次。** 参考实现把 window error 监听器「多留一拍」
+   （`setTimeout(..., 0)` 才移除），注释是「SDK 在 destroy 之后还可能回调一次瓦片/raf」。
+   本 Facet 只覆盖动画（`animationstart` 钩子保持 armed，迟到启动会被取消）。瓦片/raf 属 SDK 内部，
+   但 **#21/#22 的资源释放路径要能容忍「destroy 后仍被回调」**：本 Facet 的 `disposed` 闸门会让
+   这类调用抛 `BMAP_RESOURCE_DISPOSED`（业务命令必须失败，这是刻意的），因此组件卸载时的
+   **内部**清理路径需要一条安静通道——参考实现用 `destroyedMaps` WeakSet 判断后直接 return，
+   本仓库可复用 `disposed` 状态，或由 `useSdkResource` 统一吞掉 `BMAP_RESOURCE_DISPOSED`。
+3. **`new BMap.Map(container)` 与 `new BMap.Map(container, {})` 不是同一条初始化路径。**
+   参考实现注释：「SDK 可能检查 `arguments.length` 走不同初始化路径，影响 pane 结构和 marker DOM」，
+   因此它在没有 options 时**不传**第二个参数。本 Facet 为了固定库默认（`enableDragging` /
+   `enableWheelZoom`）**总是**传一个非空 options 对象——这是想要的路径，但需要在 #25 的真实
+   smoke 里确认「总是传 options」不会改变 pane / marker DOM 结构。
+
+同一份参考也**印证**了本文的几处判断（可作为外部交叉验证）：
+
+- 交互开关用成对 `enable*` / `disable*`（`v4Driver.ts` 的交互段全是成对方法），
+  `setOptions` 只作为 ref 上的原始透出 → 印证 §4「不用 setOptions 做语义交互」。
+- 初始视野用 `centerAndZoom`、后续受控更新用 `setCenter`，并注明
+  「`centerAndZoom` 在已初始化的地图上行为更接近「重置视野」，副作用大」→ 印证 §3。
+- 「cancel / pause / continue 在没有进行中的动画时会抛 `TypeError`，这是 SDK 正常行为」
+  （`v4Driver.ts` 视角动画段注释）→ 印证 #19 的 Fake 建模与本 Facet 的安全窗口处理确实对应真实行为；
+  参考实现只是 `try/catch` 静默吞掉，不做安全窗口编排，也不在 destroy 时取消动画。
+- 卸载顺序「先解绑订阅（`unsubs.forEach`）再 `destroyMap`」→ 印证 §7 的「先停业务资源、再销毁」。
+
 ## 参考
 
 - issue #20 `[M3A.2] 实现 JSAPI 4.0 MapDriver`
@@ -282,6 +319,9 @@ v4 把路况收敛成 `TrafficLayer`（`map.addLayer`），`Map` 自身没有开
 - 官方类型包 `@baidumap/jsapi-v4-types@4.0.4`：`core/Map.d.ts`、`core/MapOptions.d.ts`、`map-type/MapTypeId.d.ts`、
   `view-animation/ViewAnimation.d.ts`
 - 官方 Skill `bmap-jsapi-v4`：`references/map-core.md`、`references/view-animation.md`
+- 参考实现 `huiyan-fe/react-bmap` v2.x（同以 JSAPI 4.0 为目标）：
+  `src/drivers/v4Driver.ts`（`destroyMap`、交互段、视角动画段）、`src/components/Map/Map.tsx`
+  （初始视野、受控同步、cleanup）—— 用于交叉验证 §3/§4/§7 与登记上文的跨 Facet 风险
 - 代码：`src/driver/jsapi-v4/map.ts`、`src/driver/jsapi-v4/{internal,events}.ts`、
   `src/driver/types/map.ts`、`src/driver/webgl-v1/map.ts`、`src/core/runtime/MapRuntime.ts`
 - Fake 与契约：`packages/test-utils/fake-bmap-v4/FakeMap.ts`、`packages/test-utils/driver-contract.ts`
