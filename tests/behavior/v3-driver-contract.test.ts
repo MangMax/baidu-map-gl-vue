@@ -10,7 +10,14 @@
 import { describe, it, expect, beforeEach } from "vitest";
 import { createLegacyBMapClient } from "../../packages/baidu-map-gl-vue/src/client";
 import { createFakeBMapGl, resetLifecycleState } from "../../packages/test-utils";
-import { runMapDriverContract, type DriverHarness } from "../../packages/test-utils/driver-contract";
+import {
+  runControlFacetContract,
+  runLayerFacetContract,
+  runMapDriverContract,
+  type ControlFacetHarness,
+  type DriverHarness,
+  type LayerFacetHarness,
+} from "../../packages/test-utils/driver-contract";
 
 const fake = createFakeBMapGl();
 
@@ -44,6 +51,42 @@ beforeEach(async () => {
 });
 
 runMapDriverContract(createHarness);
+
+/* -------------------------------------------------------------------------- */
+/* Control / Layer facet 契约（M3A2-CONTROLS-LAYERS / #22）                      */
+/* -------------------------------------------------------------------------- */
+
+/**
+ * 挂载计数从 fake Map 的记账里读：控件是 `controls`；
+ * 图层在 BMapGL 上经 `addDistrictLayer` / `addTileLayer` 进的是 `overlays` 容器
+ * （BMapGL 没有 4.0 的统一 `addLayer`），因此图层契约读 `overlays`。
+ */
+function mountCounter(pick: (map: (typeof fake.createdMaps)[number]) => Set<unknown>) {
+  return () => {
+    const map = fake.createdMaps[fake.createdMaps.length - 1];
+    expect(map, "契约用例必须先创建地图（mapHandle()）").toBeTruthy();
+    return pick(map).size;
+  };
+}
+
+function createControlHarness(): ControlFacetHarness {
+  return {
+    driver: () => cachedClient.driver,
+    mapHandle: () => cachedClient.driver.map.create(createHarness().container()),
+    attachedCount: mountCounter((map) => map.controls),
+  };
+}
+
+function createLayerHarness(): LayerFacetHarness {
+  return {
+    driver: () => cachedClient.driver,
+    mapHandle: () => cachedClient.driver.map.create(createHarness().container()),
+    attachedCount: mountCounter((map) => map.overlays),
+  };
+}
+
+runControlFacetContract(createControlHarness);
+runLayerFacetContract(createLayerHarness);
 
 describe("webgl-v1 driver capabilities (fake sdk)", () => {
   it("supports core capabilities and explains them", () => {

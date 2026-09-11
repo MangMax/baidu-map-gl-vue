@@ -67,9 +67,13 @@ export function useLayerResource<Props, Resource>(
   onUnmounted(() => {
     disposed = true;
     const current = resource.value;
+    // 释放顺序（M3A2-CONTROLS-LAYERS / issue #22 实施步骤 4）：**先解绑业务事件**，
+    // 再由 Map 移除 SDK 资源。`BDistrictLayer` 在 addToMap 里经 `scope.add` 绑定了
+    // click/mouseover/mouseout；先 dispose 才能保证 SDK 在 removeLayer 期间派发的事件
+    // 不会打到正在拆解的业务回调上（`adapter.remove` 不读 scope，提前 dispose 安全）。
+    scope.dispose();
     if (current && readyCtx) adapter.remove(current, readyCtx);
     resource.value = null;
-    scope.dispose();
   });
 
   return { resource };

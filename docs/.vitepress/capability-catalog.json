@@ -521,12 +521,27 @@
       "status": "native",
       "runtimeOnly": false,
       "engines": [
+        "webgl-v1",
         "jsapi-v4"
       ],
       "rawMembers": [
         "DistrictLayer"
       ],
       "description": "行政区划图层（DistrictLayer）"
+    },
+    {
+      "id": "layer.panorama-coverage",
+      "family": "layer",
+      "status": "native",
+      "runtimeOnly": true,
+      "engines": [
+        "webgl-v1",
+        "jsapi-v4"
+      ],
+      "rawMembers": [
+        "PanoramaCoverageLayer"
+      ],
+      "description": "全景覆盖图层（PanoramaCoverageLayer）；官方 4.0.4 文档引用但未声明类型"
     },
     {
       "id": "layer.line",

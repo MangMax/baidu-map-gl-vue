@@ -22,7 +22,13 @@ export type PolylineHandle = SdkHandle<"overlay:polyline">;
 export type PolygonHandle = SdkHandle<"overlay:polygon">;
 export type CircleHandle = SdkHandle<"overlay:circle">;
 export type LabelHandle = SdkHandle<"overlay:label">;
-export type ControlHandle = SdkHandle<"control">;
+/**
+ * Control 句柄：品牌带种类（`control:<kind>`），与 Overlay / Layer 句柄同形。
+ *
+ * 裸 `"control"` 仍然合法（webgl-v1 与手工登记的句柄用），此时 `setOptions` 只能走
+ * 结构调用的通用路径，拿不到种类专属的更新口径。
+ */
+export type ControlHandle = SdkHandle<"control" | `control:${string}`>;
 export type LayerHandle = SdkHandle<"layer" | `layer:${string}`>;
 export type ServiceHandle<Kind extends string = "service"> = SdkHandle<Kind>;
 

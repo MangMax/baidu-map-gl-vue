@@ -17,6 +17,9 @@
  *   `BMAP_SDK_CALL_FAILED`——加载成功但缺成员属于 SDK 边界不可用，重试没有意义。
  */
 import { BMapError } from "../../core/errors/BMapError";
+import { logger } from "../../core/logger";
+import type { SdkHandle } from "../types/handles";
+import type { OverlayTarget } from "../types/overlays";
 
 /** SDK 构造器：只按 `new (...args)` 使用，不引入官方类型。 */
 export type JsapiV4Ctor = new (...args: any[]) => unknown;
@@ -134,6 +137,112 @@ export function callRequired(instance: unknown, method: string, ...args: unknown
     });
   }
   return sdkCall(method, () => (fn as (...a: unknown[]) => unknown).apply(instance, args));
+}
+
+/**
+ * 结构性查找「官方类型包没有声明」的运行时扩展构造器（Overlay / Layer Facet 共用）。
+ *
+ * 不预判版本、也不臆造 augmentation：有就按结构返回，没有就由调用方给的 `onMissing`
+ * 告警一次并抛 `BMAP_CAPABILITY_UNSUPPORTED`（显式失败，不是静默降级）。
+ * 与 `namespaceCtor` 的分工：后者用于**类型包已声明**的构造器，失败语义是
+ * `BMAP_SDK_CALL_FAILED`（加载成功却缺成员）。
+ */
+export function requireRuntimeCtor(
+  namespace: unknown,
+  name: string,
+  onMissing: (message: string) => void,
+): JsapiV4Ctor {
+  const ctor = readNamespaceMember(namespace, name);
+  if (typeof ctor === "function") return ctor as JsapiV4Ctor;
+  onMissing(
+    `当前 SDK 运行时没有提供 ${name}（@baidumap/jsapi-v4-types@4.0.4 也没有它的类声明），` +
+      "该能力无法创建",
+  );
+  throw new BMapError(
+    "BMAP_CAPABILITY_UNSUPPORTED",
+    `BMap.${name} is not available（当前运行时没有提供该构造器）`,
+    { engine: "jsapi-v4" },
+  );
+}
+
+/**
+ * 每个 Facet Driver 一份的「告警一次」记录。
+ *
+ * 同一个问题（同一个 kind 的同一个键、同一个缺失成员）只刷一条日志：既保留可观测性，
+ * 又不会在响应式更新里把控制台刷满。键由调用方给，通常形如 `<kind>:<policy>:<key>`。
+ */
+export function createWarnOnce(): (key: string, message: string) => void {
+  const warned = new Set<string>();
+  return (key, message) => {
+    if (warned.has(key)) return;
+    warned.add(key);
+    logger.warn(message);
+  };
+}
+
+/**
+ * 「重复挂载只挂一次」的记账（Overlay / Control / Layer Facet 共用）。
+ *
+ * SDK **不保证** `addControl` / `addLayer` 去重（官方「常见错误」把「同一实例重复添加」
+ * 列为误用），因此这条不变式由 Driver 自己保证：
+ * `claim()` 返回 false 表示已挂过，调用方**不要**再调 SDK；`release()` 在移除后清记账，
+ * 使「remove 之后可以重新挂载」成立。
+ */
+export interface MountTracker {
+  claim(parent: object, child: object): boolean;
+  release(parent: object, child: object): void;
+}
+
+export function createMountTracker(): MountTracker {
+  const mounted = new WeakMap<object, WeakSet<object>>();
+  return {
+    claim(parent, child) {
+      let children = mounted.get(parent);
+      if (!children) {
+        children = new WeakSet<object>();
+        mounted.set(parent, children);
+      }
+      if (children.has(child)) return false;
+      children.add(child);
+      return true;
+    },
+    release(parent, child) {
+      mounted.get(parent)?.delete(child);
+    },
+  };
+}
+
+/**
+ * Map 目标守卫工厂：v4 的控件 / 图层只能挂到 Map。
+ *
+ * 非 Map 目标显式失败（`BMAP_CAPABILITY_UNSUPPORTED`）而不是让 SDK 调用变成静默 no-op；
+ * 同时 `warn` 一次保证「组件 catch 了挂载异常」时仍可观测（与 Overlay Facet 对
+ * `<BContextMenu>` 挂 Marker 的处理同源）。
+ */
+export function createMapTargetResolver(options: {
+  /** Driver 名，用于告警与错误信息（例：`ControlDriver`）。 */
+  facet: string;
+  /** 该 Facet 的挂载入口描述（例：`map.addControl / removeControl`）。 */
+  entry: string;
+  resolve: (handle: SdkHandle<string>) => object;
+  warn: (key: string, message: string) => void;
+}): (target: OverlayTarget, operation: string) => object {
+  const { facet, entry, resolve, warn } = options;
+  return (target, operation) => {
+    if (target.kind !== "map") {
+      warn(
+        `target:${target.kind}`,
+        `${facet}.${operation}: JSAPI 4.0 的该资源只能挂到 Map（${entry}）；` +
+          `目标 kind="${target.kind}" 没有运行时入口，本次调用被拒绝`,
+      );
+      throw new BMapError(
+        "BMAP_CAPABILITY_UNSUPPORTED",
+        `${facet}.${operation}: target.kind="${target.kind}" 在 JSAPI 4.0 没有运行时入口`,
+        { engine: "jsapi-v4" },
+      );
+    }
+    return resolve(target.handle);
+  };
 }
 
 /* -------------------------------------------------------------------------- */

@@ -5,13 +5,13 @@
 > 由 `packages/baidu-map-gl-vue/src/driver/capability/catalog.ts` 生成，请勿手工编辑。
 > 更新 Catalog 后运行 `pnpm generate:capability-matrix`，CI 用 `--check` 校验无漂移。
 
-能力总数：**60**
+能力总数：**61**
 
 ## 状态说明
 
 | 状态 | 含义 | 数量 |
 | --- | --- | --- |
-| `native` | SDK 原生能力，直接映射官方 API | 43 |
+| `native` | SDK 原生能力，直接映射官方 API | 44 |
 | `extended` | 项目在 SDK 之上的扩展能力（需要额外实现或组合） | 4 |
 | `experimental` | 实验性能力，API 可能变更或移除 | 11 |
 | `unsupported` | 明确不支持；`supports()` 恒为 false（用户 override 除外） | 2 |
@@ -22,7 +22,7 @@
 | --- | --- |
 | `map` | 14 |
 | `overlay` | 15 |
-| `layer` | 11 |
+| `layer` | 12 |
 | `service` | 13 |
 | `panorama` | 3 |
 | `runtime` | 4 |
@@ -67,7 +67,8 @@
 | layer | `layer.geojson` | native | — | ✓ | — | ✓ | GeoJSONLayer | — | GeoJSON 图层（GeoJSONLayer） |
 | layer | `layer.point-icon` | native | — | ✓ | — | ✓ | PointIconLayer | — | 点图标图层（PointIconLayer） |
 | layer | `layer.point-shape` | native | — | ✓ | — | ✓ | PointShapeLayer | — | 点形状图层（PointShapeLayer） |
-| layer | `layer.district` | native | — | — | — | ✓ | DistrictLayer | — | 行政区划图层（DistrictLayer） |
+| layer | `layer.district` | native | — | ✓ | — | ✓ | DistrictLayer | — | 行政区划图层（DistrictLayer） |
+| layer | `layer.panorama-coverage` | native | ✓ | ✓ | — | ✓ | PanoramaCoverageLayer | — | 全景覆盖图层（PanoramaCoverageLayer）；官方 4.0.4 文档引用但未声明类型 |
 | layer | `layer.line` | experimental | — | — | — | ✓ | LineLayer | — | 线图层（LineLayer） |
 | layer | `layer.fill` | experimental | — | — | — | ✓ | FillLayer | — | 面图层（FillLayer） |
 | layer | `layer.mvt` | experimental | — | — | — | ✓ | MVTLayer | — | MVT 矢量瓦片图层（MVTLayer） |

@@ -4,13 +4,16 @@
  * 每个 Driver 实现必须通过同一套契约。
  * 通过 harness 提供 client/driver，不依赖全局 window.BMapGL。
  *
- * 结构（M3A2-MAP / #20、M3A2-OVERLAYS / #21）：
+ * 结构（M3A2-MAP / #20、M3A2-OVERLAYS / #21、M3A2-CONTROLS-LAYERS / #22）：
  * - `runMapFacetContract`：**Map facet 契约**，只需要 `map` / `geometry` / `events` /
  *   `capabilities` 四个 facet，因此 v4（其余 facet 属 #21~#23）与 webgl-v1 都能跑；
  * - `runOverlayFacetContract`：**Overlay facet 契约**，只需要 `overlays` 与一个 Map 句柄，
  *   覆盖「每种基础覆盖物的 create/update/remove」「InfoWindow 专用 API」「属性分类查询」；
+ * - `runControlFacetContract` / `runLayerFacetContract`：**Control / Layer facet 契约**，
+ *   只需要对应 facet、一个 Map 句柄与挂载计数，覆盖「构造 → 挂载 → 更新 → 摘除」与
+ *   「重复 add 不重复挂载」「非 Map 目标必须失败」；
  * - `runMapDriverContract`：webgl-v1 时代的全量契约（额外的覆盖物 / 能力策略断言），
- *   内部复用上面两层。
+ *   内部复用上面几层。
  *
  * 契约只断言**两个引擎都能满足**的部分：v4 独有的策略（`BMAP_RESOURCE_DISPOSED` 之后的命令、
  * 非 Map 目标的错误码、Rectangle / CustomOverlay 等）留在引擎自己的测试里断言。
@@ -18,7 +21,9 @@
 import { describe, it, expect } from "vitest";
 import type { BMapClient } from "../baidu-map-gl-vue/src/client/types";
 import type { BMapDriver } from "../baidu-map-gl-vue/src/driver/types/bmap";
+import type { ControlKind } from "../baidu-map-gl-vue/src/driver/types/controls";
 import type { MapHandle } from "../baidu-map-gl-vue/src/driver/types/handles";
+import type { LayerKind } from "../baidu-map-gl-vue/src/driver/types/layers";
 import type { MapInteraction } from "../baidu-map-gl-vue/src/driver/types/map";
 import type {
   OverlayDriver,
@@ -330,6 +335,170 @@ export function runMapDriverContract(createHarness: () => DriverHarness) {
         driver: () => harness.client().driver,
         mapHandle: () => harness.client().driver.map.create(harness.container()),
       };
+    });
+  });
+}
+
+/* -------------------------------------------------------------------------- */
+/* Control / Layer facet 契约（M3A2-CONTROLS-LAYERS / #22）                      */
+/* -------------------------------------------------------------------------- */
+
+/** issue #22「目标与范围」列出的十个内置控件（两个引擎都必须实现）。 */
+export const CONTROL_FACET_KINDS: readonly ControlKind[] = [
+  "zoom",
+  "scale",
+  "navigation",
+  "navigation-3d",
+  "city-list",
+  "location",
+  "map-type",
+  "overview",
+  "panorama",
+  "copyright",
+];
+
+/** issue #22 要求的图层种类（`LayerKind` 全覆盖）。 */
+export const LAYER_FACET_KINDS: readonly LayerKind[] = [
+  "district",
+  "panorama-coverage",
+  "tile",
+];
+
+/** Control / Layer facet 契约只需要该 facet + 一个 Map 句柄 + 挂载计数。 */
+export type ControlFacetDriver = Pick<BMapDriver, "controls">;
+export type LayerFacetDriver = Pick<BMapDriver, "layers">;
+
+export interface MountFacetHarness<Driver> {
+  driver(): Driver;
+  /** 每个用例一份新的 Map 句柄（挂载目标） */
+  mapHandle(): MapHandle;
+  /**
+   * 当前挂在该地图上的子资源数量。
+   *
+   * 各引擎用自己 Fake 的记账实现（v4：`rawMap.controls` / `rawMap.layers`；
+   * webgl-v1：`fakeMap.controls` / `fakeMap.overlays`）。把假账本放在 harness 一侧，
+   * 契约才能断言「重复 add 只挂一次」「remove 之后计数归零」这类不变的语义。
+   */
+  attachedCount(): number;
+}
+
+export type ControlFacetHarness = MountFacetHarness<ControlFacetDriver>;
+export type LayerFacetHarness = MountFacetHarness<LayerFacetDriver>;
+
+/**
+ * Control facet 契约。
+ *
+ * 只断言**两个引擎都能满足**的部分：构造、挂载/摘除记账、显隐、公共 option 更新、
+ * 自定义控件、非 Map 目标必须失败。引擎独有的策略（anchor 常量换算、kind 专属分类、
+ * 告警文本）留在各引擎自己的测试里。
+ */
+export function runControlFacetContract(createHarness: () => ControlFacetHarness) {
+  describe("Control facet contract", () => {
+    for (const kind of CONTROL_FACET_KINDS) {
+      it(`creates, mounts, toggles and removes a ${kind} control`, () => {
+        const harness = createHarness();
+        const controls = harness.driver().controls;
+        const control = controls.create(kind);
+        expect(control.raw).toBeTruthy();
+
+        const target: OverlayTarget = { kind: "map", handle: harness.mapHandle() };
+        expect(harness.attachedCount()).toBe(0);
+
+        controls.add(target, control);
+        expect(harness.attachedCount()).toBe(1);
+        // 重复 add 不重复挂载（SDK 不保证去重，两个引擎的 Driver 自己记账）
+        controls.add(target, control);
+        expect(harness.attachedCount()).toBe(1);
+
+        expect(() => controls.hide(control)).not.toThrow();
+        expect(() => controls.show(control)).not.toThrow();
+        expect(() =>
+          controls.setOptions(control, { anchor: "BMAP_ANCHOR_TOP_LEFT" }),
+        ).not.toThrow();
+
+        controls.remove(target, control);
+        expect(harness.attachedCount()).toBe(0);
+        // dispose 幂等：重复 remove 不抛错、计数不变成负数（SDK 侧的移除对未挂载资源是 no-op）
+        expect(() => controls.remove(target, control)).not.toThrow();
+        expect(harness.attachedCount()).toBe(0);
+        // remove 之后可以重新挂载
+        controls.add(target, control);
+        expect(harness.attachedCount()).toBe(1);
+      });
+    }
+
+    it("creates and mounts a custom control", () => {
+      const harness = createHarness();
+      const controls = harness.driver().controls;
+      const control = controls.createCustomControl({
+        anchor: "BMAP_ANCHOR_TOP_RIGHT",
+        offset: { x: 4, y: 8 },
+        render: (container) => container,
+      });
+      expect(control.raw).toBeTruthy();
+
+      const target: OverlayTarget = { kind: "map", handle: harness.mapHandle() };
+      controls.add(target, control);
+      expect(harness.attachedCount()).toBe(1);
+      controls.remove(target, control);
+      expect(harness.attachedCount()).toBe(0);
+    });
+
+    it("rejects a non-map mount target instead of silently doing nothing", () => {
+      const harness = createHarness();
+      const controls = harness.driver().controls;
+      const control = controls.create("zoom");
+      expect(() => controls.add({ kind: "overlay", handle: control }, control)).toThrow();
+      expect(() => controls.remove({ kind: "overlay", handle: control }, control)).toThrow();
+    });
+  });
+}
+
+/**
+ * Layer facet 契约。
+ *
+ * 可见性在 v4 就是「挂上 / 摘掉」（图层没有 `show/hide`），因此这块用挂载计数断言；
+ * 与 webgl-v1 的 `addDistrictLayer` / `addTileLayer` 分流差异一起由 harness 吸收。
+ */
+export function runLayerFacetContract(createHarness: () => LayerFacetHarness) {
+  describe("Layer facet contract", () => {
+    for (const kind of LAYER_FACET_KINDS) {
+      it(`creates, mounts, updates and removes a ${kind} layer`, () => {
+        const harness = createHarness();
+        const layers = harness.driver().layers;
+        const options = kind === "district" ? { name: "北京市", viewport: true } : {};
+        const layer = layers.create(kind, options);
+        expect(layer.raw).toBeTruthy();
+
+        const target: OverlayTarget = { kind: "map", handle: harness.mapHandle() };
+        expect(harness.attachedCount()).toBe(0);
+
+        layers.add(target, layer);
+        expect(harness.attachedCount()).toBe(1);
+        // 重复 add 不重复挂载
+        layers.add(target, layer);
+        expect(harness.attachedCount()).toBe(1);
+
+        // 「hidden」在图层上就是「已摘掉」：显隐不抛错
+        expect(() => layers.setOptions(layer, {})).not.toThrow();
+
+        layers.remove(target, layer);
+        expect(harness.attachedCount()).toBe(0);
+        // dispose 幂等：重复 remove 不抛错、计数不变成负数
+        expect(() => layers.remove(target, layer)).not.toThrow();
+        expect(harness.attachedCount()).toBe(0);
+        // remove 之后可以重新挂载
+        layers.add(target, layer);
+        expect(harness.attachedCount()).toBe(1);
+      });
+    }
+
+    it("rejects a non-map mount target instead of silently doing nothing", () => {
+      const harness = createHarness();
+      const layers = harness.driver().layers;
+      const layer = layers.create("tile");
+      expect(() => layers.add({ kind: "overlay", handle: layer }, layer)).toThrow();
+      expect(() => layers.remove({ kind: "overlay", handle: layer }, layer)).toThrow();
     });
   });
 }

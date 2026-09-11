@@ -59,6 +59,7 @@ import {
   callRequired,
   namespaceCtor,
   readNamespaceMember,
+  requireRuntimeCtor as requireRuntimeCtorFromNamespace,
   sdkCall,
   type JsapiV4Ctor,
   type JsapiV4Namespace,
@@ -314,7 +315,8 @@ export function createJsapiV4OverlayDriver(
    * 结构性查找「官方类型包没有声明」的运行时扩展构造器。
    *
    * 不预判版本、也不臆造 augmentation：有就按结构创建，没有就显式失败并点名缺的是哪个构造器
-   * （与 ADR 2026-09-11-jsapi-v4-map-facet 对 `tilt-gestures` 的处理同源）。
+   * （与 ADR 2026-09-11-jsapi-v4-map-facet 对 `tilt-gestures` 的处理同源）。结构性探测本身
+   * 收敛在 `internal.requireRuntimeCtor`，Overlay / Layer Facet 共用同一份口径。
    *
    * 真实 AK smoke（ADR「真实 AK smoke 记录」一节）确认：`Marker3D` / `MapMask` 在 4.0 运行时
    * **都存在**，只是 `@baidumap/jsapi-v4-types@4.0.4` 没有类声明——所以这条路在真实 SDK 上会
@@ -322,17 +324,8 @@ export function createJsapiV4OverlayDriver(
    */
   const requireRuntimeCtor = (kind: OverlayKind, hint: string): JsapiV4Ctor => {
     const name = overlayDescriptor(kind).ctor;
-    const ctor = readNamespaceMember(namespace, name);
-    if (typeof ctor === "function") return ctor as JsapiV4Ctor;
-    warnOnce(
-      `${kind}:no-runtime-entry`,
-      `OverlayDriver: 当前 SDK 运行时没有提供 ${name}（官方 4.0.4 类型包也没有它的类声明，` +
-        `官方参考 references/* 无对应章节）；"${kind}" 无法创建；${hint}`,
-    );
-    throw new BMapError(
-      "BMAP_CAPABILITY_UNSUPPORTED",
-      `BMap.${name} is not available（当前运行时没有提供 "${kind}" 的构造器）`,
-      { engine: "jsapi-v4" },
+    return requireRuntimeCtorFromNamespace(namespace, name, (message) =>
+      warnOnce(`${kind}:no-runtime-entry`, `OverlayDriver: ${message}；"${kind}" 无法创建；${hint}`),
     );
   };
 
