@@ -24,7 +24,7 @@ import { BMapError } from "../../core/errors/BMapError";
 import { logger } from "../../core/logger";
 import type { CapabilityRegistry } from "../capability/registry";
 import type { Bounds, GeometryDriver, Pixel, Point } from "../types/geometry";
-import type { MapHandle } from "../types/handles";
+import { HANDLE_BRAND, type MapHandle, type SdkHandle } from "../types/handles";
 import type {
   InitialMapOptions,
   MapDriver,
@@ -130,6 +130,27 @@ function numberOf(label: string, value: unknown): number {
   return value;
 }
 
+/**
+ * 视角动画的生命周期记录（PR #60 评审 P1/P2）。
+ *
+ * 官方 4.0 的动画是**异步启动**的（`startViewAnimation` 内部按 `delay` 用 setTimeout 启动，
+ * 没有公开句柄），且 `animationstart` 在内部 Animation 构造**之前**同步派发。因此「取消」
+ * 只在启动之后才合法，在这之前调用一律抛 `TypeError`。记录这四个状态就是为了把
+ * 「禁止继续使用」和「动画是否真的停下来了」分开表达：
+ *
+ * - `started=false` + `cancelRequested=true`：收到了停止/销毁请求，但要等启动后的微任务才取消；
+ * - `started=true` + `settled=false`：可以立刻取消；
+ * - `settled=true`：已正常结束或已取消，无需再取消。
+ */
+interface AnimationRecord {
+  readonly instance: unknown;
+  started: boolean;
+  settled: boolean;
+  cancelRequested: boolean;
+  /** 解绑 Driver 挂在动画实例上的生命周期监听器。 */
+  detach: () => void;
+}
+
 export function createJsapiV4MapDriver(input: CreateJsapiV4MapDriverInput): MapDriver {
   const { rawSdk, geometry, capabilities, registry, events } = input;
   const namespace: JsapiV4Namespace = assertJsapiV4Namespace(rawSdk);
@@ -138,8 +159,16 @@ export function createJsapiV4MapDriver(input: CreateJsapiV4MapDriverInput): MapD
 
   /** 已销毁的 raw map：destroy 后所有命令按 `BMAP_RESOURCE_DISPOSED` 拒绝。 */
   const disposed = new WeakSet<object>();
-  /** raw map → 最近一次启动的视角动画实例（`stopViewAnimation` 没有入参，必须自己记住）。 */
-  const animations = new WeakMap<object, unknown>();
+  /**
+   * 清理已完成的 raw map（仅用于 `destroy` 的幂等短路）。
+   *
+   * 与 `disposed` 分开：`disposed` 只表示「不再接受业务命令」，`released` 只表示
+   * 「订阅分组 + 动画 + SDK 对象都已释放」。合成一个标记就会出现「某一步清理失败 →
+   * 资源没释放但重试入口也没了」的死角（PR #60 评审 P2）。
+   */
+  const released = new WeakSet<object>();
+  /** raw map → 当前视角动画的生命周期记录。 */
+  const animations = new WeakMap<object, AnimationRecord>();
 
   let droppedOptionsWarned = false;
   let trafficWarned = false;
@@ -156,6 +185,100 @@ export function createJsapiV4MapDriver(input: CreateJsapiV4MapDriverInput): MapD
       );
     }
     return raw;
+  };
+
+  const noop = (): void => {};
+
+  /** 释放记录：只在它仍是当前记录时移除（避免误删后来者的记录），并解绑生命周期监听器。 */
+  const dropRecord = (raw: object, record: AnimationRecord): void => {
+    if (animations.get(raw) === record) animations.delete(raw);
+    record.detach();
+  };
+
+  /**
+   * 在**安全窗口**内取消动画。
+   *
+   * - 未启动：只登记取消请求——此窗口内 SDK 会抛 `TypeError`，取消要等 `animationstart`
+   *   之后的微任务（见 `trackAnimation`）；
+   * - 已启动：立即取消，**成功之后**才标记结束并释放记录。取消失败时记录保留，
+   *   因此 `stopViewAnimation` / `destroy` 可以重试（PR #60 评审 P2）。
+   */
+  const cancelAnimation = (raw: object, record: AnimationRecord): void => {
+    if (record.settled) {
+      dropRecord(raw, record);
+      return;
+    }
+    if (!record.started) {
+      record.cancelRequested = true;
+      return;
+    }
+    sdkCall("map.cancelViewAnimation", () =>
+      callOptional(raw, "cancelViewAnimation", record.instance),
+    );
+    // 官方取消实现会派发 animationcancel（由监听器置位）；这里兜底，保证记录一定被释放
+    record.settled = true;
+    dropRecord(raw, record);
+  };
+
+  /** 建立生命周期记录：订阅动画自身的 start / end / cancel，掌握可取消窗口。 */
+  const trackAnimation = (raw: object, instance: unknown): AnimationRecord => {
+    const record: AnimationRecord = {
+      instance,
+      started: false,
+      settled: false,
+      cancelRequested: false,
+      detach: noop,
+    };
+
+    const addEventListener = readNamespaceMember(instance, "addEventListener");
+    const removeEventListener = readNamespaceMember(instance, "removeEventListener");
+    if (typeof addEventListener !== "function" || typeof removeEventListener !== "function") {
+      // 不是能观察生命周期的动画对象：无法等待安全窗口，只能按「已启动」尽力取消
+      record.started = true;
+      return record;
+    }
+
+    const bind = addEventListener as (type: string, fn: () => void) => void;
+    const unbind = removeEventListener as (type: string, fn: () => void) => void;
+
+    const onStart = (): void => {
+      record.started = true;
+      // 官方：animationstart 在内部 Animation 构造之前同步派发 → 取消必须至少延迟到微任务
+      //（所以在 animationstart 监听器里同步取消一定失败）
+      Promise.resolve().then(() => {
+        if (record.settled || !record.cancelRequested) return;
+        try {
+          cancelAnimation(raw, record);
+        } catch (error) {
+          // 微任务里没有调用方能承接错误：告警并保留记录，让 stop/destroy 之后可以重试
+          logger.warn(
+            `MapDriver: 视角动画的延迟取消失败（记录保留，可再次 stopViewAnimation/destroy 重试）: ${
+              (error as Error)?.message ?? String(error)
+            }`,
+          );
+        }
+      });
+    };
+    const onSettled = (): void => {
+      record.settled = true;
+      dropRecord(raw, record);
+    };
+
+    bind.call(instance, "animationstart", onStart);
+    bind.call(instance, "animationend", onSettled);
+    bind.call(instance, "animationcancel", onSettled);
+    record.detach = () => {
+      try {
+        unbind.call(instance, "animationstart", onStart);
+        unbind.call(instance, "animationend", onSettled);
+        unbind.call(instance, "animationcancel", onSettled);
+      } catch (error) {
+        logger.warn(
+          `MapDriver: 解绑视角动画生命周期监听器失败: ${(error as Error)?.message ?? String(error)}`,
+        );
+      }
+    };
+    return record;
   };
 
   const toRawCenter = (center: Point | string): unknown =>
@@ -205,8 +328,18 @@ export function createJsapiV4MapDriver(input: CreateJsapiV4MapDriverInput): MapD
     return value;
   };
 
+  /**
+   * 视角动画实例 → 原生 SDK 对象。
+   *
+   * 只能有一个入口：凡带 Handle 品牌的对象**一律**交给 Registry 解析，由它做所有权校验
+   * （跨 Client 抛 `BMAP_HANDLE_FOREIGN`）。用 `registry.owns()` 做前置判断是个错误——
+   * 它把「别的 Client 的 Handle」和「原生 SDK 对象」都归到 `false`，于是外来句柄会被当作
+   * 原生对象**原样透传**给 SDK（PR #60 评审 P2）。
+   */
   const resolveAnimation = (animation: unknown): unknown => {
-    if (registry.owns(animation)) return registry.resolve(animation);
+    if (isObjectLike(animation) && HANDLE_BRAND in animation) {
+      return registry.resolve(animation as SdkHandle<string>);
+    }
     if (!isObjectLike(animation)) {
       throw new BMapError(
         "BMAP_INVALID_ARGUMENT",
@@ -226,14 +359,47 @@ export function createJsapiV4MapDriver(input: CreateJsapiV4MapDriverInput): MapD
 
     destroy(map) {
       const raw = registry.resolve<object>(map);
-      // 幂等：重复 destroy 只释放一次
-      if (disposed.has(raw)) return;
-      // 先登记「已销毁」再动 SDK 对象：destroy 过程中由事件触发的重入命令会被拒绝
+      // 幂等只在「清理已完成」时短路。`disposed` 是命令闸门（destroy 之后拒绝业务命令），
+      // 不是「资源已释放」的证明：用同一个标记兼做两件事会让「清理失败」永远无法重试
+      // （PR #60 评审 P2）。
+      if (released.has(raw)) return;
       disposed.add(raw);
-      // destroy 前停止业务资源：Driver 侧订阅分组 + 动画引用
-      events.release(map);
-      animations.delete(raw);
-      sdkCall("map.destroy", () => callOptional(raw, "destroy"));
+
+      const failures: unknown[] = [];
+
+      // 1) 视角动画：在安全窗口内取消（未启动的记下取消请求，等 animationstart 之后的微任务）
+      const record = animations.get(raw);
+      if (record) {
+        try {
+          cancelAnimation(raw, record);
+        } catch (error) {
+          failures.push(error);
+        }
+      }
+
+      // 2) Driver 侧订阅分组（release 内部逐项尽力，失败会汇总抛出）
+      try {
+        events.release(map);
+      } catch (error) {
+        failures.push(error);
+      }
+
+      // 3) SDK 销毁：必须尽力执行，不被前面任何一项失败跳过
+      try {
+        sdkCall("map.destroy", () => callOptional(raw, "destroy"));
+      } catch (error) {
+        failures.push(error);
+      }
+
+      if (failures.length > 0) {
+        throw new BMapError(
+          "BMAP_SDK_CALL_FAILED",
+          `地图销毁时有 ${failures.length} 项清理未完成（其余步骤已尽力执行；再次 destroy 会重试）: ` +
+            failures.map((failure) => (failure as Error)?.message ?? String(failure)).join("; "),
+          { cause: failures[0], engine: "jsapi-v4" },
+        );
+      }
+      released.add(raw);
     },
 
     initializeView(map, view: MapView) {
@@ -403,19 +569,35 @@ export function createJsapiV4MapDriver(input: CreateJsapiV4MapDriverInput): MapD
       const raw = resolveLive(map);
       capabilities.require("map.animate");
       const instance = resolveAnimation(animation);
-      animations.set(raw, instance);
+
+      // 同一张地图只跟踪最近一次启动的动画；换新动画时先把上一个在安全窗口内取消，
+      // 否则它会变成无人跟踪的「孤儿动画」继续持有地图引用（PR #60 评审 P1 的同类问题）。
+      const previous = animations.get(raw);
+      if (previous) {
+        try {
+          cancelAnimation(raw, previous);
+        } catch (error) {
+          logger.warn(
+            `MapDriver: 上一个视角动画取消失败，已继续启动新动画: ${
+              (error as Error)?.message ?? String(error)
+            }`,
+          );
+        }
+      }
+
+      const record = trackAnimation(raw, instance);
+      animations.set(raw, record);
       callOptional(raw, "startViewAnimation", instance);
     },
 
     stopViewAnimation(map) {
       const raw = resolveLive(map);
       capabilities.require("map.animate");
-      // v4 的取消入口是 `cancelViewAnimation(animation)`，必须传同一个实例；
-      // 因此 Driver 记住最近一次启动的动画（destroy 时会一并清理）。
-      const instance = animations.get(raw);
-      if (instance === undefined) return;
-      animations.delete(raw);
-      callOptional(raw, "cancelViewAnimation", instance);
+      const record = animations.get(raw);
+      if (!record) return;
+      // 未启动 → 登记取消请求（启动后由微任务取消）；已启动 → 立即取消；
+      // 取消失败 → 记录保留，下一次 stop 仍可重试
+      cancelAnimation(raw, record);
     },
   };
 }

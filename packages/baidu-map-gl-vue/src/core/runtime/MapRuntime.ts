@@ -14,6 +14,7 @@ import type { BMapClient } from "../../client/types";
 import type { MapHandle } from "../../driver/types/handles";
 import type { InitialMapOptions, MapView } from "../../driver/types/map";
 import { BMapError } from "../errors/BMapError";
+import { logger } from "../logger";
 import { ResourceScope } from "../lifecycle/ResourceScope";
 import { createMapEventBus, type MapEventBus, type InternalMapEvents } from "../events/MapEventBus";
 import { createFrameScheduler, type FrameScheduler } from "../scheduler/FrameScheduler";
@@ -333,8 +334,14 @@ export class MapRuntime {
     if (currentMap && currentClient) {
       try {
         currentClient.driver.map.destroy(currentMap);
-      } catch {
-        // 忽略销毁错误
+      } catch (error) {
+        // destroy 会把「订阅释放 / 动画取消 / SDK 销毁」里失败的项汇总抛出（#20 评审 P2）。
+        // 这里不能静默吞掉：资源可能部分未释放，至少要让它可观测。
+        logger.warn(
+          `MapRuntime: map.destroy 未完全成功（部分资源可能未释放）: ${
+            (error as Error)?.message ?? String(error)
+          }`,
+        );
       }
     }
     // 5. clear handle

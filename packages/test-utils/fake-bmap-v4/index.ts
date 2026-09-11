@@ -11,7 +11,12 @@
  *   fake.stats.reset() // 每个用例开头重置
  */
 import { FakeV4EventStats } from './event-target.ts'
-import { FakeV4Map, FakeV4MapTypeId } from './FakeMap.ts'
+import {
+  FakeV4Map,
+  FakeV4MapTypeId,
+  FakeV4ViewAnimation,
+  type FakeV4AnimationOptions,
+} from './FakeMap.ts'
 import { FakeV4Bounds, FakeV4Pixel, FakeV4Point, FakeV4Size } from './geometry.ts'
 import {
   FakeV4Circle,
@@ -27,8 +32,9 @@ export {
   FAKE_V4_INTERACTIONS,
   FakeV4Map,
   FakeV4MapTypeId,
+  FakeV4ViewAnimation,
 } from './FakeMap.ts'
-export type { FakeV4Interaction } from './FakeMap.ts'
+export type { FakeV4AnimationOptions, FakeV4Interaction } from './FakeMap.ts'
 export { FakeV4Bounds, FakeV4Pixel, FakeV4Point, FakeV4Size } from './geometry.ts'
 export {
   FakeV4Circle,
@@ -52,6 +58,11 @@ export interface FakeBMapV4Namespace {
   Circle: new (point: FakeV4Point, radius: number, options?: Record<string, unknown>) => FakeV4Circle
   Label: new (content: string, options?: Record<string, unknown>) => FakeV4Label
   InfoWindow: new (content: string | HTMLElement, options?: Record<string, unknown>) => FakeV4InfoWindow
+  /** 视角动画构造器（官方 `BMap.ViewAnimation`）。 */
+  ViewAnimation: new (
+    keyFrames: unknown[],
+    options?: FakeV4AnimationOptions,
+  ) => FakeV4ViewAnimation
   /** 地图类型常量（官方 4.0.4 以静态成员声明在 `BMap.MapTypeId` 上）。 */
   MapTypeId: typeof FakeV4MapTypeId
   VERSION: string
@@ -104,6 +115,11 @@ export function createFakeBMapV4(version = '4.0'): FakeBMapV4 {
       super(content, options ?? {}, stats)
     }
   }
+  class ViewAnimationClass extends FakeV4ViewAnimation {
+    constructor(keyFrames: unknown[], options?: FakeV4AnimationOptions) {
+      super(keyFrames, options ?? {}, stats)
+    }
+  }
 
   const namespace: FakeBMapV4Namespace = {
     Map: MapClass,
@@ -117,6 +133,7 @@ export function createFakeBMapV4(version = '4.0'): FakeBMapV4 {
     Circle: CircleClass,
     Label: LabelClass,
     InfoWindow: InfoWindowClass,
+    ViewAnimation: ViewAnimationClass,
     MapTypeId: FakeV4MapTypeId,
     VERSION: version,
   }

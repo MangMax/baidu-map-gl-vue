@@ -260,11 +260,15 @@ export class FakeV4Map extends FakeV4EventTarget {
   startViewAnimation(animation: unknown): void {
     this.callLog.push('startViewAnimation')
     this.lastAnimation = animation
+    // 官方由 Map 内部按 delay 调度启动；这里交给动画实例自己建模异步窗口
+    ;(animation as { scheduleStart?: () => void } | null)?.scheduleStart?.()
   }
 
   cancelViewAnimation(animation: unknown): void {
     this.callLog.push('cancelViewAnimation')
     this.canceledAnimation = animation
+    // 内部对象未创建时抛 TypeError（官方行为，见 FakeV4ViewAnimation 注释）
+    ;(animation as { cancel?: () => void } | null)?.cancel?.()
   }
 
   /* ---------------------------------------------------------- 交互开关（成对方法） */
@@ -350,9 +354,10 @@ export class FakeV4Map extends FakeV4EventTarget {
   /* ------------------------------------------------------------------ 释放 */
 
   destroy(): void {
+    // 每次调用都记录：便于断言「Driver 是否真的让 SDK 执行了销毁」（PR #60 评审 P2）
+    this.callLog.push('destroy')
     if (this.destroyed) return
     this.destroyed = true
-    this.callLog.push('destroy')
     // 官方语义：destroy 会清空 Map 自身残留监听器，但管不到子对象
     this.clearAllListeners()
   }
@@ -370,4 +375,91 @@ export class FakeV4MapTypeId {
   static readonly BMAP_HYBRID_MAP = 'BMAP_HYBRID_MAP'
   static readonly BMAP_EARTH_MAP = 'BMAP_EARTH_MAP'
   static readonly BMAP_NONE_MAP = 'BMAP_NONE_MAP'
+}
+
+export interface FakeV4AnimationOptions {
+  delay?: number
+  duration?: number
+  /** 官方拼写是 `interation`（不是 iteration），数字或 `'INFINITE'` */
+  interation?: number | 'INFINITE'
+}
+
+/**
+ * Fake BMap v4 `ViewAnimation`
+ *
+ * 行为依据：官方 Skill `references/view-animation.md`（PR #60 评审 P1/P2 复现所需）
+ * - `map.startViewAnimation()` 内部按 `delay` 用 setTimeout 异步启动，没有公开的定时器句柄；
+ * - `animationstart` 在**内部 Animation 构造之前**同步派发，因此在该监听器里同步 cancel 太早，
+ *   至少要等到微任务；
+ * - 内部对象存在之前调用 `map.cancelViewAnimation()` 一律抛 `TypeError`（不只是 cancel）；
+ * - `animationend` = 正常结束、`animationcancel` = 被取消；`'INFINITE'` 永不派发 `animationend`。
+ *
+ * 这个 Fake 刻意把「异步启动窗口」显式建模出来，因为 Driver 的动画生命周期正确性完全取决于它。
+ */
+export class FakeV4ViewAnimation extends FakeV4EventTarget {
+  readonly keyFrames: unknown[]
+  readonly options: FakeV4AnimationOptions
+  /** 内部 Animation：start 之后才存在（cancel 的前置条件）。 */
+  private internal: { canceled: boolean } | null = null
+  private startTimer: ReturnType<typeof setTimeout> | null = null
+  started = false
+  settled = false
+  cancelCalls = 0
+  /** 测试故障注入：让下一次 cancel 抛错（用于「取消失败后重试」） */
+  failNextCancel = false
+
+  constructor(
+    keyFrames: unknown[],
+    options: FakeV4AnimationOptions = {},
+    stats: FakeV4EventStats,
+  ) {
+    super(stats)
+    this.keyFrames = keyFrames
+    this.options = options
+  }
+
+  /** 由 `Map.startViewAnimation` 调用：按 delay 异步启动（模拟官方内部 setTimeout，无公开句柄）。 */
+  scheduleStart(): void {
+    const delay = this.options.delay ?? 0
+    this.startTimer = setTimeout(() => this.startInternal(), delay)
+  }
+
+  private startInternal(): void {
+    this.startTimer = null
+    if (this.settled) return
+    this.started = true
+    // 官方顺序：先**同步**派发 animationstart（此时内部 Animation 还没建），再构造内部对象
+    this.emit('animationstart')
+    this.internal = { canceled: false }
+  }
+
+  /** 由 `Map.cancelViewAnimation` 调用。 */
+  cancel(): void {
+    this.cancelCalls++
+    if (this.failNextCancel) {
+      this.failNextCancel = false
+      throw new Error('cancelViewAnimation failed')
+    }
+    if (!this.internal) {
+      throw new TypeError(
+        'cancelViewAnimation: 内部 Animation 尚未创建（animationstart 之后才可安全取消）',
+      )
+    }
+    if (this.internal.canceled) return
+    this.internal.canceled = true
+    this.settled = true
+    this.emit('animationcancel')
+  }
+
+  /** 测试辅助：模拟动画正常结束（`animationend`）。 */
+  finish(): void {
+    if (!this.internal || this.settled) return
+    this.settled = true
+    this.emit('animationend')
+  }
+
+  /** 测试辅助：启动定时器是否还在等待（未被清理）。 */
+  get hasPendingStart(): boolean {
+    return this.startTimer !== null
+  }
 }

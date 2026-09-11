@@ -46,5 +46,11 @@ export {
   FakeV4Polygon,
   FakeV4Polyline,
   FakeV4Size,
+  FakeV4ViewAnimation,
 } from './fake-bmap-v4'
-export type { FakeBMapV4, FakeBMapV4Namespace, FakeV4Interaction } from './fake-bmap-v4'
+export type {
+  FakeBMapV4,
+  FakeBMapV4Namespace,
+  FakeV4AnimationOptions,
+  FakeV4Interaction,
+} from './fake-bmap-v4'

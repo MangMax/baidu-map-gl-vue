@@ -90,6 +90,13 @@
   伪装成「读到了空值」；`capabilities.require` 先按 `unsupported` 策略给出可解释的
   `BMAP_CAPABILITY_UNSUPPORTED`/warn。
 
+### 5b. 句柄识别一律看品牌，不用 `owns()`
+
+动画入参的解析（PR #60 评审 P2）：**凡带 `HANDLE_BRAND` 的对象一律交给 `registry.resolve()`**，
+由 Registry 做所有权校验。用 `registry.owns()` 做前置判断是错的——它把「别的 Client 的 Handle」
+和「原生 SDK 对象」都归到 `false`，于是外来句柄会被当成原生对象**原样透传**给 SDK，
+既绕过了 `BMAP_HANDLE_FOREIGN`，又把一个包装对象塞进了 SDK 的异步启动流程。
+
 ### 6. 投影转换进公共 `MapDriver`
 
 - 新增 `pointToPixel(map, point): Pixel` / `pixelToPoint(map, pixel): Point`，对应 catalog 的
@@ -103,25 +110,40 @@
 - v4 特有映射：`panBy(pixel)` → `panBy(x, y)`（v4 收两个数字，不是 `Pixel`）；`fitBounds(bounds)`
   → `setViewport([southwest, northeast])`（v4 没有 `fitBounds`，用两点取景保证包含该范围）。
 
-### 7. 释放语义：destroy 幂等 + 先停业务资源 + 之后拒绝命令
+### 7. 释放语义：disposed 与 released 分离 + 动画在安全窗口取消 + 逐项尽力清理
 
 ```
 destroy(map):
-  1. registry.resolve(map)     // 所有权校验（跨 Client 抛 BMAP_HANDLE_FOREIGN）
-  2. 已销毁 → return           // 幂等
-  3. disposed.add(raw)         // 先登记：destroy 过程中由事件触发的重入命令也会被拒绝
-  4. events.release(map)       // 摘掉 Driver 在该 target 上的订阅分组（解绑 raw listener）
-  5. animations.delete(raw)    // 丢掉最近一次启动的视角动画引用
-  6. raw.destroy()             // 最后才销毁 SDK 对象
+  1. registry.resolve(map)              // 所有权校验（跨 Client 抛 BMAP_HANDLE_FOREIGN）
+  2. released → return                  // 幂等：只有「清理已完成」才短路
+  3. disposed.add(raw)                  // 命令闸门：destroy 之后的业务命令一律拒绝
+  4. 动画：在安全窗口内 cancel           // 未启动 → 登记取消请求（启动后微任务执行）
+  5. events.release(map)                // 逐项尽力解绑（失败汇总，不跳过其余订阅）
+  6. sdkCall(map.destroy)               // SDK 销毁：尽力执行，不被 4/5 的失败跳过
+  7. 全部成功 → released.add(raw)；否则汇总抛出（再次 destroy 会重试）
 ```
 
-- `disposed` 是每个 Driver 一份的 `WeakSet`（键为 raw map），`WeakMap` 存「最近一次 `startViewAnimation`
-  的实例」——v4 的取消入口 `cancelViewAnimation(animation)` 必须传同一个实例，而 `MapDriver.stopViewAnimation`
-  没有入参。
-- **`EventDriver.release(target)` 是本次新增的内部能力**（`JsapiV4EventDriver`，不进公共
-  `EventDriver` 类型）：`groups` 是强引用 `Map`，不摘分组的话 Driver 会长期持有已销毁的 raw map。
-  它逐条走既有的 `removeGroup`，因此分组身份校验与「集合空则删 target 条目」的收尾逻辑都被复用，
-  晚到的 disposer 不会二次解绑。
+- **`disposed` 与 `released` 必须分开**（PR #60 评审 P2）：前者是「禁止继续使用」，后者是
+  「资源清理已完成」。合成一个标记就会出现「某一步清理失败 → 资源没释放、重试入口也没了」的死角。
+  命令闸门在 `destroy` 入口就关闭（destroy 过程中的重入命令会被拒绝），而幂等短路只认 `released`。
+- `destroy` 的每一步都可能失败，因此**逐项隔离**：动画取消失败不阻断订阅释放，订阅释放失败
+  不阻断 SDK 销毁；最后把失败汇总成一条 `BMAP_SDK_CALL_FAILED` 抛出。
+  `MapRuntime.dispose()` 原来把 destroy 错误整段忽略，现在至少 `logger.warn`，否则汇总信息到不了任何人。
+- `EventDriver.release(target)` 的语义随之收紧：**逐项尽力**解绑，任一项失败不跳过其余项，
+  最后汇总抛出；`removeGroup` 先移除记账条目再解绑，所以即使解绑失败也不会留下强引用
+  （消息里明说「记账条目已移除，但 SDK 侧监听器可能仍在」）。
+- **视角动画按官方时序取消**（PR #60 评审 P1）：官方 `startViewAnimation` 内部按 `delay`
+  用 setTimeout 异步启动，且 `animationstart` 在内部 Animation 构造**之前**同步派发，所以
+  「动画启动前」调用 `cancelViewAnimation` 一律抛 `TypeError`（不只是 cancel，pause/continue 同理）。
+  因此 Driver 为每个动画维护四个状态：`started` / `settled` / `cancelRequested` + 生命周期监听器：
+  - `startViewAnimation` 订阅动画实例的 `animationstart`（置 `started` 并在**微任务**里执行待办取消）、
+    `animationend` / `animationcancel`（置 `settled` 并释放记录）；
+  - `stopViewAnimation` 在未启动时只登记取消请求，启动后由微任务取消；已启动则立即取消，
+    **成功后才释放记录**——取消失败时记录保留，下一次 stop 可以重试；
+  - `destroy` 对运行中的动画「先取消再销毁 SDK 对象」，对未启动的动画走同一套延迟取消路径
+    （否则会出现「地图已销毁但动画随后迟到启动」）；
+  - 启动新动画前先取消上一个，避免出现无人跟踪的孤儿动画；
+  - 记录用「身份校验」释放：只有仍是当前记录时才从 WeakMap 移除，避免误删后来者的记录。
 - destroy 之后的命令抛 `BMAP_RESOURCE_DISPOSED`（不可重试，`retryable === false`）。
 - **配套的 runtime 加固**：`MapRuntime` 在 `initializeView` 抛错时销毁那个「已创建但还没写进
   `this.map.value`」的 Map。原先只有 `this.map.value` 有值的路径会被清理，而 `initializeView`
@@ -157,7 +179,9 @@ v4 把路况收敛成 `TrafficLayer`（`map.addLayer`），`Map` 自身没有开
 - 负面 / 成本：公共 `MapDriver` 新增两个成员（外部自定义实现需要补齐，beta 内允许直接变更）；
   `driver/jsapi-v4/{internal,events}.ts` 各新增一个小能力（`callRequired` / `release`），
   属底座文件的增量而非改写；catalog 一行（`map.pixel-conversion.engines`）与生成的能力矩阵随之更新；
-  `MapRuntime` 增加「initializeView 失败即销毁部分创建的地图」两行加固；
+  `MapRuntime` 增加「initializeView 失败即销毁部分创建的地图」与「destroy 未完全成功时 warn」两处；
+  `FakeV4ViewAnimation` 显式建模官方异步启动窗口（含启动前 cancel 抛 `TypeError`），
+  这是复现/回归评审 P1/P2 的唯一手段；
   `fake-bmapgl` 为跑通共享契约新增两个投影方法 + 四对交互方法（随 #26 一起删除）。
 - 回滚：删除 `map.ts` / `FakeMap.ts` 与两处公共成员即可——Facet 未挂进 `createJsapiV4Driver`，
   回滚不影响默认 Client / 组件 / 发布产物（`dist` 不含 `driver/jsapi-v4/**`，由 `check:public-dts` 断言）。
@@ -171,6 +195,8 @@ v4 把路况收敛成 `TrafficLayer`（`map.addLayer`），`Map` 自身没有开
 | `backgroundColor` 在 v4 无效果 | 同上 | 用容器样式 / `DisplayOptions` 表达 |
 | `enableTraffic` 在 v4 无效果 | 路况属 `TrafficLayer`（#22） | 等 Layer Facet 落地，facet 会承接该 prop |
 | `destroy` 之后调用命令 | v4 抛 `BMAP_RESOURCE_DISPOSED`（webgl-v1 只保证幂等） | 组件/业务按既有 ResourceScope 顺序释放即可 |
+| `destroy` 的失败语义 | 逐项尽力清理 + 汇总抛 `BMAP_SDK_CALL_FAILED`；`disposed ≠ 清理完成`，失败可重试 | 调用方可重试 `destroy`；`MapRuntime.dispose()` 会 `logger.warn` |
+| 视角动画的停止/取消时机 | 未启动的动画改为「启动后微任务取消」，`stopViewAnimation` 不再同步立即生效 | 判断状态请依赖 `animationend` / `animationcancel` |
 | `getHeading()` 返回带符号角度 | v4 的 `setHeading(270)` → `getHeading()` 为 `-90` | 不要用 heading 做 round-trip 判断；类型化事件与状态属 #28 |
 | `setInteraction(map, "tilt-gestures", …)` 在 v4 不生效 | v4 没有该成对方法（只有构造选项） | 告警一次；需要关闭手势倾斜时在构造 options 传 `enableTiltGestures: false` |
 | `noAnimation` prop 未贯通到 `MapView` | 初次视野固定 `noAnimation: true`（既有行为在两个引擎上都是「不读该 prop」） | 属 Vue 层（组件 props → `MapView`）的后续议题，本 issue 不改组件契约 |
@@ -187,7 +213,16 @@ v4 把路况收敛成 `TrafficLayer`（`map.addLayer`），`Map` 自身没有开
 ## 已知限制（显式接受）
 
 - **未做真实 AK smoke**：`MapTypeId` 静态常量的真实取值、`setHeading` 的 360 归一化、
-  真实投影精度都只在官方文档/类型层面核对过；真实浏览器验证属 M3A.3（#25）。
+  真实投影精度、动画的安全取消窗口都只在官方文档/类型层面核对过；真实浏览器验证属 M3A.3（#25）。
+- **动画的迟到启动窗口无法彻底关闭**：官方 `startViewAnimation` 内部 setTimeout 没有公开句柄，
+  `delay > 0` 时「启动前取消」做不到。本 Facet 的做法是：`destroy` / `stop` 时若动画尚未启动，
+  就订阅它的 `animationstart` 并在其后的微任务里取消——这覆盖了「地图已销毁但动画随后启动」的
+  常见路径，但如果 SDK 既不派发 `animationstart` 也不再启动，则只会留下一条 Driver 侧记录
+  （随 raw map 一起被 GC，不进持久化结构）。官方参考本身也建议固定 `delay: 0`。
+- **不可观察生命周期的动画对象**（没有 `addEventListener` / `removeEventListener`）按「已启动」
+  立即尽力取消：无法等待安全窗口，失败时同样保留记录以便重试。这是对非 SDK 形状入参的显式降级。
+- **`stopViewAnimation` 的取消可能延后到微任务**：它仍是同步 API，但对「尚未启动」的动画只登记
+  取消请求。需要精确终态时按官方建议在 `animationend` 回调里显式设置末帧视角。
 - **Fake 不负责任值归一化**：`fake-bmap-v4` 记录「传进去什么」，不复刻 SDK 的 heading 归一与
   tilt 截断，因此共享契约只断言不依赖归一化的取值。
 - **webgl-v1 不追平新策略**：它是 #26 待删除实现，只补齐公共接口新增的成员（投影转换），
@@ -208,9 +243,12 @@ v4 把路况收敛成 `TrafficLayer`（`map.addLayer`），`Map` 自身没有开
 
 - issue #20 `[M3A.2] 实现 JSAPI 4.0 MapDriver`
 - issue #12 `[Roadmap] baidu-map-gl-vue v3：JSAPI 4.0 前置迁移与 Stable 发布`
+- PR #60 评审（P1 动画未停止 / P2 取消失败丢记录与外来句柄透传 / P2 解绑失败阻断销毁）:
+  四项均在仓库内先复现再修，复现用例已并入 `driver/jsapi-v4/{map,events}.test.ts`
 - 官方 4.0 API 参考：`BMap.Map` 方法表、`BMap.MapOptions`、`BMap.ViewportOptions`
-- 官方类型包 `@baidumap/jsapi-v4-types@4.0.4`：`core/Map.d.ts`、`core/MapOptions.d.ts`、`map-type/MapTypeId.d.ts`
+- 官方类型包 `@baidumap/jsapi-v4-types@4.0.4`：`core/Map.d.ts`、`core/MapOptions.d.ts`、`map-type/MapTypeId.d.ts`、
+  `view-animation/ViewAnimation.d.ts`
 - 官方 Skill `bmap-jsapi-v4`：`references/map-core.md`、`references/view-animation.md`
 - 代码：`src/driver/jsapi-v4/map.ts`、`src/driver/jsapi-v4/{internal,events}.ts`、
-  `src/driver/types/map.ts`、`src/driver/webgl-v1/map.ts`
+  `src/driver/types/map.ts`、`src/driver/webgl-v1/map.ts`、`src/core/runtime/MapRuntime.ts`
 - Fake 与契约：`packages/test-utils/fake-bmap-v4/FakeMap.ts`、`packages/test-utils/driver-contract.ts`
