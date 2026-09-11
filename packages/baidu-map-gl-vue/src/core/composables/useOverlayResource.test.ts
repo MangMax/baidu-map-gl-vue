@@ -29,6 +29,8 @@ interface Instance {
 function setupHarness() {
   const pendingCreates: Array<{ resolve: (value: Instance) => void; props: Record<string, unknown> }> = [];
   const setOptionsCalls: Array<{ instance: Instance; options: Record<string, unknown> }> = [];
+  /** 挂载回调钩子：模拟「业务在 addToMap 里同步再推一条更新」 */
+  const hooks: { onAddToMap: ((instance: Instance) => void) | null } = { onAddToMap: null };
 
   const overlaysApi = {
     // 只把 enableClicking 当构造期属性，其余当 mutable
@@ -46,7 +48,9 @@ function setupHarness() {
       pendingCreates.push({ resolve: d.resolve, props: props as Record<string, unknown> });
       return d.promise;
     },
-    addToMap: () => {},
+    addToMap: (resource) => {
+      hooks.onAddToMap?.(resource as Instance);
+    },
     remove: () => {},
   };
 
@@ -77,7 +81,15 @@ function setupHarness() {
     }),
   );
 
-  return { result, props, pendingCreates, setOptionsCalls, wrapper };
+  return { result, props, pendingCreates, setOptionsCalls, hooks, wrapper };
+}
+
+/** 某个实例上最后一次 setOptions 的入参 */
+function lastAppliedOn(
+  harness: ReturnType<typeof setupHarness>,
+  instanceId: number,
+): Record<string, unknown> | undefined {
+  return harness.setOptionsCalls.filter((c) => c.instance.id === instanceId).at(-1)?.options;
 }
 
 /** 挂载并完成第一次创建（首次 create 也走可控 Promise） */
@@ -177,5 +189,88 @@ describe("useOverlayResource.applyOptions 与进行中的 rebuild", () => {
     await harness.result.applyOptions({ title: "after-unmount" });
     expect(harness.pendingCreates).toHaveLength(before);
     expect(harness.setOptionsCalls).toEqual([]);
+  });
+
+  /* ------------------------------------------------------------------ 复审（PR #61 第二轮） */
+
+  it("[复审 P2-1] 挂载回调里的新更新不被旧队列覆盖（新值优先）", async () => {
+    const harness = setupHarness();
+    await mountWithFirstInstance(harness);
+
+    // 重建在飞
+    const rebuildDone = harness.result.applyOptions({ enableClicking: false });
+    await flushPromises();
+    // 窗口内先排一条旧值
+    await harness.result.applyOptions({ title: "older-pending" });
+
+    // 新实例的挂载回调里同步推一条更新的值（接口允许的同步 addToMap 回调）
+    harness.hooks.onAddToMap = (instance) => {
+      if (instance.id !== 2) return;
+      harness.props.title = "newest-from-attach";
+      void harness.result.applyOptions({ title: "newest-from-attach" });
+    };
+
+    harness.pendingCreates[1].resolve({ id: 2 });
+    await rebuildDone;
+    await flushPromises();
+
+    // 最终生效的必须是更新的那个值：旧队列不得再覆盖它
+    expect(lastAppliedOn(harness, 2)).toEqual({ title: "newest-from-attach" });
+
+    harness.wrapper.unmount();
+    await flushPromises();
+  });
+
+  it("[复审 P2-1] 首建路径同样「新值优先」：挂载回调的新值不被首建期间的旧值覆盖", async () => {
+    const harness = setupHarness();
+    await flushPromises(); // onMounted 已发起首建（create 未完成）
+
+    await harness.result.applyOptions({ title: "older-pending" });
+
+    harness.hooks.onAddToMap = (instance) => {
+      if (instance.id !== 1) return;
+      harness.props.title = "newest-from-attach";
+      void harness.result.applyOptions({ title: "newest-from-attach" });
+    };
+
+    harness.pendingCreates[0].resolve({ id: 1 });
+    await flushPromises();
+    await flushPromises();
+
+    expect(lastAppliedOn(harness, 1)).toEqual({ title: "newest-from-attach" });
+
+    harness.wrapper.unmount();
+    await flushPromises();
+  });
+
+  it("[复审 P2-2] 同一批含 recreate 时，mutable 值落到最终存活的实例", async () => {
+    const harness = setupHarness();
+    await mountWithFirstInstance(harness);
+
+    const rebuildDone = harness.result.applyOptions({ enableClicking: false });
+    await flushPromises();
+
+    // 窗口内的两条更新（命令式 mutable + 构造期属性）会合并成同一批待办
+    await harness.result.applyOptions({ title: "imperative-mutable-update" });
+    harness.props.enableClicking = true;
+    await harness.result.applyOptions({ enableClicking: true });
+
+    harness.pendingCreates[1].resolve({ id: 2 });
+    await flushPromises();
+    await flushPromises();
+
+    // 待办里含 recreate → 先重建（实例 #3），再把 mutable 写到它身上
+    expect(harness.pendingCreates).toHaveLength(3);
+    harness.pendingCreates[2].resolve({ id: 3 });
+    await flushPromises();
+    await rebuildDone;
+    await flushPromises();
+
+    expect(lastAppliedOn(harness, 3)).toEqual({ title: "imperative-mutable-update" });
+    // 中间实例 #2 不该收到这次 mutable 更新（它随后就被移除了）
+    expect(harness.setOptionsCalls.filter((c) => c.instance.id === 2)).toEqual([]);
+
+    harness.wrapper.unmount();
+    await flushPromises();
   });
 });

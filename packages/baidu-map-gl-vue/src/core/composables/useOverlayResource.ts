@@ -53,12 +53,22 @@ export interface UseOverlayResourceResult<Resource> {
   /**
    * 按**属性分类**应用一组更新(M3A2-OVERLAYS / #21):
    * - `mutable`: 经 `driver.overlays.setOptions` 就地更新;
-   * - `recreate`: 触发**一次** `rebuild()`(构造期属性,只有重建才生效);
+   * - `recreate`: 触发 `rebuild()`(构造期属性,只有重建才生效);
    * - `unsupported`/未知: 交给 `setOptions`,由 Driver 决定(告警 no-op 或走 set<Key> 逃生口)。
    *
-   * 分类来自 Driver 的 `updatePolicy()`(单一事实源 `OVERLAY_DESCRIPTORS`),组件不再自行探测
-   * raw SDK 成员形状。注意 `rebuild()` 以**当前 props** 重建,因此 recreate 键的调用方要先把
-   * 新值写进 props。
+   * 更新走一条**按键合并的待办队列**（PR #61 两轮评审的收敛点）:
+   * - 实例未挂载（重建/首建在飞）时到达的更新会合并待办，等挂载后再落；
+   * - 同一批里若有 `recreate` 键，**先重建**、再把 mutable 落到**最终存活**的实例
+   *   （否则 mutable 会写进一个马上被移除的中间实例）;
+   * - 排空过程中新到的更新继续并入同一轮排空，因此**后到的值总是最后生效**
+   *   （挂载回调里同步推的更新不会被更早排队的旧值覆盖）。
+   *
+   * 返回值：本次调用**发起**排空时等它跑完；已有排空在进行时立即返回（值已并入待办，
+   * 会被那一轮消费）—— 不等待在飞的那一轮，避免被一次无关的异步创建卡住。
+   *
+   * 分类来自 Driver 的 `updatePolicy()`（单一事实源 `OVERLAY_DESCRIPTORS`），组件不自行探测
+   * raw SDK 成员形状。注意 `rebuild()` 以**当前 props** 重建，因此 `recreate` 键的调用方要先把
+   * 新值写进 props；`mutable` 键可以直接经本方法传值。
    */
   applyOptions: (options: Record<string, unknown>) => Promise<void>;
 }
@@ -76,12 +86,14 @@ export function useOverlayResource<Props, Resource>(
   let disposed = false;
   let createToken = 0;
   /**
-   * 实例尚未挂载时到达的更新（重建在飞 / 首建未完成），在挂载后补跑一次。
+   * 尚未应用到「存活实例」的更新，**按键合并**（同键后写覆盖先写）。
    *
-   * 直接丢弃会让「重建期间的更新」永久丢失，最终实例与最新 props 不一致（PR #61 评审 P2-1）。
-   * 合并而不是排队成多条：同一次重建只需补一次，多次更新按 key 后写覆盖先写。
+   * 三类来源共用它：重建/首建在飞时到达的更新、挂载回调里同步推送的更新、排空过程中新到的更新。
+   * 只有「新值优先」这一条不变式，才能保证最终实例与最新 props 一致（PR #61 两轮评审的 P2）。
    */
   let pendingApply: Record<string, unknown> | null = null;
+  /** 是否正在排空待办（防重入：排空过程中新到的更新由同一轮循环继续消费） */
+  let draining = false;
 
   const ensureInstanceScope = () => {
     if (!instanceScope || instanceScope.isDisposed) {
@@ -116,8 +128,8 @@ export function useOverlayResource<Props, Resource>(
       const raw: Resource = created;
       resource.value = markRaw(raw as object) as Resource;
       lifecycle.addToMap(created, ready, props, scope);
-      // 首建期间到达的更新同样要补上（与 rebuild 之后一致）
-      await flushPendingApply();
+      // 首建期间累积的更新在这里排空（挂载回调若也推了更新，合并时「新值优先」）
+      await drainAppliedUpdates();
     } catch (error) {
       if (!componentScope.signal.aborted && !disposed) {
         ctx.events.emit("resource:error", {
@@ -177,53 +189,88 @@ export function useOverlayResource<Props, Resource>(
     }
     resource.value = markRaw(created as object) as Resource;
     lifecycle.addToMap(created, ready, props, scope);
-    // 重建期间到达的更新在这里补齐（否则它们已被丢弃，见 pendingApply 注释）
-    await flushPendingApply();
+    // 排空待办；**不 await** 以免与「由排空驱动的 rebuild」互相等待（此时另一轮排空会把新值消费掉）
+    void drainAppliedUpdates();
   };
 
-  /** 把挂载前累积的更新在**当前**实例上补跑一次；实例仍未挂载时保留待办，等下次挂载再补。 */
-  const flushPendingApply = async () => {
-    if (!pendingApply || !resource.value || disposed) return;
-    const next = pendingApply;
-    // 先清空再应用：applyOptions 内部可能再次触发 rebuild，届时不该重复消费这批更新
-    pendingApply = null;
-    await applyOptions(next);
-  };
-
-  /** 按属性分类应用更新: mutable 就地, recreate 重建**一次** */
-  const applyOptions = async (options: Record<string, unknown>) => {
-    const ready = readyCtx;
-    if (!ready || disposed) return;
+  /**
+   * 把一批已合并的更新落到**当前存活实例**上。
+   *
+   * 顺序刻意是「先重建、再就地更新」：一批里如果同时含构造期属性与 mutable 属性，
+   * mutable 的值必须落在**最终存活**的实例上，否则会写进一个马上被移除的中间实例
+   * （PR #61 复审 P2-2）。
+   */
+  const applyBatch = async (batch: Record<string, unknown>): Promise<void> => {
+    if (!readyCtx || disposed) return;
     const current = resource.value;
     if (!current) {
-      // 重建在飞 / 首建未完成：合并待应用更新，等实例挂载后由 flushPendingApply 补跑。
-      // 这里**不能**直接返回，否则这次更新会永久丢失（PR #61 评审 P2-1）。
-      pendingApply = { ...(pendingApply ?? {}), ...options };
+      // 没有存活实例（重建在飞 / 已被取代）：整批留待下一次挂载后重试
+      pendingApply = { ...(pendingApply ?? {}), ...batch };
       return;
     }
-    const overlays = ready.client.driver.overlays;
+    const overlays = readyCtx.client.driver.overlays;
     const inPlace: Record<string, unknown> = {};
     let needsRebuild = false;
-    for (const [key, value] of Object.entries(options)) {
+    for (const [key, value] of Object.entries(batch)) {
       if (overlays.updatePolicy(current as OverlayHandle, key) === "recreate") {
         needsRebuild = true;
         continue;
       }
       inPlace[key] = value;
     }
-    if (Object.keys(inPlace).length > 0) {
-      try {
-        overlays.setOptions(current as OverlayHandle, inPlace);
-      } catch (error) {
-        // 不静默吞：字段级更新失败时仍要推进下面的重建判定，但必须留下可观测的痕迹
-        logger.warn(
-          `useOverlayResource.applyOptions: 字段级更新失败（后续仍会按分类判断是否重建）: ${
-            (error as Error)?.message ?? String(error)
-          }`,
-        );
-      }
-    }
     if (needsRebuild) await rebuild();
+    const target = resource.value;
+    if (!target) {
+      pendingApply = { ...(pendingApply ?? {}), ...batch };
+      return;
+    }
+    if (Object.keys(inPlace).length === 0) return;
+    try {
+      overlays.setOptions(target as OverlayHandle, inPlace);
+    } catch (error) {
+      // 不静默吞：字段级更新失败时必须留下可观测的痕迹
+      logger.warn(
+        `useOverlayResource.applyOptions: 字段级更新失败: ${
+          (error as Error)?.message ?? String(error)
+        }`,
+      );
+    }
+  };
+
+  /**
+   * 排空待办：**单飞 + while**。
+   *
+   * 排空过程中新到的更新会继续合并进 `pendingApply`，由同一轮循环继续消费 —— 因此旧批永远
+   * 不会覆盖后到的新值（PR #61 复审 P2-1：挂载回调里同步推的更新曾被旧队列回放覆盖）。
+   *
+   * 返回值语义刻意**不等待在飞的那一轮**：调用方的值已经并入待办、一定会被那一轮消费；
+   * 如果在飞时也去 await，`await applyOptions()` 就会被一次无关的异步创建卡住（甚至与
+   * 由排空驱动的 rebuild 互相等待）。只有**发起**这一轮的调用方需要等它跑完。
+   */
+  const drainAppliedUpdates = async (): Promise<void> => {
+    if (draining) return;
+    draining = true;
+    try {
+      while (pendingApply && resource.value && !disposed) {
+        const batch = pendingApply;
+        pendingApply = null;
+        await applyBatch(batch);
+      }
+    } finally {
+      draining = false;
+    }
+  };
+
+  /**
+   * 按属性分类应用一组更新（对外入口）：
+   * - 合并进待办（同键后写覆盖先写）；
+   * - 没有存活实例时等待下一次挂载后排空；
+   * - 排空时**先重建**（若有构造期属性）、再把 mutable 落到存活实例。
+   */
+  const applyOptions = async (options: Record<string, unknown>): Promise<void> => {
+    if (!readyCtx || disposed) return;
+    pendingApply = { ...(pendingApply ?? {}), ...options };
+    await drainAppliedUpdates();
   };
 
   return {
