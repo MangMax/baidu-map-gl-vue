@@ -12,6 +12,7 @@ import { onMounted, onUnmounted, shallowRef, markRaw, type ShallowRef } from "vu
 import { useRequiredMapContext } from "../../core/context/inject";
 import { ResourceScope } from "../../core/lifecycle/ResourceScope";
 import { BMapError } from "../../core/errors/BMapError";
+import { logger } from "../../core/logger";
 import type { OverlayHandle } from "../../driver/types/handles";
 import type { MapReadyContext } from "../../core/context/types";
 
@@ -49,6 +50,27 @@ export interface UseOverlayResourceResult<Resource> {
   ready: Promise<MapReadyContext>;
   /** 用当前 props 重建覆盖物(适合 SDK 不可变对象,如 MapMask path 更新) */
   rebuild: () => Promise<void>;
+  /**
+   * 按**属性分类**应用一组更新(M3A2-OVERLAYS / #21):
+   * - `mutable`: 经 `driver.overlays.setOptions` 就地更新;
+   * - `recreate`: 触发 `rebuild()`(构造期属性,只有重建才生效);
+   * - `unsupported`/未知: 交给 `setOptions`,由 Driver 决定(告警 no-op 或走 set<Key> 逃生口)。
+   *
+   * 更新走一条**按键合并的待办队列**（PR #61 两轮评审的收敛点）:
+   * - 实例未挂载（重建/首建在飞）时到达的更新会合并待办，等挂载后再落；
+   * - 同一批里若有 `recreate` 键，**先重建**、再把 mutable 落到**最终存活**的实例
+   *   （否则 mutable 会写进一个马上被移除的中间实例）;
+   * - 排空过程中新到的更新继续并入同一轮排空，因此**后到的值总是最后生效**
+   *   （挂载回调里同步推的更新不会被更早排队的旧值覆盖）。
+   *
+   * 返回值：本次调用**发起**排空时等它跑完；已有排空在进行时立即返回（值已并入待办，
+   * 会被那一轮消费）—— 不等待在飞的那一轮，避免被一次无关的异步创建卡住。
+   *
+   * 分类来自 Driver 的 `updatePolicy()`（单一事实源 `OVERLAY_DESCRIPTORS`），组件不自行探测
+   * raw SDK 成员形状。注意 `rebuild()` 以**当前 props** 重建，因此 `recreate` 键的调用方要先把
+   * 新值写进 props；`mutable` 键可以直接经本方法传值。
+   */
+  applyOptions: (options: Record<string, unknown>) => Promise<void>;
 }
 
 export function useOverlayResource<Props, Resource>(
@@ -63,6 +85,15 @@ export function useOverlayResource<Props, Resource>(
   let readyCtx: MapReadyContext | null = null;
   let disposed = false;
   let createToken = 0;
+  /**
+   * 尚未应用到「存活实例」的更新，**按键合并**（同键后写覆盖先写）。
+   *
+   * 三类来源共用它：重建/首建在飞时到达的更新、挂载回调里同步推送的更新、排空过程中新到的更新。
+   * 只有「新值优先」这一条不变式，才能保证最终实例与最新 props 一致（PR #61 两轮评审的 P2）。
+   */
+  let pendingApply: Record<string, unknown> | null = null;
+  /** 是否正在排空待办（防重入：排空过程中新到的更新由同一轮循环继续消费） */
+  let draining = false;
 
   const ensureInstanceScope = () => {
     if (!instanceScope || instanceScope.isDisposed) {
@@ -97,6 +128,8 @@ export function useOverlayResource<Props, Resource>(
       const raw: Resource = created;
       resource.value = markRaw(raw as object) as Resource;
       lifecycle.addToMap(created, ready, props, scope);
+      // 首建期间累积的更新在这里排空（挂载回调若也推了更新，合并时「新值优先」）
+      await drainAppliedUpdates();
     } catch (error) {
       if (!componentScope.signal.aborted && !disposed) {
         ctx.events.emit("resource:error", {
@@ -121,6 +154,7 @@ export function useOverlayResource<Props, Resource>(
       }
     }
     resource.value = null;
+    pendingApply = null;
     instanceScope?.dispose();
     instanceScope = null;
     componentScope.dispose();
@@ -155,12 +189,110 @@ export function useOverlayResource<Props, Resource>(
     }
     resource.value = markRaw(created as object) as Resource;
     lifecycle.addToMap(created, ready, props, scope);
+    // 排空待办；**不 await** 以免与「由排空驱动的 rebuild」互相等待（此时另一轮排空会把新值消费掉）
+    void drainAppliedUpdates();
+  };
+
+  /**
+   * 把**更早取出的旧批次**放回待办。
+   *
+   * 展开顺序必须是「已有队列在后」：`batch` 是先前从队列里取走的那一批，而 `pendingApply` 里可能
+   * 已经积压了等待期间到达的**更新**的值；反过来展开会让旧值覆盖新值，与「新值优先」相反
+   * （PR #61 第三轮评审 P2：重建被另一轮重建取代时，旧批次重新入队会翻上新值）。
+   *
+   * 注意与 `applyOptions()` 的入队方向相反：那里 `options` 才是新到的更新，所以放最后。
+   */
+  const requeueStaleBatch = (batch: Record<string, unknown>): void => {
+    pendingApply = { ...batch, ...(pendingApply ?? {}) };
+  };
+
+  /**
+   * 把一批已合并的更新落到**当前存活实例**上。
+   *
+   * 顺序刻意是「先重建、再就地更新」：一批里如果同时含构造期属性与 mutable 属性，
+   * mutable 的值必须落在**最终存活**的实例上，否则会写进一个马上被移除的中间实例
+   * （PR #61 复审 P2-2）。
+   */
+  const applyBatch = async (batch: Record<string, unknown>): Promise<void> => {
+    if (!readyCtx || disposed) return;
+    const current = resource.value;
+    if (!current) {
+      // 防御分支：当前排空循环已保证有存活实例，这里只兜住未来调用方的变化
+      requeueStaleBatch(batch);
+      return;
+    }
+    const overlays = readyCtx.client.driver.overlays;
+    const inPlace: Record<string, unknown> = {};
+    let needsRebuild = false;
+    for (const [key, value] of Object.entries(batch)) {
+      if (overlays.updatePolicy(current as OverlayHandle, key) === "recreate") {
+        needsRebuild = true;
+        continue;
+      }
+      inPlace[key] = value;
+    }
+    if (needsRebuild) await rebuild();
+    const target = resource.value;
+    if (!target) {
+      // 重建被取代/未产出实例：整批放回（新值优先），等下一次挂载后重试
+      requeueStaleBatch(batch);
+      return;
+    }
+    if (Object.keys(inPlace).length === 0) return;
+    try {
+      overlays.setOptions(target as OverlayHandle, inPlace);
+    } catch (error) {
+      // 不静默吞：字段级更新失败时必须留下可观测的痕迹
+      logger.warn(
+        `useOverlayResource.applyOptions: 字段级更新失败: ${
+          (error as Error)?.message ?? String(error)
+        }`,
+      );
+    }
+  };
+
+  /**
+   * 排空待办：**单飞 + while**。
+   *
+   * 排空过程中新到的更新会继续合并进 `pendingApply`，由同一轮循环继续消费 —— 因此旧批永远
+   * 不会覆盖后到的新值（PR #61 复审 P2-1：挂载回调里同步推的更新曾被旧队列回放覆盖）。
+   *
+   * 返回值语义刻意**不等待在飞的那一轮**：调用方的值已经并入待办、一定会被那一轮消费；
+   * 如果在飞时也去 await，`await applyOptions()` 就会被一次无关的异步创建卡住（甚至与
+   * 由排空驱动的 rebuild 互相等待）。只有**发起**这一轮的调用方需要等它跑完。
+   */
+  const drainAppliedUpdates = async (): Promise<void> => {
+    if (draining) return;
+    draining = true;
+    try {
+      while (pendingApply && resource.value && !disposed) {
+        const batch = pendingApply;
+        pendingApply = null;
+        await applyBatch(batch);
+      }
+    } finally {
+      draining = false;
+    }
+  };
+
+  /**
+   * 按属性分类应用一组更新（对外入口）：
+   * - 合并进待办（同键后写覆盖先写）；
+   * - 没有存活实例时等待下一次挂载后排空；
+   * - 排空时**先重建**（若有构造期属性）、再把 mutable 落到存活实例。
+   */
+  const applyOptions = async (options: Record<string, unknown>): Promise<void> => {
+    if (!readyCtx || disposed) return;
+    // 这里 `options` 才是新到的更新，所以放在最后展开（与 requeueStaleBatch 方向相反）
+    pendingApply = { ...(pendingApply ?? {}), ...options };
+    await drainAppliedUpdates();
   };
 
   return {
     resource,
     ready: ctx.whenReady(componentScope.signal),
     rebuild,
+    applyOptions,
   };
 }
 

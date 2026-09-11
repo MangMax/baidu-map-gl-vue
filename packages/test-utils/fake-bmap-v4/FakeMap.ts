@@ -23,6 +23,7 @@
  */
 import { FakeV4EventTarget, type FakeV4EventStats } from './event-target.ts'
 import { FakeV4Bounds, FakeV4Pixel, FakeV4Point, FakeV4Size } from './geometry.ts'
+import type { FakeV4ContextMenu, FakeV4InfoWindow, FakeV4Overlay } from './objects.ts'
 
 /**
  * Fake 专用投影比例（像素/度）：以当前中心点为原点、`2 ** zoom` 线性映射。
@@ -79,6 +80,72 @@ export class FakeV4Map extends FakeV4EventTarget {
   resizeCalls = 0
   destroyed = false
   readonly callLog: string[] = []
+
+  /* ------------------------------------------------------------ 子资源容器（#21） */
+
+  /** 当前挂在地图上的覆盖物（顺序即 `addOverlay` 顺序）。 */
+  readonly overlays: FakeV4Overlay[] = []
+  /** 当前打开的 InfoWindow（官方同一张地图同时只有一个）。 */
+  infoWindow: FakeV4InfoWindow | null = null
+  /** 已挂载的右键菜单（官方入口是 `map.addContextMenu`）。 */
+  readonly contextMenus: FakeV4ContextMenu[] = []
+  /**
+   * `destroy()` 被调用时仍挂在地图上的覆盖物数量。
+   *
+   * 跨 Facet 不变式（见 ADR 2026-09-11-jsapi-v4-map-facet 的「跨 Facet 交接风险」）：
+   * 参考实现与 `MapRuntime.dispose()` 都要求**先摘掉子资源、再销毁 Map**，否则 SDK 的异步
+   * 瓦片/raf 在 destroy 之后仍会访问已被释放的覆盖物数据。这个计数让「有没有先摘」可断言。
+   */
+  destroyedWithOverlays: number | null = null
+
+  /* ------------------------------------------------------------------ 覆盖物 */
+
+  addOverlay(overlay: FakeV4Overlay): void {
+    this.callLog.push('addOverlay')
+    if (this.overlays.includes(overlay)) return
+    this.overlays.push(overlay)
+    overlay.attachedMap = this
+  }
+
+  removeOverlay(overlay: FakeV4Overlay): void {
+    this.callLog.push('removeOverlay')
+    const index = this.overlays.indexOf(overlay)
+    if (index >= 0) this.overlays.splice(index, 1)
+    if (overlay.attachedMap === this) overlay.attachedMap = null
+  }
+
+  openInfoWindow(infoWnd: FakeV4InfoWindow, point: FakeV4Point): void {
+    this.callLog.push('openInfoWindow')
+    this.infoWindow = infoWnd
+    infoWnd.openedAt = point
+    infoWnd.open = true
+    infoWnd.emit('open')
+  }
+
+  /** 官方语义：关闭本张地图**当前**打开的气泡（不接收实例参数）。 */
+  closeInfoWindow(): void {
+    this.callLog.push('closeInfoWindow')
+    const current = this.infoWindow
+    this.infoWindow = null
+    if (!current) return
+    current.open = false
+    current.emit('close')
+  }
+
+  getInfoWindow(): FakeV4InfoWindow | null {
+    return this.infoWindow
+  }
+
+  addContextMenu(menu: FakeV4ContextMenu): void {
+    this.callLog.push('addContextMenu')
+    if (!this.contextMenus.includes(menu)) this.contextMenus.push(menu)
+  }
+
+  removeContextMenu(menu: FakeV4ContextMenu): void {
+    this.callLog.push('removeContextMenu')
+    const index = this.contextMenus.indexOf(menu)
+    if (index >= 0) this.contextMenus.splice(index, 1)
+  }
 
   constructor(
     container: string | HTMLElement,
@@ -358,6 +425,8 @@ export class FakeV4Map extends FakeV4EventTarget {
     this.callLog.push('destroy')
     if (this.destroyed) return
     this.destroyed = true
+    // 记录销毁时仍挂着的覆盖物数量（跨 Facet 不变式，见字段注释）
+    this.destroyedWithOverlays = this.overlays.length
     // 官方语义：destroy 会清空 Map 自身残留监听器，但管不到子对象
     this.clearAllListeners()
   }

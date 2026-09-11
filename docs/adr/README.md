@@ -10,6 +10,7 @@
 | [2026-09-11](./2026-09-11-loaded-sdk-client-boundary.md) | LoadedSdk 客户端收口与迁移期 Driver 分派 | Accepted |
 | [2026-09-11](./2026-09-11-jsapi-v4-driver-foundation.md) | v4 Driver 基础边界（Namespace / Handle Registry / Geometry / Event） | Accepted |
 | [2026-09-11](./2026-09-11-jsapi-v4-map-facet.md) | v4 Map Facet（构造选项映射 / 初次视野 / 交互开关 / 释放语义） | Accepted |
+| [2026-09-11](./2026-09-11-jsapi-v4-overlay-facet.md) | v4 Overlay Facet（覆盖物构造 / mutable-recreate 分类 / InfoWindow 与 Target） | Accepted |
 
 ## 约定
 

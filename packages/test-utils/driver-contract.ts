@@ -4,17 +4,28 @@
  * 每个 Driver 实现必须通过同一套契约。
  * 通过 harness 提供 client/driver，不依赖全局 window.BMapGL。
  *
- * 结构（M3A2-MAP / #20）：
+ * 结构（M3A2-MAP / #20、M3A2-OVERLAYS / #21）：
  * - `runMapFacetContract`：**Map facet 契约**，只需要 `map` / `geometry` / `events` /
  *   `capabilities` 四个 facet，因此 v4（其余 facet 属 #21~#23）与 webgl-v1 都能跑；
+ * - `runOverlayFacetContract`：**Overlay facet 契约**，只需要 `overlays` 与一个 Map 句柄，
+ *   覆盖「每种基础覆盖物的 create/update/remove」「InfoWindow 专用 API」「属性分类查询」；
  * - `runMapDriverContract`：webgl-v1 时代的全量契约（额外的覆盖物 / 能力策略断言），
- *   内部复用 Map facet 契约。
+ *   内部复用上面两层。
+ *
+ * 契约只断言**两个引擎都能满足**的部分：v4 独有的策略（`BMAP_RESOURCE_DISPOSED` 之后的命令、
+ * 非 Map 目标的错误码、Rectangle / CustomOverlay 等）留在引擎自己的测试里断言。
  */
 import { describe, it, expect } from "vitest";
 import type { BMapClient } from "../baidu-map-gl-vue/src/client/types";
 import type { BMapDriver } from "../baidu-map-gl-vue/src/driver/types/bmap";
 import type { MapHandle } from "../baidu-map-gl-vue/src/driver/types/handles";
 import type { MapInteraction } from "../baidu-map-gl-vue/src/driver/types/map";
+import type {
+  OverlayDriver,
+  OverlayHandle,
+  OverlayTarget,
+} from "../baidu-map-gl-vue/src/driver/types/overlays";
+import type { Point } from "../baidu-map-gl-vue/src/driver/types/geometry";
 
 export interface DriverHarness {
   client(): BMapClient;
@@ -188,6 +199,107 @@ export function runMapFacetContract(createHarness: () => MapFacetHarness) {
   });
 }
 
+/** Overlay facet 契约只需要覆盖物 facet：挂载目标与 InfoWindow 宿主由 harness 提供。 */
+export type OverlayFacetDriver = Pick<BMapDriver, "overlays">;
+
+export interface OverlayFacetHarness {
+  driver(): OverlayFacetDriver;
+  /** 每个用例一份新的 Map 句柄（既作挂载目标，也作 InfoWindow 的宿主地图） */
+  mapHandle(): MapHandle;
+}
+
+const POINT: Point = { lng: 116.4, lat: 39.9 };
+
+/** 基础覆盖物的构造入口（issue #21 的「每种基础 Overlay 的 create/update/remove contract」）。 */
+const OVERLAY_FACTORIES: ReadonlyArray<[string, (overlays: OverlayDriver) => OverlayHandle]> = [
+  ["marker", (overlays) => overlays.createMarker(POINT)],
+  ["label", (overlays) => overlays.createLabel("label", { position: POINT })],
+  [
+    "polyline",
+    (overlays) =>
+      overlays.createPolyline([
+        { lng: 116.39, lat: 39.9 },
+        { lng: 116.42, lat: 39.92 },
+      ]),
+  ],
+  [
+    "polygon",
+    (overlays) =>
+      overlays.createPolygon([
+        { lng: 116.39, lat: 39.9 },
+        { lng: 116.42, lat: 39.9 },
+        { lng: 116.41, lat: 39.92 },
+      ]),
+  ],
+  ["circle", (overlays) => overlays.createCircle(POINT, 500)],
+];
+
+export function runOverlayFacetContract(createHarness: () => OverlayFacetHarness) {
+  describe("Overlay facet contract", () => {
+    for (const [name, make] of OVERLAY_FACTORIES) {
+      it(`creates, mounts, updates and removes a ${name}`, () => {
+        const harness = createHarness();
+        const overlays = harness.driver().overlays;
+        const overlay = make(overlays);
+        expect(overlay.raw).toBeTruthy();
+
+        const target: OverlayTarget = { kind: "map", handle: harness.mapHandle() };
+        overlays.add(target, overlay);
+        expect(() => overlays.setOptions(overlay, {})).not.toThrow();
+        expect(typeof overlays.show(overlay)).toBe("boolean");
+        expect(() => overlays.hide(overlay)).not.toThrow();
+        expect(() => overlays.remove(target, overlay)).not.toThrow();
+      });
+    }
+
+    it("updates position and path through the field-level API", () => {
+      const harness = createHarness();
+      const overlays = harness.driver().overlays;
+      const marker = overlays.createMarker(POINT);
+      const polyline = overlays.createPolyline([POINT, { lng: 116.42, lat: 39.92 }]);
+
+      expect(() => overlays.setPosition(marker, { lng: 116.5, lat: 39.9 })).not.toThrow();
+      expect(() =>
+        overlays.setPath(polyline, [{ lng: 116.3, lat: 39.8 }, { lng: 116.45, lat: 39.95 }]),
+      ).not.toThrow();
+    });
+
+    it("opens and closes an InfoWindow through the dedicated API", () => {
+      const harness = createHarness();
+      const overlays = harness.driver().overlays;
+      const infoWindow = overlays.createInfoWindow(document.createElement("div"), {
+        width: 200,
+        title: "气泡",
+      });
+      expect(infoWindow.raw).toBeTruthy();
+
+      expect(() => overlays.openInfoWindow(harness.mapHandle(), infoWindow, POINT)).not.toThrow();
+      expect(() => overlays.redrawInfoWindow(infoWindow)).not.toThrow();
+      expect(() => overlays.closeInfoWindow(infoWindow)).not.toThrow();
+    });
+
+    it("exposes the shared property classification (mutable / recreate / unsupported)", () => {
+      const harness = createHarness();
+      const overlays = harness.driver().overlays;
+      const marker = overlays.createMarker(POINT);
+
+      // 元数据来自公共 `OVERLAY_DESCRIPTORS`，因此两个引擎的答案必须一致
+      expect(overlays.updatePolicy(marker, "icon")).toBe("mutable");
+      expect(overlays.updatePolicy(marker, "position")).toBe("mutable");
+      expect(overlays.updatePolicy(marker, "enableClicking")).toBe("recreate");
+      expect(overlays.updatePolicy(marker, "noSuchProperty")).toBeUndefined();
+    });
+
+    it("rejects a non-map mount target instead of silently doing nothing", () => {
+      const harness = createHarness();
+      const overlays = harness.driver().overlays;
+      const marker = overlays.createMarker(POINT);
+      expect(() => overlays.add({ kind: "marker", handle: marker }, marker)).toThrow();
+      expect(() => overlays.remove({ kind: "overlay", handle: marker }, marker)).toThrow();
+    });
+  });
+}
+
 export function runMapDriverContract(createHarness: () => DriverHarness) {
   describe("MapDriver contract", () => {
     it("respects unsupported policy", () => {
@@ -210,6 +322,14 @@ export function runMapDriverContract(createHarness: () => DriverHarness) {
     runMapFacetContract(() => {
       const harness = createHarness();
       return { driver: () => harness.client().driver, container: () => harness.container() };
+    });
+
+    runOverlayFacetContract(() => {
+      const harness = createHarness();
+      return {
+        driver: () => harness.client().driver,
+        mapHandle: () => harness.client().driver.map.create(harness.container()),
+      };
     });
   });
 }
