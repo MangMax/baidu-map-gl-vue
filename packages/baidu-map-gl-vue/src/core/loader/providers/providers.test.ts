@@ -22,10 +22,13 @@ import { BMapError } from "../../errors/BMapError";
 import { BaiduJsapiV4Provider, baiduJsapiV4Provider } from "./BaiduJsapiV4Provider";
 import { existingGlobalV4Provider } from "./ExistingGlobalV4Provider";
 import { CustomScriptV4Provider, customScriptV4Provider } from "./CustomScriptV4Provider";
+import { loadJsapiV4Script } from "./load";
 import { resetRejectedJsapiV4GlobalsForTests } from "./namespace";
 
 const COMPLETE_NAMESPACE = { Map: () => {}, Point: () => {}, Marker: () => {} };
 const AK = "ak-abcdef123456";
+/** 非 api.map.baidu.com 入口：测试里不会自动触发回调，便于手工控制就绪时机。 */
+const REMOTE_SRC = "https://sdk.example.com/api";
 
 function installGlobal(value: unknown): void {
   (globalThis as { BMap?: unknown }).BMap = value;
@@ -194,6 +197,89 @@ describe("BaiduJsapiV4Provider", () => {
 
     await expect(provider.load({ ak: AK })).rejects.toThrow(/Marker/);
     expect(fake.load).not.toHaveBeenCalled();
+  });
+
+  it("超时退出（未到就绪回调）也登记本次残留，重试可重新插入 script", async () => {
+    const created = trackScripts();
+    const provider = baiduJsapiV4Provider({ registry: newDomain() });
+    const partial = { Map: () => {}, Point: () => {} };
+
+    const first = provider.load({ ak: AK, apiUrl: REMOTE_SRC, timeout: 5 });
+    await Promise.resolve();
+    // 脚本已建好残缺全局，但回调始终不来 → 超时退出。
+    installGlobal(partial);
+    await expect(first).rejects.toMatchObject({ code: "BMAP_SDK_LOAD_TIMEOUT" });
+    expect(created[0].parentNode).toBeNull();
+
+    // 不手动清理全局：重试必须能进入加载路径。
+    const second = provider.load({ ak: AK, apiUrl: REMOTE_SRC });
+    await Promise.resolve();
+    expect(created).toHaveLength(2);
+    installGlobal(COMPLETE_NAMESPACE);
+    invokeGlobalCallback(jsonpCallbackNameOf(created[1]));
+    await expect(second).resolves.toMatchObject({ engine: "jsapi-v4" });
+  });
+
+  it("取消退出（未到就绪回调）也登记本次残留，且不打掉立即重试的任务登记", async () => {
+    const created = trackScripts();
+    const loader = new ScriptLoader();
+    const provider = baiduJsapiV4Provider({ registry: newDomain(), loader });
+    const partial = { Map: () => {}, Point: () => {} };
+    const c1 = new AbortController();
+
+    const first = provider.load({ ak: AK, apiUrl: REMOTE_SRC }, c1.signal);
+    await Promise.resolve();
+    installGlobal(partial);
+    c1.abort();
+    // 同一同步回合内立即重试：不能被残留全局挡住，也不能被过期清理打掉登记。
+    const retry = provider.load({ ak: AK, apiUrl: REMOTE_SRC });
+
+    await expect(first).rejects.toMatchObject({ code: "BMAP_PROVIDER_ABORTED" });
+    await Promise.resolve();
+    expect(created).toHaveLength(2);
+    expect(loader.inFlightCount).toBe(1);
+
+    installGlobal(COMPLETE_NAMESPACE);
+    invokeGlobalCallback(jsonpCallbackNameOf(created[1]));
+    await expect(retry).resolves.toMatchObject({ engine: "jsapi-v4" });
+  });
+
+  it("取消一个共享 helper 消费者不会删掉其它消费者的任务登记", async () => {
+    const created = trackScripts();
+    const loader = new ScriptLoader();
+    const base = { mode: "jsonp" as const, src: REMOTE_SRC };
+    const c1 = new AbortController();
+
+    const p1 = loadJsapiV4Script({
+      loader,
+      providerId: "baidu-jsapi-v4",
+      signal: c1.signal,
+      loadOptions: { ...base, callbackName: "__cb_shared_a" },
+    });
+    const p2 = loadJsapiV4Script({
+      loader,
+      providerId: "baidu-jsapi-v4",
+      loadOptions: { ...base, callbackName: "__cb_shared_a" },
+    });
+    expect(created).toHaveLength(1);
+
+    c1.abort();
+    await expect(p1).rejects.toMatchObject({ code: "BMAP_PROVIDER_ABORTED" });
+    expect(loader.inFlightCount).toBe(1);
+
+    // 第三个同配置消费者仍然复用进行中的任务，不能因为前一个消费者取消而重复插入。
+    const p3 = loadJsapiV4Script({
+      loader,
+      providerId: "baidu-jsapi-v4",
+      loadOptions: { ...base, callbackName: "__cb_shared_b" },
+    });
+    await Promise.resolve();
+    expect(created).toHaveLength(1);
+
+    installGlobal(COMPLETE_NAMESPACE);
+    invokeGlobalCallback("__cb_shared_a");
+    await expect(p2).resolves.toBe(COMPLETE_NAMESPACE);
+    await expect(p3).resolves.toBe(COMPLETE_NAMESPACE);
   });
 
   it("命名空间缺少关键成员时失败，且不残留全局 callback", async () => {

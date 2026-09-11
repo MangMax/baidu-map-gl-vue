@@ -22,7 +22,6 @@ export {
   JSAPI_V4_REQUIRED_MEMBERS,
   JSAPI_V4_VERSION_PROBE_KEYS,
   assertJsapiV4Namespace,
-  assertJsapiV4Ready,
   assertJsapiV4Version,
   findMissingJsapiV4Members,
   isJsapiV4Namespace,

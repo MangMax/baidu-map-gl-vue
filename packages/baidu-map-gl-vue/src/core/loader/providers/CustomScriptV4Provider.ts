@@ -22,8 +22,8 @@ import { createLoadedJsapiV4 } from "./loaded";
 import { loadJsapiV4Script } from "./load";
 import {
   JSAPI_V4_DOMAIN,
-  assertJsapiV4Ready,
   assertSupportedJsapiV4Version,
+  requireJsapiV4Global,
   resolveExistingJsapiV4Version,
 } from "./namespace";
 import { reuseExistingJsapiV4 } from "./reuse";
@@ -103,9 +103,8 @@ export class CustomScriptV4Provider implements JsapiV4Provider {
     // 成功前校验（必经）：成员完整性 + 版本来源都算「就绪」的一部分。
     // 版本策略与 CDN 不同——自托管入口不由我们拼 `v=`，因此以全局自述为准。
     const assertReady = () => {
-      assertJsapiV4Ready(this.id, (namespace) => {
-        resolveExistingJsapiV4Version(namespace, this.id, options.version);
-      });
+      const namespace = requireJsapiV4Global(this.id);
+      resolveExistingJsapiV4Version(namespace, this.id, options.version);
     };
     const namespace = await loadJsapiV4Script({
       loader: this.loader,

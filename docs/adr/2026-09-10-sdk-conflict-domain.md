@@ -28,8 +28,8 @@
 7. **失败与取消后条目与占用一并释放**，允许重试；成功条目复用其结果。
 8. **「就绪」的判定是必经的成功前校验（`assertReady`），不是取值兜底。** Provider 通过 Loader 的 `assertReady` 承担命名空间完整性（与自托管入口的版本来源）校验，校验失败走底层失败路径：不写成功缓存、移除 script。
    - 刻意**不**复用 `exportGetter` 当校验点：它只在「回调没带实参」时执行，回调带实参时会整段跳过，留下绕过路径。
-   - 校验通不过时把当前全局登记为「本次加载残留」（`markRejectedJsapiV4Global`，realm 级 `WeakSet`，只按对象身份、从不删除对象），使下一次重试不会被这份残缺全局挡住；宿主预先提供的残缺全局仍然明确失败。
-   - 成功提交之后命名空间仍不可用（过期缓存）时，Provider 侧失效底层缓存再抛错。
+   - 失败残留的登记发生在**加载尝试层**（`loadJsapiV4Script`）并**按对象身份归属**：只有「进入本次尝试前不存在、退出时已存在」的全局才可能由这次加载产生。这样覆盖**超时、取消、校验失败**全部退出路径（未到就绪回调的失败同样会留下残缺全局），又不会误伤宿主预先提供的全局；只登记（realm 级 `WeakSet`），从不删除或改写任何对象。宿主预先提供的残缺全局仍然明确失败。
+   - 成功缓存的作废是**条件式**的：只有「成功已提交、但命名空间不可用」这一条路径才调用 `ScriptLoader.invalidateCompleted(key)`（只删 `completed`）。普通失败 / 取消不动 Loader 的登记——它自己按任务身份收尾（`onFailure` / `onCancelled`），越权 `clear(key)` 会删掉新任务或其它消费者的 `inFlight`，使去重失效、重复插入 script。
 9. **所有 JSAPI 4.0 Provider 共享同一个进程级 `BMap` 域。** 迁移期 legacy Provider 使用独立的 `BMapGL` 域，因为两者对应两个不同的全局对象；M3A.3（#26）删除 legacy 实现后，`BMapGL` 域随之消失。
 10. **v4 Provider 返回结构化 `LoadedJsapiV4`**（engine / version / namespace / load metadata），不再返回裸 `unknown`；复用的结果形状由此统一，跨 Provider 复用同一任务才成立。
 11. **指纹只剔除「由 Loader 管理」的回调参数。** JSONP 模式下该参数会被本次回调名覆盖，属实现细节；`load` 模式下 `callback` 只是入口 URL 的普通 query，必须参与身份判定，否则两个租户入口会被错误合并。

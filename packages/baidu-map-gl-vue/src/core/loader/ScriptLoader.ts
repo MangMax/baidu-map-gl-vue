@@ -125,6 +125,17 @@ export class ScriptLoader {
     this.inFlight.delete(key);
   }
 
+  /**
+   * 仅失效某配置的**成功缓存**，不动 `inFlight` 登记。
+   *
+   * 使用场景是「底层已提交成功、但上层就绪校验发现结果不可用」：要作废的是这次的成功结果，
+   * 而不是把正在进行的任务登记一起删掉——后者会让其它消费者失去去重，重复插入 script。
+   * 普通失败 / 取消由 Loader 自己按任务身份收尾（`onFailure` / `onCancelled`），不要在这里兜底。
+   */
+  invalidateCompleted(key: string): void {
+    this.completed.delete(key);
+  }
+
   get size(): number {
     return this.inFlight.size + this.completed.size;
   }

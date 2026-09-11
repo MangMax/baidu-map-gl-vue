@@ -148,30 +148,6 @@ export function resetRejectedJsapiV4GlobalsForTests(): void {
 }
 
 /**
- * 「就绪」判定，用作 Loader 的成功前校验（`assertReady`）。
- *
- * 与直接调用 `requireJsapiV4Global` 的区别：失败时会把**当前全局**登记为本次加载残留——
- * 全局存在却不满足契约，说明多半是这次脚本的产物（分阶段初始化 / 版本不符），
- * 因此不该在下次重试时被 `reuseExistingJsapiV4` 当成宿主全局而挡掉加载。
- * 宿主提供的可用全局不会走到这里（能复用就复用了）。
- *
- * @param extra 额外的契约检查（例如「全局自述版本必须是 4.x」）
- */
-export function assertJsapiV4Ready(
-  providerId: string,
-  extra?: (namespace: Record<string, unknown>) => void,
-): Record<string, unknown> {
-  try {
-    const namespace = requireJsapiV4Global(providerId);
-    extra?.(namespace);
-    return namespace;
-  } catch (error) {
-    markRejectedJsapiV4Global(readJsapiV4Global());
-    throw error;
-  }
-}
-
-/**
  * 校验版本号确实属于 JSAPI 4.0（Stable 单引擎基线）。
  * 不匹配即失败——否则会把 `BMapGL` / 3.0 时代的全局当成 v4 使用。
  */

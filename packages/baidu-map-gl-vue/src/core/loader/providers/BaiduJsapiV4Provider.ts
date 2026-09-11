@@ -17,8 +17,8 @@ import { createLoadedJsapiV4 } from "./loaded";
 import { loadJsapiV4Script } from "./load";
 import {
   JSAPI_V4_DOMAIN,
-  assertJsapiV4Ready,
   assertSupportedJsapiV4Version,
+  requireJsapiV4Global,
 } from "./namespace";
 import { reuseExistingJsapiV4 } from "./reuse";
 import type { JsapiV4Provider, JsapiV4ProviderOptions, LoadedJsapiV4 } from "./types";
@@ -85,7 +85,7 @@ export class BaiduJsapiV4Provider implements JsapiV4Provider {
         // 成功前校验（必经）：命名空间缺失 / 不完整都算本次加载失败——
         // 底层因此不写成功缓存、移除 script，重试才会真的重新插入。
         assertReady: () => {
-          assertJsapiV4Ready(this.id);
+          requireJsapiV4Global(this.id);
         },
         ...scriptOptions(options),
       },
