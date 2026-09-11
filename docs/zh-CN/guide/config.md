@@ -26,6 +26,34 @@ lang: zh-CN
 目前支持三种方式：全局 `app.use` 默认定义、`<BMapProvider>` 子树覆盖、组件 props 传入。
 当同时指定时，按上面的查找顺序，就近优先。
 
+### 迁移期：Driver 选择
+
+组件默认路径（`app.use` / `<BMapProvider>` / `<BMap>`）在迁移期按**加载结果的 engine** 分派 Driver：
+
+- `webgl-v1`（迁移期 legacy）：**可分派且可运行**；
+- `jsapi-v4`（Stable 基线）：**分派契约已接通**——Provider 换成 v4 家族会被正确路由到 v4 工厂，
+  但 v4 Facet Driver 本体仍在 M3A.2（#19~#23）实现中，因此当前会抛出
+  `BMAP_CAPABILITY_UNSUPPORTED`（错误信息指向 M3A.2），而不是静默降级。
+
+默认 cutover（把默认 Provider 换成 v4 家族）在 M3A.3（#25）完成。
+
+`./advanced` 的 `createBMapClient()` 则已经收口：**默认只接受 `jsapi-v4` 并注入 JSAPI 4.0 Driver 工厂**，
+`provider` 必须是结构化的 `BMapProviderLike`——`load()` 返回 `LoadedSdk`：
+
+```ts
+// JSAPI 4.0（Stable 基线）
+{ engine: "jsapi-v4", version: "4.0", namespace: globalThis.BMap, load: { /* metadata */ } }
+// 迁移期 webgl-v1（版本由 Driver 创建时探测，Loader 不声明）
+{ engine: "webgl-v1", namespace: globalThis.BMapGL }
+```
+
+需要显式走 webgl-v1 时，使用 `createLegacyBMapClient()`，或把 `withMigrationDriver(definition)` 的结果
+交给 `createBMapClient()`（后者同时接受 v2 / v3-beta 的宽松 `{ load }` Provider，并把它归一为 webgl-v1）。
+
+`./core` 的 `createClientContext()` 也做同样的归一：**同一份 definition 在任何入口
+（`<BMap>` / `<BMapProvider>` / 插件默认 definition / `resolveMapContext`）行为一致**；需要固定 Driver
+实现时显式传 `definition.driver`。
+
 ### 1。通过全局注册配置 ak 与插件
 
 全局注册 Options（`createBMapPlugin`）：
@@ -34,7 +62,7 @@ lang: zh-CN
 | ------------------ | ------------------------------------------------ | ------------------ | ------ |
 | ak                 | 百度地图 [ak](../guide/quick-start#申请-ak-密钥) | `string`           | -      |
 | apiUrl             | 自建地图 api 资源地址（一般用于离线地图）        | `string`           | -      |
-| version            | SDK 版本                                         | `string`           | `1.0`  |
+| version            | SDK 版本                                         | `string`           | `4.0`  |
 | provider           | 自定义加载器（默认百度 CDN）                     | `BMapProvider`     | -      |
 | plugins            | 需要注册的插件                                   | `string[]`         | -      |
 | defaults           | 透传的加载选项                                   | `BMapLoadOptions`  | -      |

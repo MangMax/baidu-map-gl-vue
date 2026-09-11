@@ -18,6 +18,7 @@ import {
   type BMapClientContext,
 } from "../core/context/client";
 import { bmapConfigKey } from "../core/context/pluginConfig";
+import { withMigrationDriver } from "../client/migration";
 import { inject } from "vue";
 import type { MapContext, MapReadyContext } from "../core/context/types";
 import { ResourceScope } from "../core/lifecycle/ResourceScope";
@@ -74,7 +75,12 @@ function resolveDefaultClientContext(): BMapClientContext | undefined {
     const cached = defaultContextCache.get(key);
     if (cached) return cached;
     const created = createClientContext({
-      definition: { provider: appConfig.provider, loadOptions: appConfig.defaults },
+      // 迁移期组件默认路径:按加载结果的 engine 分派 Driver(见 client/migration.ts),
+      // 默认 cutover 属 #25。
+      definition: withMigrationDriver({
+        provider: appConfig.provider,
+        loadOptions: appConfig.defaults,
+      }),
     });
     defaultContextCache.set(key, created);
     return created;

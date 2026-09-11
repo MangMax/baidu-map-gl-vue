@@ -37,14 +37,19 @@ function onError() {}
 
 ## 静态组件 props
 
-| 属性       | 说明                                              | 类型                        | 默认值 |
-| ---------- | ------------------------------------------------- | --------------------------- | ------ |
-| client     | 已创建好的 `BMapClient`（最高优先级）             | `BMapClient`                | -      |
-| definition | 完整 Client 定义（覆盖默认定义）                  | `CreateBMapClientOptions`   | -      |
-| autoLoad   | 挂载后自动加载 SDK（`false` 时需手动 `load()`）   | `boolean`                   | `true` |
-| suspense   | 保留字段                                          | `boolean`                   | `false` |
+| 属性        | 说明                                              | 类型                        | 默认值 |
+| ----------- | ------------------------------------------------- | --------------------------- | ------ |
+| client      | 已创建好的 `BMapClient`（最高优先级）             | `BMapClient`                | -      |
+| definition  | 完整 Client 定义（覆盖默认定义）                  | `CreateBMapClientOptions`   | -      |
+| provider    | 便捷 Provider（与 `<BMap>` 的 `provider` 对称）    | `AnyBMapProviderLike`       | -      |
+| loadOptions | 配合 `provider` 使用的加载选项                    | `BMapLoadOptions`           | `{}`   |
+| autoLoad    | 挂载后自动加载 SDK（`false` 时需手动 `load()`）   | `boolean`                   | `true` |
+| suspense    | 保留字段                                          | `boolean`                   | `false` |
 
 无 `definition` 时，Provider 复用 `app.use(createBMapPlugin(...))` 的默认定义或最近父 Provider 的上下文。
+
+`definition` / `provider` 会先经迁移期归一（`withMigrationDriver`）：按**加载结果的 engine** 分派
+Driver，未显式声明 `driver` 时注入迁移期工厂；需要固定某个 Driver 实现时直接传带 `driver` 的 `definition`。
 
 ## 插槽
 

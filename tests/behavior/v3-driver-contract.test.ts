@@ -3,16 +3,19 @@
  *
  * 通过 fake SDK 驱动真实的 webgl-v1 Driver 实现,
  * 验证组件无需伪造全局 BMapGL 即可获得稳定领域接口。
+ *
+ * M3A1-CLIENT(#18):默认 `createBMapClient()` 已收口到 jsapi-v4,webgl-v1 必须经
+ * **显式** legacy 工厂(`createLegacyBMapClient`)获取,这本身也是契约的一部分。
  */
 import { describe, it, expect, beforeEach } from "vitest";
-import { createBMapClient } from "../../packages/baidu-map-gl-vue/src/client";
+import { createLegacyBMapClient } from "../../packages/baidu-map-gl-vue/src/client";
 import { createFakeBMapGl, resetLifecycleState } from "../../packages/test-utils";
 import { runMapDriverContract, type DriverHarness } from "../../packages/test-utils/driver-contract";
 
 const fake = createFakeBMapGl();
 
 function makeClient() {
-  return createBMapClient({
+  return createLegacyBMapClient({
     provider: {
       load: async () => fake,
     },
@@ -61,7 +64,7 @@ describe("webgl-v1 driver capabilities (fake sdk)", () => {
   });
 
   it("respects capability overrides", async () => {
-    const client = await createBMapClient({
+    const client = await createLegacyBMapClient({
       provider: { load: async () => fake },
       loadOptions: {},
       capabilityOverrides: { "overlay.marker": false },
@@ -71,7 +74,7 @@ describe("webgl-v1 driver capabilities (fake sdk)", () => {
   });
 
   it("require() throws with UnsupportedCapabilityError under throw policy", async () => {
-    const client = await createBMapClient({
+    const client = await createLegacyBMapClient({
       provider: { load: async () => fake },
       loadOptions: {},
       unsupported: "throw",
@@ -82,7 +85,7 @@ describe("webgl-v1 driver capabilities (fake sdk)", () => {
   });
 
   it("require() is silent under silent policy", async () => {
-    const client = await createBMapClient({
+    const client = await createLegacyBMapClient({
       provider: { load: async () => fake },
       loadOptions: {},
       unsupported: "silent",

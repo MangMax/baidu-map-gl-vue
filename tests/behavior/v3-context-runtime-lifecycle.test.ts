@@ -14,6 +14,7 @@ import BMapProvider from '../../packages/baidu-map-gl-vue/src/components/provide
 import BMarker from '../../packages/baidu-map-gl-vue/src/components/overlays/BMarker.vue'
 import { MapRuntime } from '../../packages/baidu-map-gl-vue/src/core/runtime/MapRuntime'
 import { createClientContext } from '../../packages/baidu-map-gl-vue/src/core/context/client'
+import { withMigrationDriver } from '../../packages/baidu-map-gl-vue/src/client/migration'
 import { getFakeBMapGl, resetLifecycleState } from '../../packages/test-utils'
 
 const fake = getFakeBMapGl()
@@ -234,7 +235,11 @@ describe('PRE audit: context isolation & resource exit', () => {
 
   it('client context 与 runtime dispose 幂等(重复调用无副作用)', async () => {
     const ctx = createClientContext({
-      definition: { provider: { load: async () => ({ ok: 1 }) }, loadOptions: {} },
+      // 迁移期宽松 Provider：显式经 withMigrationDriver 归一（默认 createBMapClient 已收口 v4）
+      definition: withMigrationDriver({
+        provider: { load: async () => ({ ok: 1 }) },
+        loadOptions: {},
+      }),
     })
     await ctx.load()
     expect(ctx.status.value).toBe('ready')
