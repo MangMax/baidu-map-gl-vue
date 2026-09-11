@@ -16,7 +16,7 @@ import type {
   ScriptLoadModeOptions,
   ScriptLoaderOptions,
 } from "../SharedLoadTask";
-import { SdkRegistry } from "../SdkRegistry";
+import { SdkRegistry, resetProcessSdkRegistryForTests } from "../SdkRegistry";
 import { DEFAULT_API_URL } from "../url";
 import { BMapError } from "../../errors/BMapError";
 import { BaiduJsapiV4Provider, baiduJsapiV4Provider } from "./BaiduJsapiV4Provider";
@@ -280,6 +280,39 @@ describe("BaiduJsapiV4Provider", () => {
     invokeGlobalCallback("__cb_shared_a");
     await expect(p2).resolves.toBe(COMPLETE_NAMESPACE);
     await expect(p3).resolves.toBe(COMPLETE_NAMESPACE);
+  });
+
+  it("[T1] 失败残留标记跨库副本共享，另一份副本的重试不会被挡住", async () => {
+    resetProcessSdkRegistryForTests();
+    const created = trackScripts();
+    const partial = { Map: () => {}, Point: () => {} };
+
+    // 副本 A：独立求值的模块图（模拟同页两份独立打包的库副本），共用进程级 BMap 域。
+    vi.resetModules();
+    const namespaceA = await import("./namespace");
+    const providerA = (await import("./BaiduJsapiV4Provider")).baiduJsapiV4Provider();
+    const first = providerA.load({ ak: AK, apiUrl: REMOTE_SRC });
+    await Promise.resolve();
+    installGlobal(partial);
+    invokeGlobalCallback(jsonpCallbackNameOf(created[0]));
+    await expect(first).rejects.toThrow(/Marker/);
+    expect(namespaceA.isRejectedJsapiV4Global(partial)).toBe(true);
+
+    // 副本 B：同一 realm、同一进程级 Registry，必须认识 A 留下的残留。
+    vi.resetModules();
+    const namespaceB = await import("./namespace");
+    expect(namespaceB.isRejectedJsapiV4Global(partial)).toBe(true);
+
+    const providerB = (await import("./BaiduJsapiV4Provider")).baiduJsapiV4Provider();
+    const second = providerB.load({ ak: AK, apiUrl: REMOTE_SRC });
+    // 断言失败时避免留下未处理的 rejection。
+    void second.catch(() => {});
+    await Promise.resolve();
+    expect(created).toHaveLength(2);
+
+    installGlobal(COMPLETE_NAMESPACE);
+    invokeGlobalCallback(jsonpCallbackNameOf(created[1]));
+    await expect(second).resolves.toMatchObject({ engine: "jsapi-v4" });
   });
 
   it("命名空间缺少关键成员时失败，且不残留全局 callback", async () => {

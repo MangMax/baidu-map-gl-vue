@@ -126,8 +126,23 @@ export function probeJsapiV4Version(value: unknown): string | undefined {
  *   → 不该阻断重试，调用方应能重新插入 script。
  *
  * 只按对象身份记录，用 `WeakSet` 不阻止回收；**从不删除**任何全局对象。
+ *
+ * 存储放在 realm 共享的 `globalThis[Symbol.for(...)]` 上（与 `SdkRegistry` 同一模式）：
+ * 全局命名空间本身是**进程级**资源，同页可能存在多份独立打包的库副本，如果残留标记是
+ * 模块局部状态，副本 A 留下的残留对副本 B 不可见——B 会把残缺全局当成宿主全局拒绝，
+ * 于是一次失败后再也无法重试。共享范围必须与它描述的对象一致。
  */
-let rejectedGlobals = new WeakSet<object>();
+const REJECTED_GLOBALS_SYMBOL = Symbol.for("baidu-map-gl-vue.rejected-jsapi-v4-globals");
+
+type GlobalWithRejectedGlobals = typeof globalThis & {
+  [REJECTED_GLOBALS_SYMBOL]?: WeakSet<object>;
+};
+
+/** 取 realm 共享的残留存储（不存在则创建）。 */
+function rejectedGlobalStore(): WeakSet<object> {
+  const scope = globalThis as GlobalWithRejectedGlobals;
+  return (scope[REJECTED_GLOBALS_SYMBOL] ??= new WeakSet<object>());
+}
 
 function isObjectLike(value: unknown): value is object {
   return (typeof value === "object" && value !== null) || typeof value === "function";
@@ -135,16 +150,16 @@ function isObjectLike(value: unknown): value is object {
 
 /** 标记一个全局对象为「本库本次加载产生的残缺残留」。 */
 export function markRejectedJsapiV4Global(value: unknown): void {
-  if (isObjectLike(value)) rejectedGlobals.add(value);
+  if (isObjectLike(value)) rejectedGlobalStore().add(value);
 }
 
 export function isRejectedJsapiV4Global(value: unknown): boolean {
-  return isObjectLike(value) && rejectedGlobals.has(value);
+  return isObjectLike(value) && rejectedGlobalStore().has(value);
 }
 
-/** 仅测试使用：清空残留标记。 */
+/** 仅测试使用：重置 realm 共享的残留标记（所有库副本共用同一存储）。 */
 export function resetRejectedJsapiV4GlobalsForTests(): void {
-  rejectedGlobals = new WeakSet<object>();
+  (globalThis as GlobalWithRejectedGlobals)[REJECTED_GLOBALS_SYMBOL] = new WeakSet<object>();
 }
 
 /**
