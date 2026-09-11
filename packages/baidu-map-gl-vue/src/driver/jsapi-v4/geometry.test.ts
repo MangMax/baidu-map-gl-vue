@@ -170,3 +170,65 @@ describe("Bounds", () => {
     ).toThrowError(expect.objectContaining({ code: "BMAP_INVALID_POINT" }));
   });
 });
+
+/**
+ * 回归：PR #59 评审 P2（复合几何入口遇到空值时的错误契约）
+ *
+ * 旧实现在校验之前就读 `bounds.southwest` / 直接调参数的 `.map()`，容器为
+ * `null` / `undefined` 时会抛原生 `TypeError`，绕过 `BMapError` 的错误协议。
+ * 要求：**拒绝空值也必须走结构化错误**；空数组与 `0/0` 仍然合法。
+ */
+describe("回归 PR#59-P2-2：复合入口的空容器必须走结构化错误", () => {
+  const emptyContainers = [null, undefined];
+
+  it("toRawPoints / fromRawPoints 对 null / undefined 抛 BMapError 而不是 TypeError", () => {
+    for (const value of emptyContainers) {
+      expect(() => geometry.toRawPoints(value as never)).toThrowError(
+        expect.objectContaining({ name: "BMapError", code: "BMAP_INVALID_ARGUMENT" }),
+      );
+      expect(() => geometry.fromRawPoints(value as never)).toThrowError(
+        expect.objectContaining({ name: "BMapError", code: "BMAP_INVALID_ARGUMENT" }),
+      );
+    }
+  });
+
+  it("toRawBounds 对 null / undefined 抛 BMapError 而不是 TypeError", () => {
+    for (const value of emptyContainers) {
+      expect(() => geometry.toRawBounds(value as never)).toThrowError(
+        expect.objectContaining({ name: "BMapError", code: "BMAP_INVALID_ARGUMENT" }),
+      );
+    }
+  });
+
+  it("非数组 / 非对象的容器同样走结构化错误", () => {
+    for (const value of ["points", 1, {}, true]) {
+      expect(() => geometry.toRawPoints(value as never)).toThrowError(
+        expect.objectContaining({ code: "BMAP_INVALID_ARGUMENT" }),
+      );
+      expect(() => geometry.fromRawPoints(value as never)).toThrowError(
+        expect.objectContaining({ code: "BMAP_INVALID_ARGUMENT" }),
+      );
+    }
+    for (const value of ["bounds", 1, true]) {
+      expect(() => geometry.toRawBounds(value as never)).toThrowError(
+        expect.objectContaining({ code: "BMAP_INVALID_ARGUMENT" }),
+      );
+    }
+  });
+
+  it("空数组与 0/0 坐标仍然合法", () => {
+    expect(geometry.toRawPoints([])).toEqual([]);
+    expect(geometry.fromRawPoints([])).toEqual([]);
+    const origin = { lng: 0, lat: 0 };
+    expect(geometry.fromRawPoints(geometry.toRawPoints([origin]))).toEqual([origin]);
+  });
+
+  it("批量数组里的非法元素仍按 BMAP_INVALID_POINT 上报", () => {
+    expect(() => geometry.toRawPoints([{ lng: 0, lat: 0 }, { lng: Number.NaN, lat: 1 }])).toThrowError(
+      expect.objectContaining({ code: "BMAP_INVALID_POINT" }),
+    );
+    expect(() => geometry.fromRawPoints([null])).toThrowError(
+      expect.objectContaining({ code: "BMAP_INVALID_POINT" }),
+    );
+  });
+});

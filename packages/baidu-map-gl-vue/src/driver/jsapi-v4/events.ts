@@ -14,8 +14,14 @@
  * 生命周期：订阅集合为空时立刻删除 `groups` 里的 target/type 条目，驱动不会因为
  * 「曾经订阅过某张地图」而长期持有已销毁的 raw 对象。
  *
- * 语义细节：订阅按**函数身份**去重（与官方 `addEventListener` 一致），因此同一个函数
- * 重复订阅只算一个订阅者。
+ * 订阅语义（PR #59 评审修正）：
+ * - **每次 `on()` 都是一份独立订阅**，disposer 与它一一对应；同一函数订阅两次就是两份，
+ *   各自释放一份、计数归零才解绑。因此早期用 `Set<函数>` 做身份去重的实现被替换为
+ *   「函数 → 份数」计数：`Set` 无法表达两份订阅，且旧 disposer 会连带摘掉比它更晚建立的
+ *   那份订阅。
+ * - 派发时同一个函数每轮只调用一次，与「一个 target+type 只有一个 raw 绑定」保持一致。
+ * - 摘除分组必须**校验分组身份**：只有仍是当前分组的那个才允许解绑，避免旧 disposer
+ *   解绑后来替换掉的新分组。
  */
 import { logger } from "../../core/logger";
 import { normalizeDriverEvent } from "../normalize";
@@ -32,7 +38,13 @@ type TypedListener = (event: DriverEvent) => void;
 interface SubscriptionGroup {
   /** 真正注册到 SDK 上的稳定包装函数：订阅集合变化时不重建。 */
   readonly raw: RawListener;
-  readonly listeners: Set<TypedListener>;
+  /**
+   * 函数 → 仍在生效的订阅份数。
+   *
+   * 用计数而非 `Set`：同一函数可以被订阅多次，每份都要有自己的 disposer 语义
+   * （释放一份不能影响另一份），计数归零才把函数从分组里摘掉。
+   */
+  readonly claims: Map<TypedListener, number>;
 }
 
 export interface CreateJsapiV4EventDriverInput {
@@ -58,10 +70,16 @@ export function createJsapiV4EventDriver(input: CreateJsapiV4EventDriverInput): 
   /** target → type → 订阅组；集合为空时删除条目，不长期持有 raw 对象。 */
   const groups = new Map<object, Map<string, SubscriptionGroup>>();
 
-  const removeGroup = (target: object, type: string, removeEventListener: RawMethod): void => {
+  const removeGroup = (
+    target: object,
+    type: string,
+    group: SubscriptionGroup,
+    removeEventListener: RawMethod,
+  ): void => {
     const byType = groups.get(target);
-    const group = byType?.get(type);
-    if (!byType || !group) return;
+    // 身份校验：只允许解绑**自己那一份**分组。旧 disposer 在分组已被替换后仍可能被调用，
+    // 按 target+type 盲删会把后来建立的订阅一起解绑。
+    if (!byType || byType.get(type) !== group) return;
     byType.delete(type);
     if (byType.size === 0) groups.delete(target);
     removeEventListener.call(target, type, group.raw);
@@ -69,11 +87,11 @@ export function createJsapiV4EventDriver(input: CreateJsapiV4EventDriverInput): 
 
   const createGroup = (type: string): SubscriptionGroup => {
     const group: SubscriptionGroup = {
-      listeners: new Set<TypedListener>(),
+      claims: new Map<TypedListener, number>(),
       raw: (event: unknown) => {
         const payload = normalizeDriverEvent(type, event, geometry);
         // 复制一份再遍历：监听器内部 dispose 不影响本轮派发
-        for (const current of [...group.listeners]) current(payload);
+        for (const listener of [...group.claims.keys()]) listener(payload);
       },
     };
     return group;
@@ -99,28 +117,31 @@ export function createJsapiV4EventDriver(input: CreateJsapiV4EventDriverInput): 
 
       const byType = groups.get(rawTarget);
       const existing = byType?.get(type);
+      let group: SubscriptionGroup;
+
       if (existing) {
         // handler 更新/追加：复用同一个 raw listener，不重新绑定
-        existing.listeners.add(listener as TypedListener);
-        return createDisposer(() => {
-          existing.listeners.delete(listener as TypedListener);
-          if (existing.listeners.size === 0) removeGroup(rawTarget, type, remove);
-        });
+        group = existing;
+      } else {
+        group = createGroup(type);
+        // 先绑定、后登记：addEventListener 抛错时不在 groups 里留下空分组
+        (addEventListener as RawMethod).call(rawTarget, type, group.raw);
+        if (byType) {
+          byType.set(type, group);
+        } else {
+          groups.set(rawTarget, new Map([[type, group]]));
+        }
       }
 
-      const group = createGroup(type);
-      group.listeners.add(listener as TypedListener);
-      // 先绑定、后登记：addEventListener 抛错时不在 groups 里留下空分组
-      (addEventListener as RawMethod).call(rawTarget, type, group.raw);
-      if (byType) {
-        byType.set(type, group);
-      } else {
-        groups.set(rawTarget, new Map([[type, group]]));
-      }
+      const typed = listener as TypedListener;
+      group.claims.set(typed, (group.claims.get(typed) ?? 0) + 1);
 
       return createDisposer(() => {
-        group.listeners.delete(listener as TypedListener);
-        if (group.listeners.size === 0) removeGroup(rawTarget, type, remove);
+        // 只释放本 disposer 的这一份；同一函数的其它订阅不受影响
+        const remaining = (group.claims.get(typed) ?? 0) - 1;
+        if (remaining > 0) group.claims.set(typed, remaining);
+        else group.claims.delete(typed);
+        if (group.claims.size === 0) removeGroup(rawTarget, type, group, remove);
       });
     },
   };

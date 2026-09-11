@@ -7,7 +7,9 @@
  * 1. **不做范围校验**：官方构造器只做类型归一，不检查 `lng ∈ ±180` / `lat ∈ ±90`，
  *    驱动也不额外加码——`0/0`、`±180/±90` 都是合法坐标，范围错误应交由业务判断；
  * 2. **只拒绝真正的非法值**：非有限数、缺分量、非对象。`NaN` 一旦进入 `new BMap.Size`
- *    会静默留下 `NaN` 并让覆盖物不可见，因此在边界就换成结构化错误；
+ *    会静默留下 `NaN` 并让覆盖物不可见，因此在边界就换成结构化错误；复合入口
+ *    （`toRawPoints` / `fromRawPoints` / `toRawBounds`）必须**先校验容器再读属性**，
+ *    否则 `null` / `undefined` 会抛原生 `TypeError` 绕过错误协议（PR #59 评审 P2-2）。
  * 3. **不做墨卡托逆投影**：`webgl-v1` 在 WebGL 渲染路径下需要把 BD09MC 米制事件点位换算
  *    成度，4.0 的事件 `point` / `latLng` 本身就是经纬度（墨卡托坐标走独立的 `pointMC`
  *    字段），因此这里不引入猜测式换算。
@@ -41,6 +43,39 @@ function requirePair(
     });
   }
   return [first, second];
+}
+
+/** 用于错误信息的入参形态描述（不打印可能是大对象的内容）。 */
+function describeValue(value: unknown): string {
+  if (value === null) return "null";
+  if (Array.isArray(value)) return "array";
+  return typeof value;
+}
+
+/**
+ * 批量入口的容器校验。
+ *
+ * 复合入口（`toRawPoints` / `fromRawPoints` / `toRawBounds`）必须先校验**容器**形状再读取
+ * 属性或遍历，否则 `null` / `undefined` 会在进入既有校验之前抛原生 `TypeError`，绕过
+ * `BMapError` 的错误协议（调用方无法按 `code` 分类处理）。
+ */
+function requireArray(value: unknown, label: string): readonly unknown[] {
+  if (!Array.isArray(value)) {
+    throw new BMapError("BMAP_INVALID_ARGUMENT", `${label} 必须是数组（收到 ${describeValue(value)}）`, {
+      engine: "jsapi-v4",
+    });
+  }
+  return value;
+}
+
+/** 读取 Bounds 容器之前的前置校验：必须是对象，否则先读角点会抛原生 TypeError。 */
+function requireBoundsContainer(value: unknown): { southwest: unknown; northeast: unknown } {
+  if (!value || typeof value !== "object") {
+    throw new BMapError("BMAP_INVALID_ARGUMENT", `Bounds 必须是对象（收到 ${describeValue(value)}）`, {
+      engine: "jsapi-v4",
+    });
+  }
+  return value as { southwest: unknown; northeast: unknown };
 }
 
 export function createJsapiV4GeometryDriver(rawSdk: unknown): GeometryDriver {
@@ -91,8 +126,9 @@ export function createJsapiV4GeometryDriver(rawSdk: unknown): GeometryDriver {
   };
 
   const toRawBounds = (bounds: Bounds): unknown => {
-    const southwest = toRawPoint(bounds.southwest);
-    const northeast = toRawPoint(bounds.northeast);
+    const container = requireBoundsContainer(bounds);
+    const southwest = toRawPoint(container.southwest as Point);
+    const northeast = toRawPoint(container.northeast as Point);
     return sdkCall("Bounds", () => new BoundsCtor(southwest, northeast));
   };
 
@@ -124,10 +160,10 @@ export function createJsapiV4GeometryDriver(rawSdk: unknown): GeometryDriver {
     toRawPoint,
     fromRawPoint,
     toRawPoints(points) {
-      return points.map((point) => toRawPoint(point));
+      return requireArray(points, "toRawPoints 入参").map((point) => toRawPoint(point as Point));
     },
     fromRawPoints(raws) {
-      return raws.map((raw) => fromRawPoint(raw));
+      return requireArray(raws, "fromRawPoints 入参").map((raw) => fromRawPoint(raw));
     },
     toRawPixel,
     fromRawPixel,

@@ -248,3 +248,101 @@ describe("生命周期", () => {
     expect(fake.stats.liveListeners).toBe(0);
   });
 });
+
+/**
+ * 回归：PR #59 评审 P2（同函数重复订阅 + disposer 释放顺序）
+ *
+ * 旧实现的 `listeners` 是 `Set<函数>`、`removeGroup()` 按 `target+type` 找**当前**分组，
+ * 因此「同一函数订阅两次」无法表达成两份独立订阅，且旧 disposer 会摘掉比它更晚建立的订阅。
+ */
+describe("回归 PR#59-P2-1：订阅记录必须与 disposer 一一对应", () => {
+  it("旧 disposer 不会误删后来建立的有效订阅（评审给出的复现场景）", () => {
+    const { events, map, rawMap, fake } = setup();
+    const oldHandler = () => {};
+
+    const disposeA = events.on(map, "click", oldHandler);
+    const disposeB = events.on(map, "click", oldHandler);
+
+    disposeA();
+    // 同一 target+type 只绑定一次；释放一份订阅不足以解绑
+    expect(fake.stats.listenCalls).toBe(1);
+    expect(rawMap.getListenerCount("click")).toBe(1);
+
+    let calls = 0;
+    const disposeNew = events.on(map, "click", () => {
+      calls++;
+    });
+    expect(fake.stats.listenCalls).toBe(1);
+
+    disposeB();
+    expect(rawMap.getListenerCount("click")).toBe(1);
+
+    rawMap.emit("click", { point: { lng: 1, lat: 2 } });
+    expect(calls).toBe(1);
+
+    disposeNew();
+    expect(rawMap.getListenerCount("click")).toBe(0);
+  });
+
+  it("分组仍存活时，重新订阅同一函数不会被先前的 disposer 摘掉", () => {
+    const { events, map, rawMap } = setup();
+    const shared = vi.fn();
+    const keepAlive = vi.fn();
+
+    const disposeFirst = events.on(map, "click", shared);
+    const disposeKeepAlive = events.on(map, "click", keepAlive);
+    const disposeSecond = events.on(map, "click", shared);
+
+    disposeFirst();
+    rawMap.emit("click", { point: { lng: 1, lat: 2 } });
+    expect(shared).toHaveBeenCalledTimes(1);
+    expect(keepAlive).toHaveBeenCalledTimes(1);
+
+    disposeSecond();
+    rawMap.emit("click", { point: { lng: 1, lat: 2 } });
+    expect(shared).toHaveBeenCalledTimes(1);
+    expect(keepAlive).toHaveBeenCalledTimes(2);
+
+    disposeKeepAlive();
+    expect(rawMap.getListenerCount("click")).toBe(0);
+  });
+
+  it("同一函数订阅两次时每次事件只派发一次（不重复回调），但需两份都释放才解绑", () => {
+    const { events, map, rawMap, fake } = setup();
+    const shared = vi.fn();
+
+    const disposeA = events.on(map, "click", shared);
+    const disposeB = events.on(map, "click", shared);
+    expect(fake.stats.listenCalls).toBe(1);
+
+    rawMap.emit("click", { point: { lng: 1, lat: 2 } });
+    expect(shared).toHaveBeenCalledTimes(1);
+
+    disposeA();
+    disposeB();
+    expect(rawMap.getListenerCount("click")).toBe(0);
+  });
+
+  it("已销毁分组的 disposer 不会解绑新分组（分组身份校验）", () => {
+    const { events, map, rawMap, fake } = setup();
+    const disposeOld = events.on(map, "click", () => {});
+    disposeOld();
+    expect(rawMap.getListenerCount("click")).toBe(0);
+
+    const calls: number[] = [];
+    const disposeNew = events.on(map, "click", () => {
+      calls.push(1);
+    });
+    expect(fake.stats.listenCalls).toBe(2);
+
+    // 幂等 + 身份校验：不得触碰替换后的新分组
+    disposeOld();
+    disposeOld();
+    expect(rawMap.getListenerCount("click")).toBe(1);
+    rawMap.emit("click", { point: { lng: 0, lat: 0 } });
+    expect(calls).toHaveLength(1);
+
+    disposeNew();
+    expect(rawMap.getListenerCount("click")).toBe(0);
+  });
+});
