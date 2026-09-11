@@ -25,12 +25,14 @@ import { MapRuntime } from "../../core/runtime/MapRuntime";
 import { BMapError } from "../../core/errors/BMapError";
 import { logger } from "../../core/logger";
 import type { BMapLoadOptions } from "../../core/loader/url";
+import { DEFAULT_VERSION } from "../../core/loader/url";
 import {
   baiduCdnProvider,
   existingGlobalProvider,
   hasExistingGlobalSdk,
 } from "../../core/loader/Provider";
-import type { BMapClient, CreateBMapClientOptions } from "../../client/types";
+import type { AnyBMapProviderLike, BMapClient, CreateBMapClientOptions } from "../../client/types";
+import { withMigrationDriver } from "../../client/migration";
 import { normalizeMapMouseEvent } from "../../driver/normalize";
 import { bmapConfigKey, type BMapPluginConfig } from "../../core/context/pluginConfig";
 import type { BMapProps } from "../../types/components";
@@ -106,34 +108,50 @@ if (props.client) {
   clientContext = createClientContext({ definition: props.definition });
   ownClientContext = true;
 } else if (props.provider || props.ak || props.apiUrl) {
-  const provider = (props.provider as BMapClientContext extends never ? never : CreateBMapClientOptions["provider"]) ?? appConfig?.provider ?? baiduCdnProvider();
+  const provider = (props.provider as BMapClientContext extends never ? never : AnyBMapProviderLike) ?? appConfig?.provider ?? baiduCdnProvider();
   const loadOptions: BMapLoadOptions = {
     ak: props.ak ?? appConfig?.defaults?.ak,
     apiUrl: props.apiUrl ?? appConfig?.defaults?.apiUrl,
-    version: appConfig?.defaults?.version ?? "1.0",
+    version: appConfig?.defaults?.version ?? DEFAULT_VERSION,
   };
-  clientContext = createClientContext({ definition: { provider: provider as CreateBMapClientOptions["provider"], loadOptions } });
+  // M3A1-CLIENT(#18): 组件默认路径走迁移归一（按加载 engine 分派 Driver，默认 cutover
+  // 属 #25）；createBMapClient 自身的默认已收口到 jsapi-v4。
+  clientContext = createClientContext({
+    definition: withMigrationDriver({
+      provider: provider as AnyBMapProviderLike,
+      loadOptions,
+    }),
+  });
   ownClientContext = true;
 } else if (parentClientContext) {
   clientContext = parentClientContext;
 } else if (defaultDefinition) {
-  clientContext = createClientContext({ definition: defaultDefinition });
+  clientContext = createClientContext({ definition: withMigrationDriver(defaultDefinition) });
   ownClientContext = true;
 } else if (appConfig?.provider) {
   clientContext = createClientContext({
-    definition: { provider: appConfig.provider, loadOptions: appConfig.defaults },
+    definition: withMigrationDriver({
+      provider: appConfig.provider,
+      loadOptions: appConfig.defaults,
+    }),
   });
   ownClientContext = true;
 } else if (props.allowExistingGlobal) {
   clientContext = createClientContext({
-    definition: { provider: existingGlobalProvider(), loadOptions: {} },
+    definition: withMigrationDriver({
+      provider: existingGlobalProvider(),
+      loadOptions: {},
+    }),
   });
   ownClientContext = true;
 } else if (hasExistingGlobalSdk()) {
   // 向后兼容:默认不静默读取全局 SDK,仅在已存在时经 Loader 边界回退并 warn
   logger.warn("BMap resolved existing global SDK fallback; prefer <BMapProvider> or app.use(createBMapPlugin(...))");
   clientContext = createClientContext({
-    definition: { provider: existingGlobalProvider(), loadOptions: {} },
+    definition: withMigrationDriver({
+      provider: existingGlobalProvider(),
+      loadOptions: {},
+    }),
   });
   ownClientContext = true;
 } else {

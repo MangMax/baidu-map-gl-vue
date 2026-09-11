@@ -8,7 +8,9 @@ import {
   shallowRef,
   useId,
 } from "vue";
-import type { BMapClient, CreateBMapClientOptions } from "../../client/types";
+import type { BMapClient, AnyBMapProviderLike, CreateBMapClientOptions } from "../../client/types";
+import { withMigrationDriver } from "../../client/migration";
+import type { BMapLoadOptions } from "../../core/loader/url";
 import { BMapError } from "../../core/errors/BMapError";
 import {
   bmapClientContextKey,
@@ -20,6 +22,15 @@ import {
 export interface BMapProviderProps {
   client?: BMapClient;
   definition?: CreateBMapClientOptions;
+  /**
+   * 便捷 Provider 接口（与 `<BMap>` 的 `provider` prop 对称）。
+   *
+   * M3A1-CLIENT（#18）：组件默认路径在迁移期走 `withMigrationDriver`——按**加载结果的
+   * engine** 分派 Driver（legacy / v4 都可用），默认 cutover 属 #25。需要固定某个
+   * Driver 实现时请直接传带 `driver` 的 `definition`。
+   */
+  provider?: AnyBMapProviderLike;
+  loadOptions?: BMapLoadOptions;
   autoLoad?: boolean;
   suspense?: boolean;
 }
@@ -39,17 +50,29 @@ const emit = defineEmits<{
   error: [error: BMapError];
 }>();
 
-// 查找顺序:显式 client/definition > 最近 Provider > app.use 默认 definition
+// 查找顺序:显式 client/definition > 显式 provider/loadOptions > 最近 Provider >
+// app.use 默认 definition
 const parentClient = inject(bmapClientContextKey, undefined);
 const appDefaultDefinition = inject(defaultClientDefinitionKey, undefined);
 
+const ownDefinition = computed<CreateBMapClientOptions | undefined>(() => {
+  if (props.definition) return withMigrationDriver(props.definition);
+  if (props.provider) {
+    return withMigrationDriver({
+      provider: props.provider,
+      loadOptions: props.loadOptions ?? {},
+    });
+  }
+  return undefined;
+});
+
 const resolvedDefinition = computed<CreateBMapClientOptions | undefined>(
-  () => props.definition ?? appDefaultDefinition,
+  () => ownDefinition.value ?? appDefaultDefinition,
 );
 
 const context: BMapClientContext = props.client
   ? createClientContext({ client: props.client })
-  : parentClient && !props.definition
+  : parentClient && !ownDefinition.value
     ? parentClient
     : createClientContext({ definition: resolvedDefinition.value, client: undefined });
 
@@ -58,8 +81,8 @@ const isOwnContext = context !== parentClient;
 if (isOwnContext) {
   provide(bmapClientContextKey, context);
   // 子树 <BMap> 无显式 definition 时可经此覆盖后的 definition 解析
-  if (props.definition) {
-    provide(defaultClientDefinitionKey, props.definition);
+  if (ownDefinition.value) {
+    provide(defaultClientDefinitionKey, ownDefinition.value);
   }
 }
 

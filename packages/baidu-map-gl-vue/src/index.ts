@@ -68,10 +68,15 @@ export type { BMapProviderProps } from "./components/provider/BMapProvider.vue";
 // Client/Driver 领域类型(稳定公开,raw SDK 只在 ./advanced)
 export { createBMapClientDefinition } from "./client";
 export type {
+  AnyBMapProviderLike,
   BMapClient,
+  BMapDriverFactory,
+  BMapDriverInput,
   BMapProviderLike,
   CreateBMapClientOptions,
+  LooseBMapProviderLike,
 } from "./client/types";
+export type { LoadedLegacySdk, LoadedSdk } from "./core/loader/loaded";
 export type { BMapDriver, BMapEngine } from "./driver/types/bmap";
 export type {
   MapHandle,

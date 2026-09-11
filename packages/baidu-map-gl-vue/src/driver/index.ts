@@ -1,11 +1,19 @@
 /**
  * Driver 工厂与 engine 探测
+ *
+ * 注意（M3A1-CLIENT / issue #18）：`detectEngine` 是**运行时猜测**，默认 Client 路径
+ * 已经不再使用它——Provider 必须返回结构化的 `LoadedSdk`（`engine` 判别字段），
+ * 见 `client/createBMapClient.ts`。这里保留它只为 `./advanced` 的逃生口与历史调用方。
  */
 import { BMapError } from "../core/errors/BMapError";
 import type { Capability } from "./capability/catalog";
 import type { UnsupportedBehavior } from "./capability/unsupported";
+import { createJsapiV4Driver } from "./createJsapiV4Driver";
 import type { BMapDriver, BMapEngine } from "./types/bmap";
 import { createWebGlV1Driver, detectVersion } from "./webgl-v1/createDriver";
+
+export { createJsapiV4Driver } from "./createJsapiV4Driver";
+export type { CreateJsapiV4DriverInput } from "./createJsapiV4Driver";
 
 export interface CreateDriverInput {
   engine: BMapEngine;
@@ -14,7 +22,7 @@ export interface CreateDriverInput {
   capabilityOverrides?: Partial<Record<Capability, boolean>>;
 }
 
-/** 从已加载的 SDK namespace 探测 engine */
+/** 从已加载的 SDK namespace 探测 engine（猜测式；默认 Client 路径不使用） */
 export function detectEngine(loaded: unknown): BMapEngine {
   const sdk = loaded as Record<string, unknown> | null | undefined;
   if (!sdk) return "jsapi-v4";
@@ -33,8 +41,14 @@ export function createDriver(input: CreateDriverInput): BMapDriver {
         unsupported: input.unsupported ?? "warn",
         capabilityOverrides: input.capabilityOverrides,
       });
-    case "jsapi-v3":
     case "jsapi-v4":
+      return createJsapiV4Driver({
+        rawSdk: input.rawSdk,
+        version: detectVersion(input.rawSdk),
+        unsupported: input.unsupported ?? "warn",
+        capabilityOverrides: input.capabilityOverrides,
+      });
+    case "jsapi-v3":
       throw new BMapError(
         "BMAP_CAPABILITY_UNSUPPORTED",
         `${input.engine} driver is not implemented yet; only webgl-v1 is stable in this release`,

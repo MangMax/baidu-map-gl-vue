@@ -2,14 +2,18 @@
  * BMapProvider（迁移期 legacy 实现）
  *
  * Provider 是唯一允许处理全局 SDK 命名空间的边界。这里的三个实现是 **webgl-v1 →
- * JSAPI 4.0 迁移期** 的过渡路径，返回裸全局对象（`Promise<unknown>`），语义保持宽松：
+ * JSAPI 4.0 迁移期** 的过渡路径，语义保持宽松：
  * - BaiduCdnProvider:在线 CDN 加载（JSAPI 4.0 入口，见 url.ts）
  * - ExistingGlobalProvider:使用已存在的全局 SDK
  * - CustomScriptProvider:离线/私有 apiUrl 或自定义 script
  *
- * 结构化契约在 `./providers`（issue #17）：`BaiduJsapiV4Provider` /
- * `ExistingGlobalV4Provider` / `CustomScriptV4Provider` 返回 `LoadedJsapiV4`，统一
- * 落在进程级 `BMap` 冲突域内；默认 Client / 组件切换在 M3A.1-CLIENT（#18）完成，
+ * M3A1-CLIENT（issue #18）之后它们返回**结构化**的 `LoadedLegacySdk`
+ * （`engine: "webgl-v1"` + `namespace`）而不是裸 `unknown`：版本由 Driver 在创建时
+ * 探测（`detectVersion`），Loader 不代为声明。结构化契约见 `./loaded`，
+ * v4 Provider 家族见 `./providers`（issue #17）。
+ *
+ * 默认 Client 只接受 `jsapi-v4`；这些 legacy Provider 必须经**显式**的
+ * `createLegacyBMapClient()`（或组件默认路径的 `withMigrationDriver()`）使用，
  * legacy 实现随 M3A.3（#26）删除。
  *
  * 全局读取保持向前兼容（优先 `BMap`，回退迁移期 `BMapGL`），因此 legacy Provider
@@ -24,13 +28,14 @@ import {
   fingerprintConfig,
   type BMapLoadOptions,
 } from "./url";
+import { loadedLegacySdk, type LoadedLegacySdk } from "./loaded";
 import { ScriptLoader, scriptOptions } from "./ScriptLoader";
 import { SdkRegistry, getProcessSdkRegistry } from "./SdkRegistry";
 
 export interface BMapProvider {
   readonly id: string;
   getCacheKey(options: BMapLoadOptions): string;
-  load(options: BMapLoadOptions, signal?: AbortSignal): Promise<unknown>;
+  load(options: BMapLoadOptions, signal?: AbortSignal): Promise<LoadedLegacySdk>;
 }
 
 /**
@@ -67,7 +72,7 @@ export class BaiduCdnProvider implements BMapProvider {
     return fingerprintConfig(options);
   }
 
-  load(options: BMapLoadOptions, signal?: AbortSignal): Promise<unknown> {
+  load(options: BMapLoadOptions, signal?: AbortSignal): Promise<LoadedLegacySdk> {
     return this.registry.load(
       {
         fingerprint: fingerprintConfig(options),
@@ -80,9 +85,9 @@ export class BaiduCdnProvider implements BMapProvider {
   private async performLoad(
     options: BMapLoadOptions,
     signal?: AbortSignal,
-  ): Promise<unknown> {
+  ): Promise<LoadedLegacySdk> {
     const present = isClient() ? readGlobalSdk() : undefined;
-    if (present) return present;
+    if (present) return loadedLegacySdk(present);
 
     const callbackName = createCallbackName("__bmap_init_");
     const url = createBaiduSdkUrl(
@@ -108,7 +113,7 @@ export class BaiduCdnProvider implements BMapProvider {
     const api = readGlobalSdk();
     if (!api)
       throw new BMapError("BMAP_SDK_LOAD_FAILED", "BMap SDK did not expose global namespace");
-    return api;
+    return loadedLegacySdk(api);
   }
 }
 
@@ -117,11 +122,11 @@ export class ExistingGlobalProvider implements BMapProvider {
   getCacheKey() {
     return "existing-global";
   }
-  async load(): Promise<unknown> {
+  async load(): Promise<LoadedLegacySdk> {
     if (!isClient() || !readGlobalSdk()) {
       throw new BMapError("BMAP_SDK_LOAD_FAILED", "global BMap SDK is not present");
     }
-    return readGlobalSdk();
+    return loadedLegacySdk(readGlobalSdk());
   }
 }
 
@@ -145,7 +150,7 @@ export class CustomScriptProvider implements BMapProvider {
     return fingerprintConfig({ ...options, apiUrl: this.scriptSrc || options.apiUrl });
   }
 
-  load(options: BMapLoadOptions, signal?: AbortSignal): Promise<unknown> {
+  load(options: BMapLoadOptions, signal?: AbortSignal): Promise<LoadedLegacySdk> {
     return this.registry.load(
       {
         fingerprint: this.getCacheKey(options),
@@ -158,9 +163,9 @@ export class CustomScriptProvider implements BMapProvider {
   private async performLoad(
     options: BMapLoadOptions,
     signal?: AbortSignal,
-  ): Promise<unknown> {
+  ): Promise<LoadedLegacySdk> {
     const present = isClient() ? readGlobalSdk() : undefined;
-    if (present) return present;
+    if (present) return loadedLegacySdk(present);
 
     // 只有离线 apiUrl 场景才走 JSONP；否则以 script load 事件就绪。
     const useJsonp = Boolean(options.apiUrl);
@@ -184,7 +189,7 @@ export class CustomScriptProvider implements BMapProvider {
     const api = readGlobalSdk();
     if (!api)
       throw new BMapError("BMAP_SDK_LOAD_FAILED", "Custom SDK did not expose global namespace");
-    return api;
+    return loadedLegacySdk(api);
   }
 }
 

@@ -1,14 +1,18 @@
 import { describe, it, expect, vi } from "vitest";
 import { createClientContext } from "./client";
+import { withMigrationDriver } from "../../client/migration";
 import type { BMapClient } from "../../client/types";
 
 function fakeClient(): BMapClient {
   return {
     id: Symbol("c"),
     engine: "webgl-v1",
+    libraryVersion: "test",
+    sdkVersion: "test",
     version: "test",
     driver: {} as never,
     capabilities: {} as never,
+    loaded: { engine: "webgl-v1", namespace: {} },
     rawSdk: {},
   };
 }
@@ -17,10 +21,10 @@ describe("BMapClientContext", () => {
   it("starts idle and transitions loading -> ready", async () => {
     let calls = 0;
     const ctx = createClientContext({
-      definition: {
+      definition: withMigrationDriver({
         provider: { load: async () => { calls++; return {}; } },
         loadOptions: {},
-      },
+      }),
     });
     expect(ctx.status.value).toBe("idle");
     const p = ctx.load();
@@ -34,7 +38,7 @@ describe("BMapClientContext", () => {
   it("dedups concurrent load", async () => {
     let calls = 0;
     const ctx = createClientContext({
-      definition: {
+      definition: withMigrationDriver({
         provider: {
           load: async () => {
             calls++;
@@ -43,7 +47,7 @@ describe("BMapClientContext", () => {
           },
         },
         loadOptions: {},
-      },
+      }),
     });
     const [a, b] = await Promise.all([ctx.load(), ctx.load()]);
     expect(a).toBe(b);
@@ -53,7 +57,7 @@ describe("BMapClientContext", () => {
   it("records error and recovers via retry", async () => {
     let fail = true;
     const ctx = createClientContext({
-      definition: {
+      definition: withMigrationDriver({
         provider: {
           load: async () => {
             if (fail) throw new Error("sdk down");
@@ -61,7 +65,7 @@ describe("BMapClientContext", () => {
           },
         },
         loadOptions: {},
-      },
+      }),
     });
     await expect(ctx.load()).rejects.toMatchObject({ code: "BMAP_SDK_LOAD_FAILED" });
     expect(ctx.status.value).toBe("error");
@@ -86,7 +90,7 @@ describe("BMapClientContext", () => {
 
   it("dispose clears and rejects further loads", async () => {
     const ctx = createClientContext({
-      definition: { provider: { load: async () => ({}) }, loadOptions: {} },
+      definition: withMigrationDriver({ provider: { load: async () => ({}) }, loadOptions: {} }),
     });
     await ctx.load();
     ctx.dispose();

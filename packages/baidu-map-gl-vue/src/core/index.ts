@@ -54,6 +54,15 @@ export type {
   ReuseExistingJsapiV4Input,
 } from "./loader/providers/index";
 export { ScriptLoader, getScriptKey, scriptOptions } from "./loader/ScriptLoader";
+export {
+  assertLoadedJsapiV4,
+  assertLoadedSdk,
+  isLoadedJsapiV4,
+  isLoadedLegacySdk,
+  isLoadedSdk,
+  toLoadedLegacySdk,
+} from "./loader/loaded";
+export type { LoadedLegacySdk, LoadedSdk } from "./loader/loaded";
 export type {
   ScriptJsonpModeOptions,
   ScriptLoadModeOptions,
