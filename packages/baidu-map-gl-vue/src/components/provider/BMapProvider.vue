@@ -56,7 +56,9 @@ const parentClient = inject(bmapClientContextKey, undefined);
 const appDefaultDefinition = inject(defaultClientDefinitionKey, undefined);
 
 const ownDefinition = computed<CreateBMapClientOptions | undefined>(() => {
-  if (props.definition) return withMigrationDriver(props.definition);
+  // 显式 definition 直接透传（迁移期 Driver 归一在 Client Context 收口）；
+  // 只有 `provider` prop 需要在此归一，因为它接受宽松 Provider 形状（类型要求结构化）。
+  if (props.definition) return props.definition;
   if (props.provider) {
     return withMigrationDriver({
       provider: props.provider,

@@ -34,6 +34,8 @@
    - `legacyDriverFactory` / `createLegacyBMapClient`：显式 legacy，只接受 `webgl-v1`；
    - `withMigrationDriver(definition)`：**组件默认路径**的归一——按**加载结果的 engine** 分派 Driver，未显式声明 `driver` 时注入 `migrationDriverFactory`。
 6. **组件默认路径按 engine 分派而不是写死 legacy。** 这样 `createBMapPlugin({ provider: baiduJsapiV4Provider() })` 不会被「默认注入 legacy」破坏（v4 加载结果会被分派到 v4 工厂），符合「默认配置能够无破坏地指向 v4 Provider」。默认 cutover（把默认 Provider 换成 v4 家族）仍属 M3A.3（#25）。
+    - **分派契约 ≠ 运行能力**：`jsapi-v4` 会被正确路由到 v4 工厂，但 Facet Driver 本体在 M3A.2，当前抛 `BMAP_CAPABILITY_UNSUPPORTED`（不静默降级）。
+    - **归一的收口点是 `createClientContext`**（客户端 context 层），不是每个调用点：`<BMap>`、`<BMapProvider>`、插件默认 definition、`resolveMapContext` 全部经由此处创建 Client，因此「同一份 definition 换一个入口就报 `BMAP_SDK_ENGINE_MISMATCH`」在结构上不可能发生（评审 P2 修复）。只有构造 definition 时就接受宽松 Provider 的地方（`props.provider`、插件 `provider`、`bmapConfig.provider`）需要就地归一以满足 `CreateBMapClientOptions.provider` 的类型要求；`withMigrationDriver` 幂等，重复归一不会改变语义。
 7. **engine 猜测退出默认路径。** `detectEngine` 保留在 `./advanced`（历史调用方与逃生口），默认 Client 不再调用它；`createDriver` 的 `jsapi-v4` 分支改为委派 `createJsapiV4Driver`。
 8. **组件注册以 Manifest 生成物为单一事实源。** `createBMapPlugin` 改为遍历 `components/index.ts`（由 `scripts/generate-manifest-artifacts.mts` 依据 `src/manifest.ts` 生成，`generate:manifest:check` 阻止漂移），注册名取 manifest 组件名，与 resolver / `volar.d.ts` 同名；删除手写数组。
 9. **插件默认版本对齐 `DEFAULT_VERSION`（`4.0`）**，不再硬编码 `1.0`。
@@ -53,6 +55,7 @@
 | 变更 | 影响 | 处置 |
 | --- | --- | --- |
 | `BMapProviderLike.load()` 返回 `Promise<LoadedSdk>` | 自定义 Provider 必须返回结构化结果 | 返回 `{ engine, version, namespace, load }`（v4）或 `{ engine: "webgl-v1", namespace }`（legacy） |
+| `BMapPluginConfig.provider` / `CreateBMapPluginOptions.provider` 改为跨引擎 `AnyBMapProviderLike` | 类型更宽：v4 家族、legacy 家族与 v2/v3-beta 宽松形状都合法 | 无需改动；之前若因类型收窄而无法把 v4 Provider 传给插件，现在可以直接传 |
 | `createBMapClient()` 默认只接受 `jsapi-v4` | 原来用裸 Provider + 默认 Client 的 webgl-v1 用法会失败 | 改用 `withMigrationDriver(definition)` 或显式 `createLegacyBMapClient()` |
 | `CreateBMapClientOptions.engine` 移除 | 显式 engine override 不再用于选 Driver | 注入 `driver` 工厂，或使用内置的 legacy / v4 工厂 |
 | `BMapClient.version` 语义拆分 | 依赖 `version` 表示 SDK 版本的代码语义不变（仍等于 `sdkVersion`） | 需要组件库版本时用 `libraryVersion` |

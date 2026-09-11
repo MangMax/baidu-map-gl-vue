@@ -15,18 +15,26 @@
  * - 旧 `globalProperties` 映射保留，但只作为迁移期兼容并给出明确的 beta 警告。
  */
 import type { App, Component } from "vue";
-import { baiduCdnProvider, type BMapProvider } from "../core/loader/Provider";
+import { baiduCdnProvider } from "../core/loader/Provider";
 import { DEFAULT_VERSION, type BMapLoadOptions } from "../core/loader/url";
 import { logger } from "../core/logger";
 import { bmapConfigKey, type BMapPluginConfig } from "../core/context/pluginConfig";
 import { defaultClientDefinitionKey } from "../core/context/client";
 import { withMigrationDriver } from "../client/migration";
-import type { CreateBMapClientOptions } from "../client/types";
+import type { AnyBMapProviderLike, CreateBMapClientOptions } from "../client/types";
 import { LIBRARY_VERSION } from "../version";
 import * as manifestComponents from "../components/index";
 
 export interface CreateBMapPluginOptions {
-  provider?: BMapProvider;
+  /**
+   * 默认 SDK Provider。
+   *
+   * 类型是**跨引擎**的 `AnyBMapProviderLike`：JSAPI 4.0 的 Provider 家族
+   * （`baiduJsapiV4Provider()` / `existingGlobalV4Provider()` / `customScriptV4Provider()`）
+   * 返回 `LoadedJsapiV4`，迁移期 legacy Provider 返回 `LoadedLegacySdk`，两者都合法。
+   * 具体用哪个 Driver 由 `withMigrationDriver` 按加载结果的 engine 分派。
+   */
+  provider?: AnyBMapProviderLike;
   ak?: string;
   apiUrl?: string;
   version?: string;
@@ -50,15 +58,15 @@ export function createBMapPlugin(options: CreateBMapPluginOptions = {}) {
     ...options.defaults,
   };
   const config: BMapPluginConfig = { provider, defaults };
-  // 迁移期默认路径：Provider 走 legacy 还是 v4 由**加载结果的 engine** 决定
-  // （`withMigrationDriver`），因此换成 baiduJsapiV4Provider() 也不会被破坏；
-  // 默认 cutover 属 M3A.3（#25），本 Issue 不做。
-  const clientDefinition: CreateBMapClientOptions =
-    options.client ??
-    withMigrationDriver({
+  // 迁移期默认路径：显式 `client` 也要归一（否则「只有默认 definition 被包装、显式
+  // client 没被包装」会让同一份配置在 <BMap> 与 <BMapProvider> 上表现不一致）。
+  // `withMigrationDriver` 幂等：已声明 driver 时保留，宽松 Provider 归一为结构化结果。
+  const clientDefinition: CreateBMapClientOptions = withMigrationDriver(
+    options.client ?? {
       provider,
       loadOptions: defaults,
-    });
+    },
+  );
 
   return {
     install(app: App) {

@@ -126,7 +126,8 @@ if (props.client) {
 } else if (parentClientContext) {
   clientContext = parentClientContext;
 } else if (defaultDefinition) {
-  clientContext = createClientContext({ definition: withMigrationDriver(defaultDefinition) });
+  // 迁移期归一在 Client Context 收口（见 core/context/client.ts），此处直接透传
+  clientContext = createClientContext({ definition: defaultDefinition });
   ownClientContext = true;
 } else if (appConfig?.provider) {
   clientContext = createClientContext({
@@ -138,20 +139,14 @@ if (props.client) {
   ownClientContext = true;
 } else if (props.allowExistingGlobal) {
   clientContext = createClientContext({
-    definition: withMigrationDriver({
-      provider: existingGlobalProvider(),
-      loadOptions: {},
-    }),
+    definition: { provider: existingGlobalProvider(), loadOptions: {} },
   });
   ownClientContext = true;
 } else if (hasExistingGlobalSdk()) {
   // 向后兼容:默认不静默读取全局 SDK,仅在已存在时经 Loader 边界回退并 warn
   logger.warn("BMap resolved existing global SDK fallback; prefer <BMapProvider> or app.use(createBMapPlugin(...))");
   clientContext = createClientContext({
-    definition: withMigrationDriver({
-      provider: existingGlobalProvider(),
-      loadOptions: {},
-    }),
+    definition: { provider: existingGlobalProvider(), loadOptions: {} },
   });
   ownClientContext = true;
 } else {

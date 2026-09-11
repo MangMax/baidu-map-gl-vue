@@ -142,4 +142,18 @@ describe("withMigrationDriver（组件默认路径归一）", () => {
     const client = await createBMapClient(definition);
     expect(client.engine).toBe("webgl-v1");
   });
+
+  it("重复归一幂等：driver 保留，重复包装不会让 load 失效", async () => {
+    const once = withMigrationDriver({
+      provider: { load: async () => legacyNamespace },
+      loadOptions: {},
+    });
+    const twice = withMigrationDriver(once);
+
+    expect(twice.driver).toBe(once.driver);
+    // 二次包装后仍能正常加载（结构化结果原样通过，不会被再包一层）
+    const client = await createBMapClient(twice);
+    expect(client.engine).toBe("webgl-v1");
+    expect(client.rawSdk).toBe(legacyNamespace);
+  });
 });

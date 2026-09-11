@@ -29,8 +29,13 @@ lang: zh-CN
 ### 迁移期：Driver 选择
 
 组件默认路径（`app.use` / `<BMapProvider>` / `<BMap>`）在迁移期按**加载结果的 engine** 分派 Driver：
-legacy（`webgl-v1`）与 JSAPI 4.0（`jsapi-v4`）都能工作，因此把默认 `provider` 换成 v4 家族不会被
-「默认走 legacy」破坏。默认 cutover（把默认 Provider 换成 v4）在 `M3A.3` 完成。
+
+- `webgl-v1`（迁移期 legacy）：**可分派且可运行**；
+- `jsapi-v4`（Stable 基线）：**分派契约已接通**——Provider 换成 v4 家族会被正确路由到 v4 工厂，
+  但 v4 Facet Driver 本体仍在 M3A.2（#19~#23）实现中，因此当前会抛出
+  `BMAP_CAPABILITY_UNSUPPORTED`（错误信息指向 M3A.2），而不是静默降级。
+
+默认 cutover（把默认 Provider 换成 v4 家族）在 M3A.3（#25）完成。
 
 `./advanced` 的 `createBMapClient()` 则已经收口：**默认只接受 `jsapi-v4` 并注入 JSAPI 4.0 Driver 工厂**，
 `provider` 必须是结构化的 `BMapProviderLike`——`load()` 返回 `LoadedSdk`：
@@ -44,6 +49,10 @@ legacy（`webgl-v1`）与 JSAPI 4.0（`jsapi-v4`）都能工作，因此把默�
 
 需要显式走 webgl-v1 时，使用 `createLegacyBMapClient()`，或把 `withMigrationDriver(definition)` 的结果
 交给 `createBMapClient()`（后者同时接受 v2 / v3-beta 的宽松 `{ load }` Provider，并把它归一为 webgl-v1）。
+
+`./core` 的 `createClientContext()` 也做同样的归一：**同一份 definition 在任何入口
+（`<BMap>` / `<BMapProvider>` / 插件默认 definition / `resolveMapContext`）行为一致**；需要固定 Driver
+实现时显式传 `definition.driver`。
 
 ### 1。通过全局注册配置 ak 与插件
 

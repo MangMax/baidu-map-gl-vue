@@ -17,6 +17,7 @@ import * as manifestComponents from "../components/index";
 import { DEFAULT_VERSION } from "../core/loader/url";
 import { defaultClientDefinitionKey } from "../core/context/client";
 import { createBMapClient } from "../client/createBMapClient";
+import { createLoadedJsapiV4 } from "../core/loader/providers";
 import type { CreateBMapClientOptions } from "../client/types";
 import { logger } from "../core/logger";
 
@@ -40,6 +41,42 @@ describe("createBMapPlugin", () => {
     for (const name of names) {
       expect(app.component(name), `${name} 未注册`).toBeTruthy();
     }
+  });
+
+  it("接受 v4 Provider 并按 engine 分派（不被默认 legacy 破坏）", async () => {
+    const captured: { definition?: CreateBMapClientOptions } = {};
+    const app = createApp({
+      setup() {
+        captured.definition = inject(defaultClientDefinitionKey, undefined);
+        return () => null;
+      },
+    });
+    app.use(
+      createBMapPlugin({
+        provider: {
+          id: "v4-test",
+          load: async () =>
+            createLoadedJsapiV4({
+              providerId: "baidu-jsapi-v4",
+              mode: "jsonp",
+              version: "4.0",
+              versionSource: "url",
+              options: { ak: "test" },
+              fingerprint: "fp-v4",
+              namespace: { Map: class {}, Point: class {}, Marker: class {} },
+              loadedAt: 0,
+            }),
+        },
+      }),
+    );
+    app.mount(document.createElement("div"));
+
+    // 分派必须落在 v4 路径（Facet Driver 未实现 ⇒ BMAP_CAPABILITY_UNSUPPORTED），
+    // 而不是被当成 legacy/被默认 legacy 工厂拒绝（那会是 BMAP_SDK_ENGINE_MISMATCH）
+    await expect(createBMapClient(captured.definition!)).rejects.toMatchObject({
+      code: "BMAP_CAPABILITY_UNSUPPORTED",
+      message: expect.stringContaining("M3A.2"),
+    });
   });
 
   it("按需导入与全局注册指向同一组件实现（Manifest 单一事实源）", async () => {
