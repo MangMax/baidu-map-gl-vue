@@ -12,6 +12,7 @@ import { onMounted, onUnmounted, shallowRef, markRaw, type ShallowRef } from "vu
 import { useRequiredMapContext } from "../../core/context/inject";
 import { ResourceScope } from "../../core/lifecycle/ResourceScope";
 import { BMapError } from "../../core/errors/BMapError";
+import { logger } from "../../core/logger";
 import type { OverlayHandle } from "../../driver/types/handles";
 import type { MapReadyContext } from "../../core/context/types";
 
@@ -49,6 +50,17 @@ export interface UseOverlayResourceResult<Resource> {
   ready: Promise<MapReadyContext>;
   /** 用当前 props 重建覆盖物(适合 SDK 不可变对象,如 MapMask path 更新) */
   rebuild: () => Promise<void>;
+  /**
+   * 按**属性分类**应用一组更新(M3A2-OVERLAYS / #21):
+   * - `mutable`: 经 `driver.overlays.setOptions` 就地更新;
+   * - `recreate`: 触发**一次** `rebuild()`(构造期属性,只有重建才生效);
+   * - `unsupported`/未知: 交给 `setOptions`,由 Driver 决定(告警 no-op 或走 set<Key> 逃生口)。
+   *
+   * 分类来自 Driver 的 `updatePolicy()`(单一事实源 `OVERLAY_DESCRIPTORS`),组件不再自行探测
+   * raw SDK 成员形状。注意 `rebuild()` 以**当前 props** 重建,因此 recreate 键的调用方要先把
+   * 新值写进 props。
+   */
+  applyOptions: (options: Record<string, unknown>) => Promise<void>;
 }
 
 export function useOverlayResource<Props, Resource>(
@@ -157,10 +169,41 @@ export function useOverlayResource<Props, Resource>(
     lifecycle.addToMap(created, ready, props, scope);
   };
 
+  /** 按属性分类应用更新: mutable 就地, recreate 重建**一次** */
+  const applyOptions = async (options: Record<string, unknown>) => {
+    const ready = readyCtx;
+    const current = resource.value;
+    if (!ready || disposed || !current) return;
+    const overlays = ready.client.driver.overlays;
+    const inPlace: Record<string, unknown> = {};
+    let needsRebuild = false;
+    for (const [key, value] of Object.entries(options)) {
+      if (overlays.updatePolicy(current as OverlayHandle, key) === "recreate") {
+        needsRebuild = true;
+        continue;
+      }
+      inPlace[key] = value;
+    }
+    if (Object.keys(inPlace).length > 0) {
+      try {
+        overlays.setOptions(current as OverlayHandle, inPlace);
+      } catch (error) {
+        // 不静默吞：字段级更新失败时仍要推进下面的重建判定，但必须留下可观测的痕迹
+        logger.warn(
+          `useOverlayResource.applyOptions: 字段级更新失败（后续仍会按分类判断是否重建）: ${
+            (error as Error)?.message ?? String(error)
+          }`,
+        );
+      }
+    }
+    if (needsRebuild) await rebuild();
+  };
+
   return {
     resource,
     ready: ctx.whenReady(componentScope.signal),
     rebuild,
+    applyOptions,
   };
 }
 

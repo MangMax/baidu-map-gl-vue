@@ -74,8 +74,10 @@ export type {
   PathOptions,
   InfoWindowOptions,
   LabelOptions,
+  CustomOverlayOptions,
   OverlayTarget,
   OverlayDriver,
+  OverlayPropertyPolicy,
 } from "./types/overlays";
 export type { ControlKind, ControlOptions, CopyrightEntry, ControlDriver } from "./types/controls";
 export type { LayerKind, LayerDriver } from "./types/layers";

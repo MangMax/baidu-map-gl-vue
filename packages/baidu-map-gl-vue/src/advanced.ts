@@ -94,8 +94,10 @@ export type {
   PathOptions,
   InfoWindowOptions,
   LabelOptions,
+  CustomOverlayOptions,
   OverlayTarget,
   OverlayDriver,
+  OverlayPropertyPolicy,
 } from "./driver/types/overlays";
 export type { ControlKind, ControlOptions, CopyrightEntry, ControlDriver } from "./driver/types/controls";
 export type { LayerKind, LayerDriver } from "./driver/types/layers";

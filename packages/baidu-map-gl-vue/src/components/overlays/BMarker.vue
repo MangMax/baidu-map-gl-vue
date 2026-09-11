@@ -6,7 +6,7 @@ import { targetContextKey, type TargetContext } from "../../core/context/target"
 import type { MapReadyContext } from "../../core/context/types";
 import type { ResourceScope } from "../../core/lifecycle/ResourceScope";
 import type { MarkerHandle } from "../../driver/types/handles";
-import type { BMarkerProps, MarkerIcon } from "../../types/components";
+import type { BMarkerProps } from "../../types/components";
 
 export type { BMarkerProps };
 
@@ -60,7 +60,7 @@ function setVisible(
   }
 }
 
-const { resource, rebuild } = useOverlayResource<BMarkerProps, MarkerHandle>(
+const { resource, rebuild, applyOptions } = useOverlayResource<BMarkerProps, MarkerHandle>(
   props,
   {
     create: (ready, p) => make(ready, p.position, p),
@@ -130,7 +130,8 @@ const { resource, rebuild } = useOverlayResource<BMarkerProps, MarkerHandle>(
           },
         ),
       );
-      // icon: SDK 支持 setter 则 setter，否则重建（避免行为不一致）
+      // icon: 更新策略由 Driver 的属性描述符给出（mutable → 就地 setIcon），
+      // 组件不再探测 raw SDK 有没有 setIcon（M3A2-OVERLAYS / #21）
       addDisposer(
         watch(
           () => p.icon,
@@ -138,14 +139,7 @@ const { resource, rebuild } = useOverlayResource<BMarkerProps, MarkerHandle>(
             const res = getResource();
             const ctx = getCtx();
             if (!res || !ctx) return;
-            const raw = res.raw as { setIcon?: (icon: unknown) => void };
-            if (typeof raw.setIcon === "function") {
-              const built = ctx.client.driver.overlays.buildIcon(icon as MarkerIcon);
-              if (built) ctx.client.driver.overlays.setOptions(res, { icon });
-              else void rebuild();
-            } else {
-              void rebuild();
-            }
+            void applyOptions({ icon });
           },
           { deep: true },
         ),
@@ -173,13 +167,13 @@ const { resource, rebuild } = useOverlayResource<BMarkerProps, MarkerHandle>(
           },
         ),
       );
-      // enableClicking 构造期：变化重建
+      // enableClicking 构造期属性：策略为 recreate → applyOptions 只重建一次
       addDisposer(
         watch(
           () => p.enableClicking,
           (v, old) => {
             if (v === old) return;
-            void rebuild();
+            void applyOptions({ enableClicking: v });
           },
         ),
       );

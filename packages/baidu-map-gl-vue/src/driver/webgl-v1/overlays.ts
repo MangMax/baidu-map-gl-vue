@@ -12,6 +12,7 @@ import {
 } from "../types/handles";
 import type { GeometryDriver } from "../types/geometry";
 import type {
+  CustomOverlayOptions,
   InfoWindowOptions,
   LabelOptions,
   MarkerIconInput,
@@ -19,6 +20,7 @@ import type {
   OverlayDriver,
   PathOptions,
 } from "../types/overlays";
+import { overlayKindOf, overlayPropertyPolicy } from "../types/overlays";
 import { callOptional, sdkCall, sdkCtor, type SdkCtor } from "./internal";
 
 const DEFAULT_ICON_URL =
@@ -228,6 +230,28 @@ export function createWebGlV1OverlayDriver(input: WebGlV1OverlayDriverInput): Ov
       return createHandle("overlay:circle", circle);
     },
 
+    createRectangle(bounds, options: PathOptions = {}) {
+      const Rectangle = ctor("Rectangle");
+      const rectangle = sdkCall("Rectangle", () =>
+        new Rectangle(geometry.toRawBounds(bounds), { ...pathOptions(options) }),
+      );
+      return createHandle("overlay:rectangle", rectangle);
+    },
+
+    createCustomOverlay(position, render, options: CustomOverlayOptions = {}) {
+      const CustomOverlay = ctor("CustomOverlay");
+      // 领域形状 → BMapGL 构造选项：anchors 是元组、offset 拆成 offsetX / offsetY
+      const { anchor, offset, ...rest } = options;
+      const opts: Record<string, unknown> = { ...rest, point: geometry.toRawPoint(position) };
+      if (anchor) opts.anchors = [anchor.x, anchor.y];
+      if (offset) {
+        opts.offsetX = offset.x;
+        opts.offsetY = offset.y;
+      }
+      const overlay = sdkCall("CustomOverlay", () => new CustomOverlay(render, opts));
+      return createHandle("overlay:custom-overlay", overlay);
+    },
+
     createInfoWindow(content, options: InfoWindowOptions = {}) {
       const InfoWindow = ctor("InfoWindow");
       const opts: Record<string, unknown> = {};
@@ -375,6 +399,13 @@ export function createWebGlV1OverlayDriver(input: WebGlV1OverlayDriverInput): Ov
       for (const [key, value] of Object.entries(options)) {
         applyOption(overlay.raw, key, value);
       }
+    },
+
+    // 元数据来自公共 `OVERLAY_DESCRIPTORS`（与 v4 同一份事实源）；webgl-v1 的 setOptions
+    // 仍然是自己的 switch 实现（#26 待删除，不追平 v4 的分类驱动路径）。
+    updatePolicy(overlay, key) {
+      const kind = overlayKindOf(overlay);
+      return kind ? overlayPropertyPolicy(kind, key) : undefined;
     },
 
     openInfoWindow(map: MapHandle, overlay, position?) {
