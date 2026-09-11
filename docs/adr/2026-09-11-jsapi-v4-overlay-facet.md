@@ -292,6 +292,18 @@ smoke 顺带确认的运行时事实（已回写到上文的决策里）：
 2. **新值优先**：待办按键合并，且排空期间的新更新由同一轮继续消费，旧批永不覆盖新值；
 3. **落到存活实例**：同一批含 recreate 时先重建，mutable 只写最终存活的那个实例。
 
+### 第三轮（基线 `3b45f27`）
+
+复审确认上一轮两条都已修好，只剩一处**合并方向**的漏洞：`applyBatch` 里「旧批次重新入队」的两处
+表达式写成了 `{ ...(pendingApply ?? {}), ...batch }`，让**更早取出**的旧批次盖住等待期间到达的新值。
+
+- 复现（红）：`applyOptions({ enableClicking: false, title: "older-from-batch" })` 触发重建（#2 在飞）
+  → 期间 `applyOptions({ title: "newer-pending" })` 入队 → 显式 `rebuild()` 取代 #2（#3 在飞）
+  → 先完成过期的 #2 → 旧批次重新入队并翻上新值 → 最终实例的 `title` 是 `older-from-batch`。
+- 处置：抽出唯一的 `requeueStaleBatch(batch)`，展开顺序固定为「**已有队列在后**」
+  （`{ ...batch, ...(pendingApply ?? {}) }`），两处调用点共用；并在注释里点明它与
+  `applyOptions()` 的入队方向**相反**（那里 `options` 才是新到的更新）。补了对应回归用例。
+
 ## 已知限制（显式接受）
 
 - **真实 AK smoke 覆盖面**：上面的 smoke 用 headless Chromium（SwiftShader）在单个 AK 上跑通，

@@ -194,6 +194,19 @@ export function useOverlayResource<Props, Resource>(
   };
 
   /**
+   * 把**更早取出的旧批次**放回待办。
+   *
+   * 展开顺序必须是「已有队列在后」：`batch` 是先前从队列里取走的那一批，而 `pendingApply` 里可能
+   * 已经积压了等待期间到达的**更新**的值；反过来展开会让旧值覆盖新值，与「新值优先」相反
+   * （PR #61 第三轮评审 P2：重建被另一轮重建取代时，旧批次重新入队会翻上新值）。
+   *
+   * 注意与 `applyOptions()` 的入队方向相反：那里 `options` 才是新到的更新，所以放最后。
+   */
+  const requeueStaleBatch = (batch: Record<string, unknown>): void => {
+    pendingApply = { ...batch, ...(pendingApply ?? {}) };
+  };
+
+  /**
    * 把一批已合并的更新落到**当前存活实例**上。
    *
    * 顺序刻意是「先重建、再就地更新」：一批里如果同时含构造期属性与 mutable 属性，
@@ -204,8 +217,8 @@ export function useOverlayResource<Props, Resource>(
     if (!readyCtx || disposed) return;
     const current = resource.value;
     if (!current) {
-      // 没有存活实例（重建在飞 / 已被取代）：整批留待下一次挂载后重试
-      pendingApply = { ...(pendingApply ?? {}), ...batch };
+      // 防御分支：当前排空循环已保证有存活实例，这里只兜住未来调用方的变化
+      requeueStaleBatch(batch);
       return;
     }
     const overlays = readyCtx.client.driver.overlays;
@@ -221,7 +234,8 @@ export function useOverlayResource<Props, Resource>(
     if (needsRebuild) await rebuild();
     const target = resource.value;
     if (!target) {
-      pendingApply = { ...(pendingApply ?? {}), ...batch };
+      // 重建被取代/未产出实例：整批放回（新值优先），等下一次挂载后重试
+      requeueStaleBatch(batch);
       return;
     }
     if (Object.keys(inPlace).length === 0) return;
@@ -269,6 +283,7 @@ export function useOverlayResource<Props, Resource>(
    */
   const applyOptions = async (options: Record<string, unknown>): Promise<void> => {
     if (!readyCtx || disposed) return;
+    // 这里 `options` 才是新到的更新，所以放在最后展开（与 requeueStaleBatch 方向相反）
     pendingApply = { ...(pendingApply ?? {}), ...options };
     await drainAppliedUpdates();
   };

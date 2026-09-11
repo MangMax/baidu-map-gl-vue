@@ -84,6 +84,17 @@ function setupHarness() {
   return { result, props, pendingCreates, setOptionsCalls, hooks, wrapper };
 }
 
+/** 把后续创建全部放行并排空队列（重复 resolve 是 no-op，因此每轮重放安全） */
+async function settleCreates(harness: ReturnType<typeof setupHarness>, maxRounds = 8): Promise<void> {
+  for (let round = 0; round < maxRounds; round++) {
+    const countBefore = harness.pendingCreates.length;
+    harness.pendingCreates.forEach((create, index) => create.resolve({ id: index + 1 }));
+    await flushPromises();
+    await flushPromises();
+    if (harness.pendingCreates.length === countBefore && harness.result.resource.value) return;
+  }
+}
+
 /** 某个实例上最后一次 setOptions 的入参 */
 function lastAppliedOn(
   harness: ReturnType<typeof setupHarness>,
@@ -238,6 +249,47 @@ describe("useOverlayResource.applyOptions 与进行中的 rebuild", () => {
     await flushPromises();
 
     expect(lastAppliedOn(harness, 1)).toEqual({ title: "newest-from-attach" });
+
+    harness.wrapper.unmount();
+    await flushPromises();
+  });
+
+  it("[复审 P2] 旧批次重新入队时已有队列中的新值优先（重建被另一轮重建取代）", async () => {
+    const harness = setupHarness();
+    await mountWithFirstInstance(harness);
+
+    // 1) 一批更新（含构造期属性）触发重建，创建 #2（未完成）
+    const firstApply = harness.result.applyOptions({
+      enableClicking: false,
+      title: "older-from-batch",
+    });
+    await flushPromises();
+
+    // 2) 等待期间同键的新值入队（两个值都同步写进 props）
+    harness.props.title = "newer-pending";
+    await harness.result.applyOptions({ title: "newer-pending" });
+
+    // 3) 显式 rebuild 取代 #2，创建 #3
+    const explicitRebuild = harness.result.rebuild();
+    await flushPromises();
+    expect(harness.pendingCreates).toHaveLength(3);
+
+    // 4) 先完成已过期的 #2 → 旧批次被重新入队
+    harness.pendingCreates[1].resolve({ id: 2 });
+    await firstApply;
+    await flushPromises();
+
+    // 5) 放行后续创建并排空队列
+    await settleCreates(harness);
+    await explicitRebuild;
+    await flushPromises();
+
+    const appliedTitles = harness.setOptionsCalls
+      .map((call) => call.options.title)
+      .filter((title): title is string => typeof title === "string");
+    // 旧批次里的旧值不得因为「重新入队」而翻上来覆盖新值
+    expect(appliedTitles).not.toContain("older-from-batch");
+    expect(appliedTitles.at(-1)).toBe("newer-pending");
 
     harness.wrapper.unmount();
     await flushPromises();
