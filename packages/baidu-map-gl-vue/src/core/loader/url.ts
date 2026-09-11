@@ -92,15 +92,12 @@ export function appendCallback(
   return u.toString();
 }
 
-/**
- * 归一化 apiUrl 用于 fingerprint：只剔除**本次真正使用的**回调参数，
- * 避免随机回调名污染去重；自定义 callbackParam 时不得连带删除 `callback`。
- */
-export function normalizeApiUrl(apiUrl?: string, callbackParam?: string): string {
+/** 内部：`callbackParam` 为 `null` 表示本次加载**不管理**任何回调参数。 */
+function normalizeApiUrlInternal(apiUrl: string | undefined, callbackParam: string | null): string {
   if (!apiUrl) return DEFAULT_API_URL;
   try {
     const url = resolveBrowserUrl(apiUrl);
-    url.searchParams.delete(callbackParam ?? DEFAULT_CALLBACK_PARAM);
+    if (callbackParam) url.searchParams.delete(callbackParam);
     return url.toString();
   } catch {
     // 非法 URL 交给加载流程报告错误，fingerprint 保留原始输入。
@@ -109,16 +106,62 @@ export function normalizeApiUrl(apiUrl?: string, callbackParam?: string): string
 }
 
 /**
+ * 归一化 apiUrl 用于 fingerprint：只剔除**本次真正使用的**回调参数，
+ * 避免随机回调名污染去重；自定义 callbackParam 时不得连带删除 `callback`。
+ */
+export function normalizeApiUrl(apiUrl?: string, callbackParam?: string): string {
+  return normalizeApiUrlInternal(apiUrl, callbackParam ?? DEFAULT_CALLBACK_PARAM);
+}
+
+/**
+ * 指纹用的 apiUrl 归一：在 `normalizeApiUrl` 的基础上，把内嵌的 `ak` 参数值换成哈希。
+ *
+ * 调用方可能把 AK 直接写在 `apiUrl` 里（企业自托管入口很常见），而归一后的 apiUrl 会
+ * 进入 fingerprint，fingerprint 又会进入 load metadata 与冲突日志——原样保留即等于
+ * 泄漏。这里用哈希而不是掩码：不同 AK 仍必须产生不同指纹，否则冲突会被漏判。
+ *
+ * @param managedCallbackParam 由 Loader 管理的回调参数名；`null` 表示本次加载不管理
+ *   任何回调参数（script `load` 模式），此时 URL 上的 `callback` 只是普通查询参数，
+ *   必须参与身份判定，否则两个租户入口会被错误合并。
+ */
+export function fingerprintApiUrl(
+  apiUrl?: string,
+  managedCallbackParam: string | null = DEFAULT_CALLBACK_PARAM,
+): string {
+  const normalized = normalizeApiUrlInternal(apiUrl, managedCallbackParam);
+  try {
+    const url = resolveBrowserUrl(normalized);
+    const embedded = url.searchParams.get("ak");
+    if (embedded) url.searchParams.set("ak", hash(embedded));
+    return url.toString();
+  } catch {
+    // 非法 URL 交给加载流程报告错误，fingerprint 保留归一化后的原始输入。
+    return normalized;
+  }
+}
+
+/**
  * 计算配置 fingerprint，用于 SDK Registry 去重 / 冲突检测。
  *
  * 覆盖影响全局 SDK 语义的所有配置（版本、AK、apiUrl、语言）；AK 仅以哈希出现，
- * 不存原始值。callback / timeout / nonce 等 script 级细节不参与。
+ * 不存原始值。callback / timeout / nonce 等 script 级细节不参与——**除非**该回调
+ * 参数不由 Loader 管理（见 `managedCallbackParam`）。
+ *
+ * @param managedCallbackParam 由 Loader 管理的回调参数名，缺省按 `options.callbackParam`
+ *   或 `callback` 推断；传 `null` 表示本次加载不管理回调参数。
  */
-export function fingerprintConfig(options: BMapLoadOptions): string {
+export function fingerprintConfig(
+  options: BMapLoadOptions,
+  managedCallbackParam?: string | null,
+): string {
+  const managed =
+    managedCallbackParam === undefined
+      ? (options.callbackParam ?? DEFAULT_CALLBACK_PARAM)
+      : managedCallbackParam;
   const parts = [
     `v:${options.version ?? DEFAULT_VERSION}`,
     `ak:${options.ak ? hash(options.ak) : "none"}`,
-    `url:${normalizeApiUrl(options.apiUrl, options.callbackParam)}`,
+    `url:${fingerprintApiUrl(options.apiUrl, managed)}`,
   ];
   if (options.language) parts.push(`lang:${options.language}`);
   return parts.join("|");
@@ -131,4 +174,14 @@ export function hash(input: string): string {
     h = (h * 33) ^ input.charCodeAt(i);
   }
   return (h >>> 0).toString(36);
+}
+
+/**
+ * 生成一次性 JSONP 回调名（挂到全局的函数名）。
+ *
+ * 名字只需要在本次加载的生命周期内唯一，`prefix` 用于排障时区分调用方；
+ * 加载结束（成功 / 失败 / 取消）由 SharedLoadTask 负责把该全局名释放干净。
+ */
+export function createCallbackName(prefix: string): string {
+  return `${prefix}${Math.random().toString(36).slice(2, 10)}`;
 }

@@ -4,6 +4,7 @@ import {
   DEFAULT_VERSION,
   appendCallback,
   createBaiduSdkUrl,
+  fingerprintApiUrl,
   fingerprintConfig,
   hash,
   normalizeApiUrl,
@@ -113,6 +114,22 @@ describe("fingerprintConfig", () => {
     const fp = fingerprintConfig({ ak: "super-secret-ak" });
     expect(fp).not.toContain("super-secret-ak");
     expect(fp).toContain(`ak:${hash("super-secret-ak")}`);
+  });
+
+  it("AK 脱敏：apiUrl 内嵌的 ak 也不进指纹，但仍能区分不同 AK", () => {
+    const fp = fingerprintConfig({ apiUrl: "https://corp.example.com/api?v=4.0&ak=secret-ak-aaa" });
+    expect(fp).not.toContain("secret-ak-aaa");
+    // 用哈希而不是掩码：不同 AK 必须产生不同指纹，否则冲突会被漏判。
+    const other = fingerprintConfig({
+      apiUrl: "https://corp.example.com/api?v=4.0&ak=secret-ak-bbb",
+    });
+    expect(other).not.toBe(fp);
+
+    const masked = fingerprintApiUrl("https://corp.example.com/api?ak=secret-ak-aaa");
+    expect(masked).not.toContain("secret-ak-aaa");
+    // 与「只归一化、不脱敏」的原行为必须不同，否则说明脱敏没生效。
+    expect(masked).not.toBe(normalizeApiUrl("https://corp.example.com/api?ak=secret-ak-aaa"));
+    expect(masked).toContain("https://corp.example.com/api?ak=");
   });
 
   it("[F7] 自定义 callbackParam 时，指纹仍区分不同的 callback 查询值", () => {

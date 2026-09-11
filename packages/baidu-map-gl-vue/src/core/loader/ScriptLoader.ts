@@ -12,8 +12,8 @@
  */
 import { BMapError } from "../errors/BMapError";
 import { SharedLoadTask } from "./SharedLoadTask";
-import type { ScriptLoaderOptions } from "./SharedLoadTask";
-import { DEFAULT_CALLBACK_PARAM, resolveBrowserUrl } from "./url";
+import type { ScriptLoaderBaseOptions, ScriptLoaderOptions } from "./SharedLoadTask";
+import { DEFAULT_CALLBACK_PARAM, resolveBrowserUrl, type BMapLoadOptions } from "./url";
 
 export type {
   ScriptJsonpModeOptions,
@@ -55,6 +55,23 @@ export function getScriptKey(options: ScriptLoaderOptions): string {
     integrity: options.integrity,
     crossOrigin: options.crossOrigin,
   });
+}
+
+/** script 级运行时配置（不含 src / 就绪信号），Provider 之间共用同一映射。 */
+export type ScriptRuntimeOptions = Pick<
+  ScriptLoaderBaseOptions,
+  "timeout" | "nonce" | "integrity" | "crossOrigin" | "referrerPolicy"
+>;
+
+/** 把 `BMapLoadOptions` 上 script 级配置映射到 Loader 选项。 */
+export function scriptOptions(options: BMapLoadOptions): ScriptRuntimeOptions {
+  return {
+    timeout: options.timeout,
+    nonce: options.nonce,
+    integrity: options.integrity,
+    crossOrigin: options.crossOrigin,
+    referrerPolicy: options.referrerPolicy,
+  };
 }
 
 export class ScriptLoader {
@@ -106,6 +123,17 @@ export class ScriptLoader {
   clear(key: string): void {
     this.completed.delete(key);
     this.inFlight.delete(key);
+  }
+
+  /**
+   * 仅失效某配置的**成功缓存**，不动 `inFlight` 登记。
+   *
+   * 使用场景是「底层已提交成功、但上层就绪校验发现结果不可用」：要作废的是这次的成功结果，
+   * 而不是把正在进行的任务登记一起删掉——后者会让其它消费者失去去重，重复插入 script。
+   * 普通失败 / 取消由 Loader 自己按任务身份收尾（`onFailure` / `onCancelled`），不要在这里兜底。
+   */
+  invalidateCompleted(key: string): void {
+    this.completed.delete(key);
   }
 
   get size(): number {

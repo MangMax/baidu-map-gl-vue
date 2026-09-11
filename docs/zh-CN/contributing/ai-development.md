@@ -100,7 +100,7 @@ error TS2552: Cannot find name 'DisplayOptions'.   // Map.d.ts / MapOptions.d.ts
 | --- | --- |
 | `driver/**` | v4 Driver 实现与 `driver/jsapi-v4/**` 类型边界 |
 | `client/**` | `createBMapClient` 聚合层 |
-| `core/loader/**` | Loader / Provider / SdkRegistry（`hasExistingGlobalSdk()` 是唯一全局探测入口） |
+| `core/loader/**` | Loader / Provider / SdkRegistry。全局探测只允许在这一层：迁移期 `Provider.ts`（内部 `readGlobalSdk()`，对外 `hasExistingGlobalSdk()`）、v4 目标 `providers/namespace.ts`（`readJsapiV4Global()`）；v4 Provider 家族见该目录 `providers/` |
 | `plugins/**` | 插件适配与 CDN 定义 |
 | `packages/test-utils` | Fake SDK（独立测试边界，不在扫描范围内） |
 

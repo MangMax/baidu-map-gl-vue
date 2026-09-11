@@ -18,7 +18,9 @@ export type RawSdkNamespace = (typeof RAW_SDK_NAMESPACES)[number];
 
 /**
  * 浏览器/运行时全局对象名：`<global>.BMap` / `<global>["BMap"]` 属于越界访问，
- * 唯一合法探测入口是 `core/loader/Provider.ts` 的 `hasExistingGlobalSdk()`。
+ * 合法探测入口只有 Loader/Provider 边界：迁移期 `core/loader/Provider.ts` 的
+ * `hasExistingGlobalSdk()`，v4 目标 `core/loader/providers/namespace.ts` 的
+ * `readJsapiV4Global()`。
  */
 export const GLOBAL_OBJECT_NAMES = ["window", "globalThis", "self", "global"] as const;
 
