@@ -38,6 +38,7 @@ export {
   FakeV4InfoWindow,
   FakeV4Label,
   FakeV4Map,
+  FakeV4MapTypeId,
   FakeV4Marker,
   FakeV4Overlay,
   FakeV4Pixel,
@@ -45,5 +46,11 @@ export {
   FakeV4Polygon,
   FakeV4Polyline,
   FakeV4Size,
+  FakeV4ViewAnimation,
 } from './fake-bmap-v4'
-export type { FakeBMapV4, FakeBMapV4Namespace } from './fake-bmap-v4'
+export type {
+  FakeBMapV4,
+  FakeBMapV4Namespace,
+  FakeV4AnimationOptions,
+  FakeV4Interaction,
+} from './fake-bmap-v4'

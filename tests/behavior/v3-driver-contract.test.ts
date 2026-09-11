@@ -98,4 +98,18 @@ describe("webgl-v1 driver capabilities (fake sdk)", () => {
     expect((map as { raw: unknown }).raw).toBeTruthy();
     expect(cachedClient.driver.engine).toBe("webgl-v1");
   });
+
+  // M3A2-MAP（#20）：共享契约里的交互开关断言只到「不抛错」；这里补引擎侧的落地断言，
+  // 保证 webgl-v1 的「语义名 → BMapGL 成对方法」映射不是空转。
+  it("maps semantic interactions onto the BMapGL paired methods", () => {
+    const map = cachedClient.driver.map.create(createHarness().container());
+    cachedClient.driver.map.setInteraction(map, "scroll-zoom", false);
+    cachedClient.driver.map.setInteraction(map, "rotate", true);
+    cachedClient.driver.map.setInteraction(map, "tilt-gestures", true);
+
+    const log = fake.createdMaps[fake.createdMaps.length - 1].callLog;
+    expect(log).toContain("disableScrollWheelZoom");
+    expect(log).toContain("enableRotate");
+    expect(log).toContain("enableTiltGestures");
+  });
 });

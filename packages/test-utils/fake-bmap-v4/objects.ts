@@ -1,65 +1,12 @@
 /**
- * Fake BMap v4 运行对象（Map / Overlay）
+ * Fake BMap v4 运行对象（Overlay）
  *
- * 只实现 M3A.2 基础边界（M3A2-01/02）需要的成员：事件注册与最小视图读写。
- * 完整 Map/Overlay Facet（#20 / #21）落地时在此扩展，不要另起一套 fake。
+ * 只实现 M3A.2 基础边界（M3A2-01/02）与覆盖物 Facet（#21）需要的成员。
+ * Map 本体在 `./FakeMap.ts`（M3A2-MAP / #20）：它有独立的视野、交互、投影与释放语义，
+ * 继续堆在本文件会让「Map 是被测 facet」这一事实埋在覆盖物里。
  */
 import { FakeV4EventTarget, type FakeV4EventStats } from './event-target.ts'
-import { FakeV4Point, FakeV4Size } from './geometry.ts'
-
-export class FakeV4Map extends FakeV4EventTarget {
-  container: HTMLElement
-  options: Record<string, unknown>
-  center: FakeV4Point | null = null
-  zoom: number | null = null
-  destroyed = false
-  readonly callLog: string[] = []
-
-  constructor(container: string | HTMLElement, options: Record<string, unknown> = {}, stats: FakeV4EventStats) {
-    super(stats)
-    this.container =
-      typeof container === 'string'
-        ? document.getElementById(container) ?? document.createElement('div')
-        : container
-    this.options = options
-  }
-
-  centerAndZoom(point: FakeV4Point, zoom: number): void {
-    this.callLog.push('centerAndZoom')
-    this.center = point
-    this.zoom = zoom
-  }
-
-  setCenter(point: FakeV4Point): void {
-    this.callLog.push('setCenter')
-    this.center = point
-  }
-
-  getCenter(): FakeV4Point | null {
-    return this.center
-  }
-
-  setZoom(zoom: number): void {
-    this.callLog.push('setZoom')
-    this.zoom = zoom
-  }
-
-  getZoom(): number | null {
-    return this.zoom
-  }
-
-  getSize(): FakeV4Size {
-    return { width: 300, height: 300 } as FakeV4Size
-  }
-
-  destroy(): void {
-    if (this.destroyed) return
-    this.destroyed = true
-    this.callLog.push('destroy')
-    // 官方语义：destroy 会清空 Map 自身残留监听器，但管不到子对象
-    this.clearAllListeners()
-  }
-}
+import { FakeV4Point } from './geometry.ts'
 
 export class FakeV4Overlay extends FakeV4EventTarget {
   options: Record<string, unknown>

@@ -346,3 +346,55 @@ describe("回归 PR#59-P2-1：订阅记录必须与 disposer 一一对应", () =
     expect(rawMap.getListenerCount("click")).toBe(0);
   });
 });
+
+// PR #60 评审 P2：destroy 依赖 release() 摘掉订阅分组，而解绑本身可能抛错。
+// release 必须逐项尽力、不得因为一项失败而跳过其余项，并且要把失败汇总报出来
+// （否则 MapDriver.destroy 既不知道该重试，也拿不到可观测的错误）。
+describe("release：逐项尽力释放订阅分组", () => {
+  it("某一项解绑抛错不影响其余项，并汇总抛出错误", () => {
+    const { events, map, rawMap } = setup();
+    events.on(map, "click", () => {});
+    events.on(map, "moveend", () => {});
+    events.on(map, "dragend", () => {});
+    expect(rawMap.getListenerCount()).toBe(3);
+
+    const originalRemove = rawMap.removeEventListener.bind(rawMap);
+    let failNext = false;
+    rawMap.removeEventListener = (type: string, listener: (event: unknown) => void) => {
+      if (failNext) {
+        failNext = false;
+        throw new Error(`unbind ${type} boom`);
+      }
+      originalRemove(type, listener);
+    };
+
+    // 第一个分组（click，Fake 的 Map 按插入顺序保留）解绑失败
+    failNext = true;
+    expect(() => events.release(map)).toThrowError(
+      expect.objectContaining({
+        code: "BMAP_SDK_CALL_FAILED",
+        message: expect.stringContaining("unbind click boom"),
+      }),
+    );
+
+    // 其余两项仍然被释放（逐项隔离），并且记账条目已清空（不持有已销毁的 raw 对象）
+    expect(rawMap.getListenerCount("click")).toBe(1);
+    expect(rawMap.getListenerCount("moveend")).toBe(0);
+    expect(rawMap.getListenerCount("dragend")).toBe(0);
+    expect(() => events.release(map)).not.toThrow();
+  });
+
+  it("没有订阅（或没有解绑能力）时 release 是 no-op", () => {
+    const { events, map } = setup();
+    expect(() => events.release(map)).not.toThrow();
+  });
+
+  it("外来句柄被拒绝（所有权校验在 release 同样生效）", () => {
+    const { events } = setup();
+    const other = createJsapiV4HandleRegistry();
+    const foreign = other.adopt("map", {});
+    expect(() => events.release(foreign)).toThrowError(
+      expect.objectContaining({ code: "BMAP_HANDLE_FOREIGN" }),
+    );
+  });
+});

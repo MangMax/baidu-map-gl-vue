@@ -14,6 +14,7 @@ import type { BMapClient } from "../../client/types";
 import type { MapHandle } from "../../driver/types/handles";
 import type { InitialMapOptions, MapView } from "../../driver/types/map";
 import { BMapError } from "../errors/BMapError";
+import { logger } from "../logger";
 import { ResourceScope } from "../lifecycle/ResourceScope";
 import { createMapEventBus, type MapEventBus, type InternalMapEvents } from "../events/MapEventBus";
 import { createFrameScheduler, type FrameScheduler } from "../scheduler/FrameScheduler";
@@ -161,6 +162,14 @@ export class MapRuntime {
         try {
           client.driver.map.initializeView(map, this.options.initialView);
         } catch (e) {
+          // 视野初始化失败时 map 尚未写入 this.map.value，外层 catch 的「部分创建资源」
+          // 分支拿不到它（见下方注释），因此在抛错前就地销毁，否则会泄漏一个已创建的
+          // WebGL Map（#20 的能力守卫在 throw 策略下就会走到这里）。
+          try {
+            client.driver.map.destroy(map);
+          } catch {
+            /* ignore */
+          }
           throw e instanceof BMapError
             ? e
             : new BMapError("BMAP_RESOURCE_CREATE_FAILED", `initializeView failed: ${(e as Error)?.message ?? e}`, { cause: e });
@@ -325,8 +334,14 @@ export class MapRuntime {
     if (currentMap && currentClient) {
       try {
         currentClient.driver.map.destroy(currentMap);
-      } catch {
-        // 忽略销毁错误
+      } catch (error) {
+        // destroy 会把「订阅释放 / 动画取消 / SDK 销毁」里失败的项汇总抛出（#20 评审 P2）。
+        // 这里不能静默吞掉：资源可能部分未释放，至少要让它可观测。
+        logger.warn(
+          `MapRuntime: map.destroy 未完全成功（部分资源可能未释放）: ${
+            (error as Error)?.message ?? String(error)
+          }`,
+        );
       }
     }
     // 5. clear handle

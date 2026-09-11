@@ -43,6 +43,16 @@ export interface MapView {
 
 export interface MapDriver {
   create(container: HTMLElement, options?: InitialMapOptions): MapHandle;
+  /**
+   * 销毁地图并释放 Driver 侧业务资源（订阅分组、动画引用）。
+   *
+   * 契约要求：
+   * - **幂等**：对同一 Handle 重复调用不抛错、不重复释放；
+   * - 销毁后对该 map 的其它命令应被拒绝（`BMAP_RESOURCE_DISPOSED`）。
+   *
+   * v4 实现（`driver/jsapi-v4/map.ts`）遵守以上两条；迁移期 `webgl-v1` 实现只保证幂等，
+   * 未校验销毁后的命令（属待删除实现，见 ADR 2026-09-11-jsapi-v4-map-facet）。
+   */
   destroy(map: MapHandle): void;
 
   initializeView(map: MapHandle, view: MapView): void;
@@ -61,6 +71,11 @@ export interface MapDriver {
 
   getBounds(map: MapHandle): Bounds;
   getSize(map: MapHandle): Size;
+
+  /** 经纬度 → 屏幕像素（v4 `pointToPixel`；不传 options，按当前地图状态换算） */
+  pointToPixel(map: MapHandle, point: Point): Pixel;
+  /** 屏幕像素 → 经纬度（v4 `pixelToPoint`；不传 options，按当前地图状态换算） */
+  pixelToPoint(map: MapHandle, pixel: Pixel): Point;
 
   panTo(map: MapHandle, point: Point): void;
   panBy(map: MapHandle, pixel: Pixel): void;

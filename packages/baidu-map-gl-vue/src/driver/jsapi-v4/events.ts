@@ -23,6 +23,7 @@
  * - 摘除分组必须**校验分组身份**：只有仍是当前分组的那个才允许解绑，避免旧 disposer
  *   解绑后来替换掉的新分组。
  */
+import { BMapError } from "../../core/errors/BMapError";
 import { logger } from "../../core/logger";
 import { normalizeDriverEvent } from "../normalize";
 import type { DriverEvent, EventDriver } from "../types/events";
@@ -52,6 +53,22 @@ export interface CreateJsapiV4EventDriverInput {
   geometry: GeometryDriver;
 }
 
+/**
+ * v4 EventDriver：公共 `EventDriver` 契约 + **只在 Driver 内部使用**的 target 释放入口。
+ *
+ * `release` 是 Map Facet 的 `destroy()` 需要的（M3A2-MAP / #20）：销毁地图时必须先摘掉
+ * Driver 自己在该 target 上的订阅分组，否则 `groups` 会以强引用长期持有已销毁的 raw 对象
+ * （`groups` 是 `Map`，不是 `WeakMap`）。它不进公共 `EventDriver` 类型，消费者看不到。
+ *
+ * 失败语义（PR #60 评审 P2）：**逐项尽力**解绑，任一失败不跳过其余项，最后汇总抛出。
+ * `removeGroup` 会先移除记账条目再解绑，因此即使解绑抛错也不会留下强引用；调用方
+ * （`MapDriver.destroy`）据此把「释放订阅」的失败与「销毁 SDK 对象」解耦。
+ */
+export interface JsapiV4EventDriver extends EventDriver {
+  /** 释放该 target 上由 Driver 建立的全部订阅（解绑 raw listener 并删除分组）。 */
+  release(target: SdkHandle<string>): void;
+}
+
 function noop(): void {}
 
 /** 幂等 disposer：重复调用只执行一次释放逻辑。 */
@@ -64,7 +81,7 @@ function createDisposer(release: () => void): () => void {
   };
 }
 
-export function createJsapiV4EventDriver(input: CreateJsapiV4EventDriverInput): EventDriver {
+export function createJsapiV4EventDriver(input: CreateJsapiV4EventDriverInput): JsapiV4EventDriver {
   const { registry, geometry } = input;
 
   /** target → type → 订阅组；集合为空时删除条目，不长期持有 raw 对象。 */
@@ -143,6 +160,40 @@ export function createJsapiV4EventDriver(input: CreateJsapiV4EventDriverInput): 
         else group.claims.delete(typed);
         if (group.claims.size === 0) removeGroup(rawTarget, type, group, remove);
       });
+    },
+
+    release(target) {
+      // 所有权校验：跨 Client 句柄在这里失败，不会被当成「没有订阅」而静默通过
+      const rawTarget = registry.resolve<object>(target);
+      const byType = groups.get(rawTarget);
+      if (!byType) return;
+      const removeEventListener = readNamespaceMember(rawTarget, "removeEventListener");
+      if (typeof removeEventListener !== "function") {
+        // 目标没有解绑能力（同 on() 的告警分支）：只丢弃分组，不抛错
+        groups.delete(rawTarget);
+        return;
+      }
+      const remove = removeEventListener as RawMethod;
+      // 逐条走 removeGroup（复用分组身份校验与「集合空则删除 target 条目」的收尾逻辑），
+      // 并且**逐项隔离异常**：某一项解绑失败不能跳过其余订阅的释放。
+      const failures: unknown[] = [];
+      for (const [type, group] of [...byType]) {
+        try {
+          removeGroup(rawTarget, type, group, remove);
+        } catch (error) {
+          failures.push(error);
+        }
+      }
+      if (failures.length > 0) {
+        // 汇总抛出：调用方决定是否阻断后续步骤（MapDriver.destroy 会继续销毁 SDK 对象）
+        throw new BMapError(
+          "BMAP_SDK_CALL_FAILED",
+          `释放 target 订阅时有 ${failures.length} 项解绑失败（其余项已尽力释放；` +
+            `记账条目已移除，但 SDK 侧监听器可能仍在）: ` +
+            failures.map((failure) => (failure as Error)?.message ?? String(failure)).join("; "),
+          { cause: failures[0], engine: "jsapi-v4" },
+        );
+      }
     },
   };
 }

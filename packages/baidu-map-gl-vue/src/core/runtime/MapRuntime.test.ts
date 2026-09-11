@@ -125,4 +125,23 @@ describe("MapRuntime", () => {
     rt.dispose();
     expect(destroyMap).toHaveBeenCalledWith(createMap.mock.results[0].value);
   });
+
+  // M3A2-MAP（#20）：initializeView 抛错时 map 还没写入 this.map.value，外层 catch 的
+  // 「部分创建资源」分支取不到它；必须在抛错前销毁，否则泄漏一个已创建的 Map。
+  it("destroys the map when initializeView throws", async () => {
+    const { rt, deferred, destroyMap, createMap, mapDriver } = createRuntime({
+      initialView: { center: { lng: 116.4, lat: 39.9 }, zoom: 12 },
+    });
+    mapDriver.initializeView.mockImplementation(() => {
+      throw new Error("view boom");
+    });
+
+    const p = rt.mount();
+    deferred.resolve({ ok: 1 });
+
+    await expect(p).rejects.toMatchObject({ code: "BMAP_RESOURCE_CREATE_FAILED" });
+    expect(destroyMap).toHaveBeenCalledWith(createMap.mock.results[0].value);
+    expect(rt.map.value).toBeNull();
+    expect(rt.status.value).toBe("error");
+  });
 });
