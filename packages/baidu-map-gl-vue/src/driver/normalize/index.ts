@@ -1,3 +1,3 @@
 export { toPoint, isPointLike } from "./geometry";
-export { normalizeMapMouseEvent } from "./events";
+export { normalizeMapMouseEvent, normalizeDriverEvent } from "./events";
 export { toPlainPoint, toPlainPoints } from "./results";

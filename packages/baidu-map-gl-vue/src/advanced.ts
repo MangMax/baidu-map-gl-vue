@@ -101,7 +101,7 @@ export type { ControlKind, ControlOptions, CopyrightEntry, ControlDriver } from 
 export type { LayerKind, LayerDriver } from "./driver/types/layers";
 export type { AutocompleteOptions, ServiceDriver } from "./driver/types/services";
 export type { PanoramaDriver } from "./driver/types/panorama";
-export type { MapMouseEvent, EventDriver } from "./driver/types/events";
+export type { MapMouseEvent, DriverEvent, EventDriver } from "./driver/types/events";
 export { normalizeMapMouseEvent, toPoint, isPointLike, toPlainPoint, toPlainPoints } from "./driver/normalize";
 
 /** 运行时能力 override 工厂：仅接受目录内能力名 */

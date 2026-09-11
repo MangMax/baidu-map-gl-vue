@@ -22,6 +22,7 @@ export type BMapErrorCode =
   | "BMAP_SERVICE_FAILED"
   | "BMAP_INVALID_ARGUMENT"
   | "BMAP_INVALID_POINT"
+  | "BMAP_HANDLE_FOREIGN"
   | "BMAP_DUPLICATE_ITEM_KEY";
 
 export interface BMapErrorOptions {
@@ -89,6 +90,7 @@ export class BMapError extends Error {
     SERVICE_FAILED: "BMAP_SERVICE_FAILED" as const,
     INVALID_ARGUMENT: "BMAP_INVALID_ARGUMENT" as const,
     INVALID_POINT: "BMAP_INVALID_POINT" as const,
+    HANDLE_FOREIGN: "BMAP_HANDLE_FOREIGN" as const,
     DUPLICATE_ITEM_KEY: "BMAP_DUPLICATE_ITEM_KEY" as const,
   };
 }
