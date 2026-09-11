@@ -115,20 +115,25 @@
 ```
 destroy(map):
   1. registry.resolve(map)              // 所有权校验（跨 Client 抛 BMAP_HANDLE_FOREIGN）
-  2. released / disposing → return       // 幂等（清理已完成）+ 防重入（清理在飞）
-  3. disposed.add(raw)                  // 命令闸门：destroy 之后的业务命令一律拒绝
-  4. 有待启动动画？
+  2. released / disposing → return       // 幂等（全部完成）+ 防重入（清理在飞）
+  3. disposed=true；【先登记取消请求】    // 待启动动画在这一刻无法取消，请求先挂上
+  4. 仍有待启动动画？
      是 → 推迟清理：等 animationstart 之后的微任务「先取消，再 release + SDK destroy」，
-          并挂 0ms 兜底定时器（动画始终不启动也能完成销毁）
+          并挂 0ms 兜底定时器（动画始终不启动时也要能推进销毁）
      否 → 立即 finish()
-  5. finish(): 取消所有未结束动画 → events.release(map) → SDK destroy  （三步各自隔离）
-  6. 无失败 && 无「在跑却没停掉」的动画 → released.add(raw)；否则汇总抛出（destroy 可重试）
+  5. finish(): 取消所有未结束动画 → release + SDK destroy（只执行一次）→ 收尾
+  6. 无失败 && 无未 settled 的动画记录 → released；否则汇总抛出（destroy 可重试）
+     重试会跳过已完成的步骤（tornDown），不会二次销毁 SDK 对象
 ```
 
-- **`disposed` / `disposing` / `released` 三个状态必须分开**（首轮评审 P2 + 复审 P1/P2）：
-  它们分别表示「禁止继续使用」「清理在飞」「资源真的都释放了」。用其中一个兼做另一个，
-  就会出现「请求已发出 = 清理完成」、「重入导致二次销毁」或者「失败后重试入口消失」的死角。
-  命令闸门在 `destroy` 入口就关闭（destroy 过程中的重入命令会被拒绝），幂等短路只认 `released`。
+- **四个状态各管一件事**（首轮评审 P2 + 复审 P1/P2 + 第三轮 P1）：`disposed`（命令闸门）/
+  `disposing`（清理在飞，防同步重入）/ `tornDown`（订阅与 SDK 对象已释放，重试不重复执行）/
+  `released`（**全部**完成 → 幂等短路）。用其中一个兼做另一个，就会出现「请求已发出 = 清理完成」、
+  「重入导致二次销毁」或者「失败后重试入口消失」这类死角。
+- **「完成」的判据是可观察不变式**：`无失败 && 没有未 settled 的动画记录`。
+  未启动的动画同样算**未完成资源**——它的取消只是被请求了、还没确认（第三轮 P1）；
+  只有记录被释放（取消成功或正常结束）才算结清。**0ms 兜底定时器可以推进销毁步骤，
+  但不置 `released`**：这正是「请求取消 ≠ 完成清理」在实现上的落点。
 - `destroy` 的每一步都可能失败，因此**逐项隔离**：动画取消失败不阻断订阅释放，订阅释放失败
   不阻断 SDK 销毁；最后把失败汇总成一条 `BMAP_SDK_CALL_FAILED` 抛出。
   `MapRuntime.dispose()` 原来把 destroy 错误整段忽略，现在至少 `logger.warn`，否则汇总信息到不了任何人。
@@ -149,13 +154,17 @@ destroy(map):
   - `startViewAnimation` 先取消未结束的动画再登记新记录；**取消失败就拒绝替换**（旧记录保留可重试），
     取消返回后**重新检查地图是否仍存活**——取消会同步触发业务的 `animationcancel` 回调，
     业务可能在里面销毁地图（复审 P2）。
-  - `destroy` 分三种路径（复审 P1 的核心）：有待启动动画时，按官方参考把「取消 + 销毁 Map」
-    一起推迟到安全窗口（`animationstart` 之后的微任务），做到**先取消再销毁**；同时挂一个 0ms
-    兜底定时器，动画始终不启动也能完成销毁（迟到启动由记录自己的安全点兜住）。
-  - **清理完成的判据不是「同步函数没抛错」**：只有「没有失败 && 没有『在跑却没停掉』的动画」
+  - `destroy` 分三条路径（复审 P1 的核心，第三轮 P1 补齐了兜底那条）：进入待销毁状态时**先登记
+    取消请求**；有待启动动画时，按官方参考把「取消 + 销毁 Map」一起推迟到安全窗口
+    （`animationstart` 之后的微任务），做到**先取消再销毁**；同时挂一个 0ms 兜底定时器，
+    动画始终不启动时也能推进销毁（迟到启动由记录自己的安全点兜住）——**兜底不置 `released`**。
+  - **清理完成的判据不是「同步函数没抛错」**：只有「没有失败 && 没有未 settled 的动画记录」
     才置 `released`。SDK 销毁仍然尽力执行（WebGL 资源不能被一个停不掉的动画扣住），
     但失败时保留 `destroy` 重试入口；`disposing` 阻止重入（业务在 `animationcancel` 里再次
-    `destroy` 不会二次销毁 SDK 对象）。
+    `destroy` 不会二次销毁 SDK 对象）；`tornDown` 保证重试**不会**重复销毁 SDK 对象，
+    只补没做完的部分。
+  - 安全窗口里第一次取消失败时，延迟清理会在同一次推进里再试一次；仍然失败则记录保留，
+    `released` 不置位，`destroy` 是一个真正可用的重试入口（第三轮 P1 的用例断言这一点）。
   - 记录按身份从集合移除（不影响同地图的其它动画记录）。
 - destroy 之后的命令抛 `BMAP_RESOURCE_DISPOSED`（不可重试，`retryable === false`）。
 - **配套的 runtime 加固**：`MapRuntime` 在 `initializeView` 抛错时销毁那个「已创建但还没写进
@@ -208,8 +217,8 @@ v4 把路况收敛成 `TrafficLayer`（`map.addLayer`），`Map` 自身没有开
 | `backgroundColor` 在 v4 无效果 | 同上 | 用容器样式 / `DisplayOptions` 表达 |
 | `enableTraffic` 在 v4 无效果 | 路况属 `TrafficLayer`（#22） | 等 Layer Facet 落地，facet 会承接该 prop |
 | `destroy` 之后调用命令 | v4 抛 `BMAP_RESOURCE_DISPOSED`（webgl-v1 只保证幂等） | 组件/业务按既有 ResourceScope 顺序释放即可 |
-| `destroy` 的失败语义 | 逐项尽力清理 + 汇总抛 `BMAP_SDK_CALL_FAILED`；`disposed ≠ 清理完成`，失败可重试 | 调用方可重试 `destroy`；`MapRuntime.dispose()` 会 `logger.warn` |
-| **有待启动动画时 `destroy` 会推迟到安全窗口** | 这种情形下 `destroy()` 返回时 SDK 对象还没销毁，销毁发生在 `animationstart` 之后的微任务（或 0ms 兜底） | 不要在 `destroy()` 返回后假定「底层已释放」；需要确定性时序时避免在未启动状态下销毁 |
+| `destroy` 的失败语义 | 逐项尽力清理 + 汇总抛 `BMAP_SDK_CALL_FAILED`；`disposed ≠ 清理完成`，失败可重试；重试**不会**二次销毁 SDK 对象（`tornDown`） | 调用方可重试 `destroy`；`MapRuntime.dispose()` 会 `logger.warn` |
+| **有待启动动画时 `destroy` 会推迟到安全窗口** | 这种情形下 `destroy()` 返回时 SDK 对象还没销毁，销毁发生在 `animationstart` 之后的微任务（或 0ms 兜底，后者**不**置 `released`） | 不要在 `destroy()` 返回后假定「底层已释放」；需要确定性时序时避免在未启动状态下销毁 |
 | 视角动画的停止/取消时机 | 未启动的动画改为「启动后微任务取消」，`stopViewAnimation` 不再同步立即生效；`stopViewAnimation` 会停止该地图上所有未结束的动画 | 判断状态请依赖 `animationend` / `animationcancel` |
 | 动画取消失败时替换新动画 | `startViewAnimation` 会抛错且不替换（旧动画仍可停） | 先解决取消失败，或销毁地图重建 |
 | `getHeading()` 返回带符号角度 | v4 的 `setHeading(270)` → `getHeading()` 为 `-90` | 不要用 heading 做 round-trip 判断；类型化事件与状态属 #28 |
@@ -230,10 +239,15 @@ v4 把路况收敛成 `TrafficLayer`（`map.addLayer`），`Map` 自身没有开
 - **未做真实 AK smoke**：`MapTypeId` 静态常量的真实取值、`setHeading` 的 360 归一化、
   真实投影精度、动画的安全取消窗口都只在官方文档/类型层面核对过；真实浏览器验证属 M3A.3（#25）。
 - **动画的迟到启动窗口无法彻底关闭**：官方 `startViewAnimation` 内部 setTimeout 没有公开句柄，
-  `delay > 0` 时「启动前取消」做不到。本 Facet 的做法是：有待启动动画时把 `destroy` 的清理推迟到
-  安全窗口（先取消再销毁），并挂 0ms 兜底定时器保证动画始终不启动时也能完成销毁；兜底之后才启动
-  （`delay` 很大）的动画由记录自己的安全点取消。若 SDK 既不派发 `animationstart` 也不再启动，
-  只会留下一条 Driver 侧记录（随 raw map 一起被 GC，不进持久化结构）。官方参考本身也建议固定 `delay: 0`。
+  `delay > 0` 时「启动前取消」做不到。本 Facet 的处理是：有问题动画时把 `destroy` 的清理推迟到
+  安全窗口（先取消再销毁），并用 0ms 兜底保证动画始终不启动时也能推进销毁；因此 **`delay > 0`
+  时 SDK 销毁仍可能先于取消发生**（兜底先到期），但那时**不会**置 `released`——取消失败后
+  `destroy` 仍可重试（第三轮 P1 修正的正是这一点）。兜底之后才启动的动画由记录自己的安全点取消。
+  若 SDK 既不派发 `animationstart` 也不再启动，只会留下一条 Driver 侧记录（随 raw map 一起被 GC）。
+  官方参考本身建议固定 `delay: 0`；该推荐路径下顺序是「先取消、再销毁」。
+- **`released` 可能暂时不置位**：兜底推进销毁后，若仍有未 settled 的动画记录，`released` 保持
+  false（资源已释放、但账没结清）。后续 `destroy` 会补上取消并置位；不调也不会漏释放——
+  它只是幂等短路用的标记。破坏性为 0，故显式接受而不是再加一层状态。
 - **取消失败时 `destroy` 仍会尽力销毁 SDK 对象**：失败只体现在「不置 `released` 且抛出汇总错误」上，
   避免把 WebGL 资源扣在一个停不掉的动画上；动画记录保留，重试 `destroy` 会再次尝试取消。
   待启动路径的错误发生在微任务里，无法抛回调用方，因此以 `logger.warn` 报告（已记录在案）。

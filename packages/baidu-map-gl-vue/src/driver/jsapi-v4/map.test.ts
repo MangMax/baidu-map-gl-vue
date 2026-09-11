@@ -675,7 +675,7 @@ describe("视角动画生命周期（复审 P1/P2）", () => {
     expect(fake.createdMaps[0].destroyed).toBe(true);
   });
 
-  it("[P1] 延迟取消失败后，第二次 destroy 仍能补齐清理（released 不是「请求已发出」）", async () => {
+  it("[P1] 延迟取消失败会在同一次推进里再试一次（不把停不掉的动画留在原地）", async () => {
     const { map, container, fake } = setup();
     const handle = map.create(container);
     const anim = createAnimation(fake, {});
@@ -685,17 +685,16 @@ describe("视角动画生命周期（复审 P1/P2）", () => {
     map.destroy(handle);
     await sleep();
     await sleep();
-    expect(anim.settled).toBe(false);
 
-    // SDK 销毁是「尽力执行」的（不能把 WebGL 资源扣在一个停不掉的动画上），
-    // 但 released 未置位 —— 重试会再走一遍清理，把动画真正停掉。
-    expect(() => map.destroy(handle)).not.toThrow();
-    await sleep();
-    await sleep();
+    // 安全窗口里的第一次取消失败 → 延迟清理再试一次并停掉动画
     expect(anim.settled).toBe(true);
-    expect(
-      fake.createdMaps[0].callLog.filter((call) => call === "destroy").length,
-    ).toBeGreaterThanOrEqual(2);
+    expect(anim.getListenerCount()).toBe(0);
+    // SDK 对象只销毁一次：重试不会二次销毁（tornDown）
+    expect(fake.createdMaps[0].callLog.filter((call) => call === "destroy")).toHaveLength(1);
+
+    // 完成后才是真正的幂等 no-op
+    expect(() => map.destroy(handle)).not.toThrow();
+    expect(fake.createdMaps[0].callLog.filter((call) => call === "destroy")).toHaveLength(1);
   });
 
   it("[P2] started 只能在 animationstart 派发结束后的微任务里置位（业务监听器后注册）", async () => {
@@ -787,6 +786,73 @@ describe("视角动画生命周期（复审 P1/P2）", () => {
   });
 });
 
+// 第三轮复审（基线 6318c6b）保留的唯一 P1：非零 delay 下 0ms 兜底先于动画启动执行，
+// 而完成判据当时没把「未启动的动画」算成未完成资源 → released 被提前置位，迟到取消失败后无路可退。
+describe("视角动画生命周期（第三轮复审 P1：非零 delay）", () => {
+  function delayedAnimation(fake: FakeBMapV4, delay: number) {
+    return new fake.namespace.ViewAnimation([{ percentage: 0 }, { percentage: 1 }], {
+      delay,
+      interation: "INFINITE",
+    });
+  }
+
+  it("[P1] 迟到取消失败后必须保留可用的重试入口", async () => {
+    const { map, container, fake } = setup();
+    const handle = map.create(container);
+    const animation = delayedAnimation(fake, 30);
+
+    animation.failNextCancel = true;
+    map.startViewAnimation(handle, animation);
+    map.destroy(handle);
+
+    await sleep(60);
+    // 迟到的第一次取消已失败：记录必须保留（不能因为兜底跑过就当成清理完成）
+    expect(animation.cancelCalls).toBe(1);
+    expect(animation.settled).toBe(false);
+
+    // 重试入口必须真的可用：destroy 再走一遍，把动画停掉
+    expect(() => map.destroy(handle)).not.toThrow();
+    expect(animation.cancelCalls).toBe(2);
+    expect(animation.settled).toBe(true);
+    expect(animation.getListenerCount()).toBe(0);
+    // 只有一次 SDK 销毁（tornDown）
+    expect(fake.createdMaps[0].callLog.filter((call) => call === "destroy")).toHaveLength(1);
+  });
+
+  it("[P1] 未 settled 的动画记录阻止 released，直到它真正停掉", async () => {
+    const { map, container, fake } = setup();
+    const handle = map.create(container);
+    const animation = delayedAnimation(fake, 30);
+    map.startViewAnimation(handle, animation);
+    map.destroy(handle);
+
+    // 兜底销毁已执行（约 1ms），但动画还没启动、记录还没 settled
+    await sleep(5);
+    expect(animation.settled).toBe(false);
+
+    // 动画启动并取消成功后，再调 destroy 就应当是幂等 no-op（不会二次销毁）
+    await sleep(60);
+    expect(animation.settled).toBe(true);
+    expect(() => map.destroy(handle)).not.toThrow();
+    expect(fake.createdMaps[0].callLog.filter((call) => call === "destroy")).toHaveLength(1);
+  });
+
+  it("delay: 0 的官方推荐路径仍然是「先取消、再销毁 SDK 对象」", async () => {
+    const { map, container, fake } = setup();
+    const handle = map.create(container);
+    const animation = delayedAnimation(fake, 0);
+    map.startViewAnimation(handle, animation);
+
+    map.destroy(handle);
+    await sleep();
+    await sleep();
+
+    const log = fake.createdMaps[0].callLog;
+    expect(log.indexOf("cancelViewAnimation")).toBeLessThan(log.indexOf("destroy"));
+    expect(animation.settled).toBe(true);
+  });
+});
+
 describe("销毁的部分失败（PR #60 评审 P2）", () => {
   it("解绑抛错不阻断 SDK 销毁；重试入口保留，全部成功后才是幂等 no-op", () => {
     const { map, container, fake, events } = setup();
@@ -812,13 +878,13 @@ describe("销毁的部分失败（PR #60 评审 P2）", () => {
       expect.objectContaining({ code: "BMAP_RESOURCE_DISPOSED" }),
     );
 
-    // 修好后重试：清理补齐
+    // 修好后重试：清理补齐；SDK 对象不会被二次销毁（tornDown），只补没做完的部分
     raw.removeEventListener = originalRemove;
     expect(() => map.destroy(handle)).not.toThrow();
-    expect(fake.createdMaps[0].callLog.filter((call) => call === "destroy")).toHaveLength(2);
+    expect(fake.createdMaps[0].callLog.filter((call) => call === "destroy")).toHaveLength(1);
 
     // 清理完成后的第三次调用才是真正的幂等 no-op
     expect(() => map.destroy(handle)).not.toThrow();
-    expect(fake.createdMaps[0].callLog.filter((call) => call === "destroy")).toHaveLength(2);
+    expect(fake.createdMaps[0].callLog.filter((call) => call === "destroy")).toHaveLength(1);
   });
 });
