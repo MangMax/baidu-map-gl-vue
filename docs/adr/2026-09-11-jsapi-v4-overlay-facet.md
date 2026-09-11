@@ -53,6 +53,12 @@
 `OVERLAY_DESCRIPTORS` 又用 `satisfies Record<OverlayKind, OverlayDescriptor>` 保证**穷举**：
 新增一个 `OverlayKind` 而忘记分类会直接编译失败。
 
+**同一个更新的两条入口必须共用一份参数计划**：`mutable` 的 `setter` 支持可选的 `valueArgs`
+（值型 setter 的常量尾随参数，例：`CustomOverlay#setPoint(point, true)` 的 `true`）。
+专用入口（`setPosition` / `setPath`）与通用入口（`setOptions`）都调用同一个
+`applyFieldUpdate`，参数一律从描述符取——否则「同一次位置更新」会在两条路径上语义不同
+（评审 P2-2 正是通用入口漏传 `true`，导致业务 DOM 被悄悄替换）。
+
 `ctor`（官方构造器名）刻意写成**字面量**而不是从 Capability Catalog 派生：字面量让
 `(typeof OVERLAY_DESCRIPTORS)[kind]["ctor"] extends keyof typeof BMap` 这条官方类型一致性断言成立
 （见 §7）。两处的一致性由 `src/driver/jsapi-v4/overlays.test.ts` 的同源断言守住——
@@ -248,6 +254,26 @@ smoke 顺带确认的运行时事实（已回写到上文的决策里）：
 - `map.getOverlays()` 会把**打开过的 InfoWindow** 计入，且 `closeInfoWindow()` 之后它仍留在列表里：
   真实 SDK 上不能用 `getOverlays().length` 判断「子资源是否摘干净」（那是 `Fake` 的
   `destroyedWithOverlays` 诊断字段要表达的事，两者不要混为一谈）。
+- `CustomOverlay#setPoint(point, true)` 与 `setPoint(point)` 的差别是**真实**的：后者会重新调用一次
+  业务 DOM 工厂（实测计数 1 → 2），前者不会。因此「只位移」必须显式传 `true`。
+- `InfoWindow` 的连续打开请求：同一 tick 内 `open A` + `open B` 的结果是**后一个胜出**（B 打开、A 不打开），
+  且此时调用 `map.closeInfoWindow()` 不会取消 B 的打开（3 轮 × 2 组实测一致）。
+
+## 外部评审轮次记录（PR #61，基线 `7b51bc6`）
+
+评审提出 4 个 P2 + 1 个待验证风险。逐条在仓库内先写**会红**的用例再修，其中一条的机制与评审假设不同：
+
+| 发现 | 复现结果 | 处置 |
+| --- | --- | --- |
+| P2-1 重建期间的更新被 `applyOptions` 丢弃 | **确认**（`useOverlayResource.test.ts`：可控 Promise 卡住 create，窗口内的更新既没排队也没淘汰旧版本；3 条用例红） | 新增 `pendingApply`：实例未挂载时**合并**待应用更新，挂载后 `flushPendingApply()` 补跑一次；recreate 键补跑时会再触发一次重建 |
+| P2-2 `setOptions({ position })` 与 `setPosition` 参数不一致（漏传 `true`） | **确认**（`domCreateCalls` 由 0 变 1） | 描述符新增 `valueArgs`（常量尾随参数），专用入口与通用入口统一走 `applyFieldUpdate`；真实 SDK 验证：修复后 DOM 工厂调用数 1 → 1 |
+| P2-3 `marker3d` 描述符为空 → `setPosition` 报错 | **确认，但机制不同**：真实运行时**有**位置入口，只是 **`setPoint`** 而不是 `setPosition`（实测 `setPosition(point)` 把 116.42/39.93 写成 -43.87/84.65，`setPosition(lng, lat)` 直接抛 TypeError） | 描述符补 `position → setPoint`（**不是**评审建议的 `setPosition`）；真实 SDK 验证回读 116.42/39.93、116.43/39.94 |
+| P2-4 `custom-overlay` 的 `offset`/`anchor`/`minZoom`/`maxZoom` 没有分类 | **确认**（`updatePolicy()` 返回 `undefined`） | 四项补为 `recreate`（构造期属性），并加分类断言与「告警一次」断言 |
+| 风险：关 A 可能取消尚未打开完成的 B | **真实 SDK 未能复现**（同一 tick 开 A+B 后关 A，3 轮 × 2 组一致：B 正常打开、A 不打开；`map.closeInfoWindow()` 不取消挂起的打开） | 仍按建议加固：新增 `lastRequestedByMap`，只有「本 Driver 最后请求打开的气泡」才允许触碰地图；合成用例（Fake 的同步模型能表达该交错）留作不变式断言，单气泡快速开关不回归 |
+
+同一轮还顺手修掉：`setPath` 与 `setPosition` 共用同一份参数计划（避免再次出现「两条入口参数不同」），
+`map-mask` 这类没有 `path` 语义的 kind 调 `setPath` 现在显式抛 `BMAP_CAPABILITY_UNSUPPORTED`
+而不是把 SDK 的缺方法错误冒出来。
 
 ## 已知限制（显式接受）
 

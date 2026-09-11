@@ -75,6 +75,13 @@ export function useOverlayResource<Props, Resource>(
   let readyCtx: MapReadyContext | null = null;
   let disposed = false;
   let createToken = 0;
+  /**
+   * 实例尚未挂载时到达的更新（重建在飞 / 首建未完成），在挂载后补跑一次。
+   *
+   * 直接丢弃会让「重建期间的更新」永久丢失，最终实例与最新 props 不一致（PR #61 评审 P2-1）。
+   * 合并而不是排队成多条：同一次重建只需补一次，多次更新按 key 后写覆盖先写。
+   */
+  let pendingApply: Record<string, unknown> | null = null;
 
   const ensureInstanceScope = () => {
     if (!instanceScope || instanceScope.isDisposed) {
@@ -109,6 +116,8 @@ export function useOverlayResource<Props, Resource>(
       const raw: Resource = created;
       resource.value = markRaw(raw as object) as Resource;
       lifecycle.addToMap(created, ready, props, scope);
+      // 首建期间到达的更新同样要补上（与 rebuild 之后一致）
+      await flushPendingApply();
     } catch (error) {
       if (!componentScope.signal.aborted && !disposed) {
         ctx.events.emit("resource:error", {
@@ -133,6 +142,7 @@ export function useOverlayResource<Props, Resource>(
       }
     }
     resource.value = null;
+    pendingApply = null;
     instanceScope?.dispose();
     instanceScope = null;
     componentScope.dispose();
@@ -167,13 +177,30 @@ export function useOverlayResource<Props, Resource>(
     }
     resource.value = markRaw(created as object) as Resource;
     lifecycle.addToMap(created, ready, props, scope);
+    // 重建期间到达的更新在这里补齐（否则它们已被丢弃，见 pendingApply 注释）
+    await flushPendingApply();
+  };
+
+  /** 把挂载前累积的更新在**当前**实例上补跑一次；实例仍未挂载时保留待办，等下次挂载再补。 */
+  const flushPendingApply = async () => {
+    if (!pendingApply || !resource.value || disposed) return;
+    const next = pendingApply;
+    // 先清空再应用：applyOptions 内部可能再次触发 rebuild，届时不该重复消费这批更新
+    pendingApply = null;
+    await applyOptions(next);
   };
 
   /** 按属性分类应用更新: mutable 就地, recreate 重建**一次** */
   const applyOptions = async (options: Record<string, unknown>) => {
     const ready = readyCtx;
+    if (!ready || disposed) return;
     const current = resource.value;
-    if (!ready || disposed || !current) return;
+    if (!current) {
+      // 重建在飞 / 首建未完成：合并待应用更新，等实例挂载后由 flushPendingApply 补跑。
+      // 这里**不能**直接返回，否则这次更新会永久丢失（PR #61 评审 P2-1）。
+      pendingApply = { ...(pendingApply ?? {}), ...options };
+      return;
+    }
     const overlays = ready.client.driver.overlays;
     const inPlace: Record<string, unknown> = {};
     let needsRebuild = false;

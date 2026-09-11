@@ -51,7 +51,6 @@ import {
   overlayDescriptor,
   overlayKindOf,
   overlayPropertyPolicy,
-  overlayPropertySetter,
   overlayPropertySpec,
 } from "../types/overlays";
 import {
@@ -111,6 +110,16 @@ export function createJsapiV4OverlayDriver(
   const warned = new Set<string>();
   /** `openInfoWindow` 打开过的气泡 → 它所属的 raw map（**归属**记账，不是打开状态）。 */
   const infoWindowOwners = new WeakMap<object, object>();
+  /**
+   * 每张地图**最近一次被请求打开**的气泡。
+   *
+   * `map.closeInfoWindow()` 无参数、关的是「这张地图当前的气泡」，而真实 4.0 的打开是异步的：
+   * 同一 tick 里刚 `openInfoWindow(B)` 时 `map.getInfoWindow()` 仍可能指向 A（或为空）。
+   * 只有「这个气泡确实是本 Driver 最后请求打开的那个」才允许触碰地图，否则关一个旧气泡就可能
+   * 干扰正在进行的打开请求（PR #61 评审的跨气泡风险；真实 SDK 上未能复现，但这是本 Driver
+   * 唯一能自行保证的不变量，不依赖 SDK 内部时序）。
+   */
+  const lastRequestedByMap = new WeakMap<object, object>();
   /** `createContextMenu({ width })` → `MenuItem` 的默认宽度。 */
   const menuWidths = new WeakMap<object, number>();
 
@@ -246,6 +255,33 @@ export function createJsapiV4OverlayDriver(
 
   const toRawPath = (path: readonly (Point | string)[]): unknown[] =>
     path.map((point) => (typeof point === "string" ? point : geometry.toRawPoint(point)));
+
+  /**
+   * 语义键 → 官方 setter 的**唯一**调用点：专用入口（setPosition / setPath）与通用入口
+   * （setOptions）都经这里落地，参数一律取自描述符（含 `valueArgs` 常量尾随参数），
+   * 避免两条路径对同一次更新传不同的参数（PR #61 评审 P2-2）。
+   */
+  const applyFieldUpdate = (
+    raw: Record<string, unknown>,
+    kind: OverlayKind,
+    key: string,
+    value: unknown,
+  ): void => {
+    const spec = overlayPropertySpec(kind, key);
+    const setter = spec ? mutableSetter(spec) : undefined;
+    if (!spec || !setter) {
+      throw new BMapError(
+        "BMAP_CAPABILITY_UNSUPPORTED",
+        `OverlayDriver: ${kind} 没有可用的 "${key}" 更新入口（描述符里没有该键或不是 mutable）`,
+        { engine: "jsapi-v4" },
+      );
+    }
+    const args = [normalize(spec, value), ...(spec.valueArgs ?? [])];
+    sdkCall(setter, () => callRequired(raw, setter, ...args));
+  };
+
+  /** 位置类更新用的语义键：圆是 `center`（setCenter），其余是 `position`。 */
+  const POSITION_KEY: Partial<Record<OverlayKind, string>> = { circle: "center" };
 
   /** 覆盖物只能挂到 Map；其它 target 在本引擎没有运行时入口，必须显式失败。 */
   const requireMapTarget = (target: OverlayTarget, operation: string): object => {
@@ -488,28 +524,13 @@ export function createJsapiV4OverlayDriver(
     setPosition(overlay, position) {
       const kind = kindOfHandle(overlay);
       const raw = registry.resolve<Record<string, unknown>>(overlay);
-      // setter 名一律取自描述符（单一事实源）；这里只保留两个真正的语义决定：
-      // 1. 圆的位置属性叫 `center`（官方 setCenter），其余覆盖物叫 `position`；
-      // 2. CustomOverlay 用 `setPoint(point, true)`：只位移、不重建 DOM —— 重建会丢掉业务 DOM
-      //    上的 listener / timer / observer（官方要求业务先自行释放），而 setPosition 就是位移。
-      const setter = overlayPropertySetter(kind, kind === "circle" ? "center" : "position");
-      if (!setter) {
-        throw new BMapError(
-          "BMAP_CAPABILITY_UNSUPPORTED",
-          `OverlayDriver.setPosition: ${kind} 没有位置类 setter（描述符里 center / position 都不是 mutable）`,
-          { engine: "jsapi-v4" },
-        );
-      }
-      const point = geometry.toRawPoint(position);
-      const args = kind === "custom-overlay" ? [point, true] : [point];
-      sdkCall(setter, () => callRequired(raw, setter, ...args));
+      applyFieldUpdate(raw, kind, POSITION_KEY[kind] ?? "position", position);
     },
 
     setPath(overlay, path) {
       const kind = kindOfHandle(overlay);
       const raw = registry.resolve<Record<string, unknown>>(overlay);
-      const setter = overlayPropertySetter(kind, "path") ?? "setPath";
-      sdkCall(setter, () => callRequired(raw, setter, toRawPath(path)));
+      applyFieldUpdate(raw, kind, "path", path);
     },
 
     setOptions(overlay, options) {
@@ -546,7 +567,7 @@ export function createJsapiV4OverlayDriver(
             );
             continue;
           }
-          const args = setter ? [normalize(spec, value)] : [];
+          const args = setter ? [normalize(spec, value), ...(spec.valueArgs ?? [])] : [];
           sdkCall(method, () => callOptional(raw, method, ...args));
           continue;
         }
@@ -594,20 +615,21 @@ export function createJsapiV4OverlayDriver(
         sdkCall("InfoWindow.openInfoWindow", () => (fn as () => unknown).apply(raw));
       }
       infoWindowOwners.set(raw, rawMap);
+      // 记下「这张地图最后被请求打开的是谁」——closeInfoWindow 据此判断该不该动地图
+      lastRequestedByMap.set(rawMap, raw);
     },
 
     closeInfoWindow(overlay) {
       const raw = registry.resolve<object>(overlay);
       const owner = infoWindowOwners.get(raw);
       if (owner) {
-        // 官方 map.closeInfoWindow() 没有参数，关的是「这张地图当前打开的气泡」；先用公开的
-        // map.getInfoWindow() 确认不是**别的**气泡，避免关掉别的组件的窗口。
-        //
-        // 注意 `current` 为空**不能**当成「没打开」：真实 4.0 的打开是异步的（下一次绘制帧才
-        // 生效），`openInfoWindow()` 之后同一 tick 里 `map.getInfoWindow()` 仍是 `null`
-        // （真实 AK smoke 实测：0ms 为 null、~100ms 变成该实例）。所以只要**没有别的**气泡
-        // 正开着，就照常调用 map.closeInfoWindow()；没有气泡时它是 no-op（同一 smoke 验证过
-        // 重复 close 不抛错）。
+        // 只关「本 Driver 最后请求打开的那个气泡」。关一个更早请求的气泡时完全不碰地图：
+        // 真实 4.0 的打开是异步的，此时 map 上可能正有一次更新的打开请求在飞（PR #61 评审）。
+        if (lastRequestedByMap.get(owner) !== raw) return;
+        // 即便如此，仍用公开的 map.getInfoWindow() 确认**没有别的**气泡正开着，避免关掉
+        // 别的组件的气泡。注意 `current` 为空**不能**当成「没打开」：`openInfoWindow()` 之后
+        // 同一 tick 里它仍是 `null`（实测 0ms 为 null、~100ms 变成该实例），所以照常调用
+        // map.closeInfoWindow()（没有气泡时它是 no-op，实测重复 close 不抛错）。
         const current = callOptional(owner, "getInfoWindow");
         if (current && current !== raw) return;
         sdkCall("map.closeInfoWindow", () => callRequired(owner, "closeInfoWindow"));

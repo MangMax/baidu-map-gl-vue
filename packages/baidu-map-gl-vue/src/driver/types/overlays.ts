@@ -167,6 +167,13 @@ export type OverlayPropertySpec =
       readonly ctorKey?: string | null;
       readonly value?: OverlayPropertyValueKind;
       readonly setter: string;
+    /**
+     * 值型 setter 的常量尾随参数（例：`CustomOverlay#setPoint(point, true)` 的 `true`）。
+     *
+     * 声明在**所有**变体上（对成对开关 / recreate / unsupported 无意义）是为了让
+     * `spec.valueArgs` 在判别联合上可读，而不必在每个调用点做类型断言。
+     */
+    readonly valueArgs?: readonly unknown[];
       readonly toggle?: never;
     }
   | {
@@ -175,6 +182,7 @@ export type OverlayPropertySpec =
       readonly ctorKey?: string | null;
       readonly value?: OverlayPropertyValueKind;
       readonly setter?: never;
+      readonly valueArgs?: readonly unknown[];
       readonly toggle: readonly [enable: string, disable: string];
     }
   | {
@@ -186,6 +194,7 @@ export type OverlayPropertySpec =
       readonly value?: OverlayPropertyValueKind;
       readonly setter?: never;
       readonly toggle?: never;
+      readonly valueArgs?: readonly unknown[];
     }
   | {
       readonly name: string;
@@ -195,6 +204,7 @@ export type OverlayPropertySpec =
       readonly setter?: never;
       readonly toggle?: never;
       readonly value?: never;
+      readonly valueArgs?: readonly unknown[];
     };
 
 export interface OverlayDescriptor {
@@ -221,6 +231,7 @@ export interface OverlayDescriptor {
 type CommonSpecInput = {
   readonly ctorKey?: string | null;
   readonly value?: OverlayPropertyValueKind;
+  readonly valueArgs?: readonly unknown[];
 };
 type SpecInput = ReturnType<typeof mutateBy> | ReturnType<typeof toggleBy> | ReturnType<typeof recreate> | ReturnType<typeof unsupported>;
 
@@ -469,10 +480,24 @@ export const OVERLAY_DESCRIPTORS = {
     ctor: "CustomOverlay",
     capability: "overlay.custom-dom",
     properties: properties({
-      position: mutateBy("setPoint", { ctorKey: null, value: "point" }),
+      // 第二参数 `true` = 只位移、不重建 DOM（官方默认 false 会重建）。专用入口与通用入口
+      // 必须走同一份 `valueArgs`，否则 `setOptions({ position })` 会悄悄换掉业务 DOM。
+      position: mutateBy("setPoint", { ctorKey: null, value: "point", valueArgs: [true] }),
       rotation: mutateBy("setRotation", { ctorKey: "rotationInit" }),
       properties: mutateBy("setProperties", { ctorKey: "properties" }),
       visible: toggleBy(["show", "hide"], { ctorKey: "visible" }),
+      // 公共 `CustomOverlayOptions` 已声明、构造期生效、实例上没有 setter 的键
+      // （PR #61 评审 P2-4：此前没有分类，更新会落到未知 setter 推导并只告警）
+      anchor: recreate(
+        "anchors 是构造选项（`CustomOverlayOptions.anchors`），实例上没有 setAnchor",
+        { ctorKey: null },
+      ),
+      offset: recreate(
+        "offsetX / offsetY 是构造选项，实例上没有 setOffset",
+        { ctorKey: null },
+      ),
+      minZoom: recreate("minZoom 是构造选项，实例上没有 setMinZoom", { ctorKey: "minZoom" }),
+      maxZoom: recreate("maxZoom 是构造选项，实例上没有 setMaxZoom", { ctorKey: "maxZoom" }),
       zIndex: recreate(
         "4.0 的 CustomOverlayOptions 有 zIndex，但实例上没有 setZIndex，层级只能在构造期确定",
         { ctorKey: "zIndex" },
@@ -497,14 +522,26 @@ export const OVERLAY_DESCRIPTORS = {
     }),
   },
 
-  // 以下两类在当前 v4 引擎没有可核对的运行时入口（见 descriptor.ctor 注释）
+  // 以下两类的构造器**不在**官方类型包里，但真实 4.0 运行时提供。描述符按**运行时实测**填写：
+  // 只有核对过的方法才写进来，未映射的键仍可经 `setOptions` 的 `set<Key>` 逃生口使用。
   marker3d: {
     kind: "marker3d",
     ctor: "Marker3D",
     capability: "overlay.marker-3d",
-    properties: properties({}),
+    properties: properties({
+      // AK smoke 实测 `Marker3D.prototype`：setPoint/getPoint/setPosition/getPosition/setZIndex/
+      // setIcon/setHeight/setFillColor/setFillOpacity 都存在。
+      // **但位置入口是 `setPoint`，不是 `setPosition`**：实测 `setPoint(new Point(116.42, 39.93))`
+      // 之后 `getPosition()` 回读 116.42/39.93；而 `setPosition(point)`（以及 `setPosition(lng, lat)`、
+      // 传 MC 点）都会把经纬度写坏成 `-43.87, 84.65`（`setPosition(lng, lat)` 还会抛 TypeError）。
+      // 因此这里映射到 setPoint —— 按 PR #61 评审 P2-3 的建议补入口，但不能照抄方法名。
+      position: mutateBy("setPoint", { ctorKey: null, value: "point" }),
+    }),
   },
 
+  // `MapMask` 在真实运行时提供 setOptions / setZIndex / setPoints / setPathIn（**没有** setPath）。
+  // 本仓库 `<BMapMask>` 的 path 更新走 `rebuild()`，因此这里不映射任何键；
+  // 若将来要从 Facet 侧更新掩膜，应先核对 `setPoints` / `setOptions` 的语义再补。
   "map-mask": {
     kind: "map-mask",
     ctor: "MapMask",
@@ -547,16 +584,6 @@ export function mutableToggle(
   spec: OverlayPropertySpec,
 ): readonly [string, string] | undefined {
   return spec.policy === "mutable" ? spec.toggle : undefined;
-}
-
-/**
- * 按 `kind` + 语义键取**值型 setter** 名（例：`("marker", "position")` → `setPosition`、
- * `("circle", "center")` → `setCenter`）。`OverlayDriver.setPosition` / `setPath` 用它，
- * 避免在 Driver 里再抄一份「语义键 → 官方方法名」的映射。
- */
-export function overlayPropertySetter(kind: OverlayKind, key: string): string | undefined {
-  const spec = overlayPropertySpec(kind, key);
-  return spec ? mutableSetter(spec) : undefined;
 }
 
 const OVERLAY_KINDS = Object.keys(OVERLAY_DESCRIPTORS) as OverlayKind[];

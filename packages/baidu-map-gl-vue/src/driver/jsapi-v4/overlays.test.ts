@@ -602,6 +602,104 @@ describe("buildIcon 与 setPosition", () => {
 });
 
 /* -------------------------------------------------------------------------- */
+/* 9. PR #61 评审反例（先红后绿）                                                */
+/* -------------------------------------------------------------------------- */
+
+describe("PR #61 评审反例", () => {
+  it("[P2-2] setOptions({ position }) 与 setPosition 一致：只位移、不重建业务 DOM", () => {
+    const custom = ctx.overlays.createCustomOverlay({ lng: 1, lat: 1 }, () =>
+      document.createElement("div"),
+    );
+    ctx.overlays.add(ctx.mapTarget(), custom);
+
+    ctx.overlays.setOptions(custom, { position: { lng: 3, lat: 3 } });
+
+    // 官方 setPoint 的第二参数默认 false（会重建 DOM）；通用入口必须与专用入口同样传 true
+    expect(ctx.rawOf(custom).callLog).toContain("setPoint:noReCreate");
+    expect(ctx.rawOf(custom).domCreateCalls).toBe(0);
+  });
+
+  it("[P2-3] createMarker3D 之后 setPosition 使用 setPoint（运行时实测的经纬度入口）", () => {
+    class RuntimeMarker3D {
+      point: unknown = null
+      /** 实测：`setPosition` 会把经纬度写坏，因此描述符**不能**映射到它 */
+      setPositionCalls = 0
+      constructor(point: unknown) {
+        this.point = point
+      }
+      setPoint(point: unknown): void {
+        this.point = point
+      }
+      setPosition(): void {
+        this.setPositionCalls++
+      }
+    }
+    const overlays = createJsapiV4OverlayDriver({
+      rawSdk: { ...ctx.fake.namespace, Marker3D: RuntimeMarker3D },
+      geometry: ctx.geometry,
+      capabilities: createCapabilityRegistry({
+        engine: "jsapi-v4",
+        version: ctx.fake.namespace.VERSION,
+        rawSdk: { ...ctx.fake.namespace, Marker3D: RuntimeMarker3D },
+        unsupported: "throw",
+      }),
+      registry: ctx.registry,
+    });
+    const handle = overlays.createMarker3D({ lng: 1, lat: 2 }, 50);
+
+    expect(() => overlays.setPosition(handle, { lng: 3, lat: 4 })).not.toThrow();
+    expect((handle.raw as RuntimeMarker3D).point).toMatchObject({ lng: 3, lat: 4 });
+    expect((handle.raw as RuntimeMarker3D).setPositionCalls).toBe(0);
+  });
+
+  it("[P2-4] CustomOverlay 已声明的构造期属性在描述符里有分类（recreate）", () => {
+    const custom = ctx.overlays.createCustomOverlay(
+      { lng: 1, lat: 1 },
+      () => document.createElement("div"),
+      { offset: { x: 1, y: 1 }, anchor: { x: 0, y: 1 }, minZoom: 10, maxZoom: 18 },
+    );
+
+    for (const key of ["offset", "anchor", "minZoom", "maxZoom"]) {
+      expect(ctx.overlays.updatePolicy(custom, key)).toBe("recreate");
+    }
+  });
+
+  it("[P2-4] CustomOverlay 构造期属性走 setOptions 时告警一次（而不是落到未知 setter）", () => {
+    const custom = ctx.overlays.createCustomOverlay({ lng: 1, lat: 1 }, () =>
+      document.createElement("div"),
+    );
+    ctx.overlays.setOptions(custom, { offset: { x: 2, y: 2 }, minZoom: 12 });
+
+    expect(warn).toHaveBeenCalledTimes(2); // 每个键各一次（recreate 告警）
+    expect(String(warn.mock.calls[0][0])).toContain("offset");
+  });
+
+  it("[双气泡风险] 两个打开请求都未完成时，关闭先前的那个不会碰地图", () => {
+    const a = ctx.overlays.createInfoWindow(document.createElement("div"));
+    const b = ctx.overlays.createInfoWindow(document.createElement("div"));
+
+    ctx.overlays.openInfoWindow(ctx.map, a, { lng: 1, lat: 1 });
+    ctx.rawMap.infoWindow = null; // 真实 SDK：打开是异步的，此刻 A 还没成为当前气泡
+    ctx.overlays.openInfoWindow(ctx.map, b, { lng: 2, lat: 2 });
+    ctx.rawMap.infoWindow = null; // B 也仍在打开中
+
+    const closesBefore = ctx.rawMap.callLog.filter((c) => c === "closeInfoWindow").length;
+    ctx.overlays.closeInfoWindow(a);
+
+    // 地图上「最近一次被请求打开的气泡」是 B → 关 A 不能调用地图级 close（否则会取消 B 的打开）
+    expect(ctx.rawMap.callLog.filter((c) => c === "closeInfoWindow").length).toBe(closesBefore);
+  });
+
+  it("[双气泡风险] 单气泡快速开关仍然生效（不因上面的收紧而回归）", () => {
+    const only = ctx.overlays.createInfoWindow(document.createElement("div"));
+    ctx.overlays.openInfoWindow(ctx.map, only, { lng: 1, lat: 1 });
+    ctx.rawMap.infoWindow = null; // 尚未真正打开
+    ctx.overlays.closeInfoWindow(only);
+    expect(ctx.rawMap.callLog).toContain("closeInfoWindow");
+  });
+});
+
+/* -------------------------------------------------------------------------- */
 /* 8. 描述符与 Capability Catalog 同源                                          */
 /* -------------------------------------------------------------------------- */
 
