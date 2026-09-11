@@ -29,3 +29,21 @@ export {
   registerRuntimeCounters,
 } from './lifecycle-inspector'
 export type { LifecycleSnapshot } from './lifecycle-inspector'
+export {
+  createFakeBMapV4,
+  FakeV4Bounds,
+  FakeV4Circle,
+  FakeV4EventStats,
+  FakeV4EventTarget,
+  FakeV4InfoWindow,
+  FakeV4Label,
+  FakeV4Map,
+  FakeV4Marker,
+  FakeV4Overlay,
+  FakeV4Pixel,
+  FakeV4Point,
+  FakeV4Polygon,
+  FakeV4Polyline,
+  FakeV4Size,
+} from './fake-bmap-v4'
+export type { FakeBMapV4, FakeBMapV4Namespace } from './fake-bmap-v4'

@@ -101,4 +101,11 @@ export {
   UnsupportedCapabilityError,
 } from "./capability";
 export type { UnsupportedBehavior } from "./capability";
-export { normalizeMapMouseEvent, toPoint, isPointLike, toPlainPoint, toPlainPoints } from "./normalize";
+export {
+  normalizeMapMouseEvent,
+  normalizeDriverEvent,
+  toPoint,
+  isPointLike,
+  toPlainPoint,
+  toPlainPoints,
+} from "./normalize";

@@ -33,6 +33,7 @@ export interface GeometryDriver {
   fromRawPoint(raw: unknown): Point;
 
   toRawPoints(points: readonly Point[]): unknown[];
+  fromRawPoints(raws: readonly unknown[]): Point[];
 
   toRawPixel(pixel: Pixel): unknown;
   fromRawPixel(raw: unknown): Pixel;

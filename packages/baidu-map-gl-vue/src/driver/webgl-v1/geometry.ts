@@ -63,6 +63,10 @@ export function createWebGlV1GeometryDriver(rawSdk: unknown): GeometryDriver {
       return points.map((point) => this.toRawPoint(point));
     },
 
+    fromRawPoints(raws) {
+      return raws.map((raw) => this.fromRawPoint(raw));
+    },
+
     toRawPixel(pixel) {
       return callOptional(rawSdk, "Pixel")
         ? sdkCall("Pixel", () => new (sdkCtor(rawSdk, "Pixel"))(pixel.x, pixel.y))
