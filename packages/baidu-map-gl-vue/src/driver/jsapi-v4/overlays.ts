@@ -277,8 +277,12 @@ export function createJsapiV4OverlayDriver(
   /**
    * 结构性查找「官方类型包没有声明」的运行时扩展构造器。
    *
-   * 不预判版本、也不臆造 augmentation：有就按结构创建，没有就显式失败并点名该能力在本引擎
-   * 没有运行时入口（与 ADR 2026-09-11-jsapi-v4-map-facet 对 `tilt-gestures` 的处理同源）。
+   * 不预判版本、也不臆造 augmentation：有就按结构创建，没有就显式失败并点名缺的是哪个构造器
+   * （与 ADR 2026-09-11-jsapi-v4-map-facet 对 `tilt-gestures` 的处理同源）。
+   *
+   * 真实 AK smoke（ADR「真实 AK smoke 记录」一节）确认：`Marker3D` / `MapMask` 在 4.0 运行时
+   * **都存在**，只是 `@baidumap/jsapi-v4-types@4.0.4` 没有类声明——所以这条路在真实 SDK 上会
+   * 直接创建成功；失败分支只在「运行时确实没提供」时触发（Fake v4 故意不提供，用来覆盖它）。
    */
   const requireRuntimeCtor = (kind: OverlayKind, hint: string): JsapiV4Ctor => {
     const name = overlayDescriptor(kind).ctor;
@@ -286,12 +290,12 @@ export function createJsapiV4OverlayDriver(
     if (typeof ctor === "function") return ctor as JsapiV4Ctor;
     warnOnce(
       `${kind}:no-runtime-entry`,
-      `OverlayDriver: JSAPI 4.0.4 类型包没有声明 ${name} 构造器，官方参考 references/* 也没有对应章节；` +
-        `"${kind}" 在本引擎没有可核对的运行时入口；${hint}`,
+      `OverlayDriver: 当前 SDK 运行时没有提供 ${name}（官方 4.0.4 类型包也没有它的类声明，` +
+        `官方参考 references/* 无对应章节）；"${kind}" 无法创建；${hint}`,
     );
     throw new BMapError(
       "BMAP_CAPABILITY_UNSUPPORTED",
-      `BMap.${name} is not available（"${kind}" 在本引擎没有运行时入口）`,
+      `BMap.${name} is not available（当前运行时没有提供 "${kind}" 的构造器）`,
       { engine: "jsapi-v4" },
     );
   };
@@ -359,10 +363,10 @@ export function createJsapiV4OverlayDriver(
 
     createMarker3D(position, height, options: Record<string, unknown> = {}) {
       // `Marker3D` 在类型包里只出现在 const/Marker3DShapeType.d.ts 的文档注释里（没有类声明），
-      // 官方参考也没有章节 → 只能按结构判定：运行时提供就创建，没有就显式失败。
+      // 但真实 4.0 运行时确实提供该构造器 → 按结构创建；缺成员时才显式失败。
       const Ctor = requireRuntimeCtor(
         "marker3d",
-        "官方类型包只在 const/Marker3DShapeType.d.ts 的文档注释里提到过它；需要 3D 标记时请改用 Marker + 自定义 icon",
+        "需要 3D 标记时可改用 Marker + 自定义 icon",
       );
       const opts = projectOptions(overlayDescriptor("marker3d"), options);
       const raw = sdkCall("Marker3D", () => new Ctor(geometry.toRawPoint(position), height, opts));
@@ -384,10 +388,8 @@ export function createJsapiV4OverlayDriver(
     },
 
     createMapMask(path, options: Record<string, unknown> = {}) {
-      const Ctor = requireRuntimeCtor(
-        "map-mask",
-        "本仓库的 <BMapMask> 在 v4 引擎下不可用（属迁移期能力）",
-      );
+      // 同 `createMarker3D`：类型包无类声明，但真实 4.0 运行时提供 `MapMask`。
+      const Ctor = requireRuntimeCtor("map-mask", "本仓库的 <BMapMask> 需要该构造器");
       const opts = projectOptions(overlayDescriptor("map-mask"), options);
       const raw = sdkCall("MapMask", () => new Ctor(geometry.toRawPoints(path), opts));
       return adopt("map-mask", raw);
@@ -599,15 +601,20 @@ export function createJsapiV4OverlayDriver(
       const owner = infoWindowOwners.get(raw);
       if (owner) {
         // 官方 map.closeInfoWindow() 没有参数，关的是「这张地图当前打开的气泡」；先用公开的
-        // map.getInfoWindow() 确认就是我们打开的那个，避免关掉别的组件的气泡。
-        // 归属记账**不删除**：它记录的是「这个气泡被哪张地图打开过」，不是打开状态；
-        // 删掉它反而会让之后的重复 close 落到实例级 close() 回退路径上。
+        // map.getInfoWindow() 确认不是**别的**气泡，避免关掉别的组件的窗口。
+        //
+        // 注意 `current` 为空**不能**当成「没打开」：真实 4.0 的打开是异步的（下一次绘制帧才
+        // 生效），`openInfoWindow()` 之后同一 tick 里 `map.getInfoWindow()` 仍是 `null`
+        // （真实 AK smoke 实测：0ms 为 null、~100ms 变成该实例）。所以只要**没有别的**气泡
+        // 正开着，就照常调用 map.closeInfoWindow()；没有气泡时它是 no-op（同一 smoke 验证过
+        // 重复 close 不抛错）。
         const current = callOptional(owner, "getInfoWindow");
-        if (current !== raw) return;
+        if (current && current !== raw) return;
         sdkCall("map.closeInfoWindow", () => callRequired(owner, "closeInfoWindow"));
         return;
       }
-      // 从未由本 Driver 打开过：尝试实例级 close（运行时成员），没有则视为已关闭（幂等）
+      // 从未由本 Driver 打开过：尝试实例级 close（真实 4.0 运行时提供 `InfoWindow#close`），
+      // 没有则视为已关闭（幂等）
       const fn = readNamespaceMember(raw, "close");
       if (typeof fn === "function") {
         sdkCall("InfoWindow.close", () => (fn as () => unknown).apply(raw));

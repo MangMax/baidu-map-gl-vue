@@ -424,6 +424,17 @@ describe("InfoWindow 专用 open / close / redraw", () => {
     expect(() => ctx.overlays.closeInfoWindow(infoWindow)).not.toThrow();
   });
 
+  it("open 之后立刻 close（真实 SDK 尚未打开：getInfoWindow 仍为空）仍然关闭", () => {
+    const infoWindow = ctx.overlays.createInfoWindow(document.createElement("div"));
+    ctx.overlays.openInfoWindow(ctx.map, infoWindow, { lng: 1, lat: 1 });
+    // 真实 4.0 的打开是异步的：`openInfoWindow()` 之后同一 tick 里 `map.getInfoWindow()` 仍是
+    // `null`（真实 AK smoke：0ms 为 null、~100ms 变成该实例）。这里手工复现那个窗口。
+    ctx.rawMap.infoWindow = null;
+
+    ctx.overlays.closeInfoWindow(infoWindow);
+    expect(ctx.rawMap.callLog).toContain("closeInfoWindow");
+  });
+
   it("closeInfoWindow 不会关掉别的组件当前打开的气泡（状态来自公开 getInfoWindow）", () => {
     const mine = ctx.overlays.createInfoWindow(document.createElement("div"));
     const theirs = ctx.overlays.createInfoWindow(document.createElement("div"));

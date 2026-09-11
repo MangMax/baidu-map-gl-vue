@@ -91,12 +91,22 @@ updatePolicy(overlay: OverlayHandle, key: string): OverlayPropertyPolicy | undef
 ### 4. InfoWindow 用专用 API，状态只看公开入口
 
 - `openInfoWindow(map, infoWindow, position)` → `map.openInfoWindow(infoWnd, point)`；
-  **不给位置时**先尝试实例级运行时成员 `InfoWindow#openInfoWindow()`（4.0.4 未声明，属运行时能力）
-  并告警一次，都没有则抛 `BMAP_INVALID_ARGUMENT` 说明「4.0 要求给出打开位置」。
+  **不给位置时**先尝试实例级 `InfoWindow#openInfoWindow()`（4.0.4 未声明，属运行时能力）并告警一次，
+  都没有则抛 `BMAP_INVALID_ARGUMENT` 说明「4.0 要求给出打开位置」。
+  真实 AK smoke 实测：**该方法在 4.0 运行时并不存在**（`InfoWindow.prototype.openInfoWindow` 为
+  `undefined`），所以「不给位置」在真实环境里必然走到显式失败；保留结构性判断只是为了防运行时差异。
 - `closeInfoWindow(infoWindow)` → `map.closeInfoWindow()`（官方**无参数**，关的是「这张地图当前
   打开的气泡」）。Driver 只维护「这个气泡是被哪张地图打开的」这一条**归属记账**（WeakMap），
-  关闭前用公开的 `map.getInfoWindow()` 确认目标一致，**避免关掉别的组件的气泡**；
+  关闭前用公开的 `map.getInfoWindow()` 确认**不是别的**气泡，
   **不使用任何 SDK 私有字段判断打开状态**。
+- **`current` 为空 ≠ 没打开**（真实 AK smoke 发现并修掉的一个真 bug）：4.0 的打开是**异步**的，
+  `openInfoWindow()` 之后同一 tick 里 `map.getInfoWindow()` 仍是 `null`（实测 0ms 为 null、
+  ~100ms 变成该实例）。修复前「open 后立刻 close」（组件里 `:open` 快速切回 `false`）会因为
+  「当前气泡不是我们」而直接 return，气泡随后照样弹出。现在的判据是
+  **「只有别的气泡正开着才不动手」**：`current && current !== raw` 才 return，
+  `current` 为空时照常调用 `map.closeInfoWindow()`（没有气泡时它是 no-op，实测重复 close 不抛错）。
+  `smoke v4` 的 `quickCase` 断言这条路径：open → 同 tick close → 800ms 后 `isOpen() === false`
+  且 `map.getInfoWindow() === null`。
 - `redrawInfoWindow` → `redraw()`（未打开时官方语义就是直接返回）。
 - `add` / `remove` 收到 `info-window` 句柄时抛 `BMAP_INVALID_ARGUMENT`，点名「气泡由地图级 API 管理」，
   而不是把它当普通覆盖物 `addOverlay`。
@@ -125,19 +135,23 @@ updatePolicy(overlay: OverlayHandle, key: string): OverlayPropertyPolicy | undef
 弹出，是比「不生效」更难排查的行为变化；同时 `BContextMenu` 会 catch 挂载异常，因此必须靠 warn
 保证可观测（见「迁移影响」与「已知限制」）。
 
-### 7. 「本引擎没有运行时入口」的成员：结构性探测 + 显式失败
+### 7. 「类型包没有声明」的成员：结构性探测 + 缺失才失败
 
 `Marker3D` / `MapMask` 在 `@baidumap/jsapi-v4-types@4.0.4` 里都没有**类声明**，官方参考
 `references/*` 也没有对应章节（`Marker3D` 只出现在 `const/Marker3DShapeType.d.ts` 的文档注释里，
-那条注释描述了 `new BMap.Marker3D(point, 100, { shape })` 的用法，但类型包里没有类本身）。处置：
+那条注释描述了 `new BMap.Marker3D(point, 100, { shape })` 的用法，但类型包里没有类本身）。
 
-- `requireRuntimeCtor(kind, hint)` 按**结构**读命名空间：有就按结构创建（真实 runtime 可能提供），
-  没有就告警一次并抛 `BMAP_CAPABILITY_UNSUPPORTED`，错误信息点名「该成员在本引擎没有运行时入口」；
+**真实 AK smoke 实测（见「真实 AK smoke 记录」）**：这两个构造器在 4.0 运行时**都存在**，
+用本 Facet 能正常创建、挂载、摘除。因此处置是：
+
+- `requireRuntimeCtor(kind, hint)` 按**结构**读命名空间：有就按结构创建（真实 SDK 会走这条），
+  没有就告警一次并抛 `BMAP_CAPABILITY_UNSUPPORTED`，错误信息点名缺的是哪个构造器；
 - 不新增 augmentation、不臆造类型声明、也不用 `callOptional` 把缺失吞成 no-op
   （沿用 Map Facet §4 对 `tilt-gestures` 的口径）；
 - `driver/jsapi-v4/overlays.ts` 末尾的类型层断言把这两个 kind **显式排除**在「官方声明一致性」之外：
   `(typeof OVERLAY_DESCRIPTORS)[OfficialOverlayKind]["ctor"] extends keyof typeof BMap`。
-  上游一旦补齐声明，断言失败，提醒把结构性查找收回 `namespaceCtor`。
+  上游一旦补齐声明，断言失败，提醒把结构性查找收回 `namespaceCtor`；
+- 失败分支的测试依据来自 **Fake v4 故意不提供这两个构造器**（那是唯一能覆盖该分支的手段）。
 
 ### 8. Rectangle / CustomOverlay 进入公共接口；CustomOverlay 的位置是必填参数
 
@@ -184,8 +198,9 @@ updatePolicy(overlay: OverlayHandle, key: string): OverlayPropertyPolicy | undef
 | --- | --- | --- |
 | `OverlayDriver` 新增 3 个成员 | 公共接口新增：自定义实现需补齐 | 两个内置引擎已实现（v1 的 `updatePolicy` 直接转发共享描述符） |
 | `<BContextMenu>` 作为 `<BMarker>` 子组件 | v4 下菜单**不会**挂到 Marker（只能挂 Map），会告警一次并抛 `BMAP_CAPABILITY_UNSUPPORTED`，组件侧 catch 后菜单不弹出 | 需要 Marker 级菜单时用 4.0 的 `new ContextMenu({ marker })` 构造期绑定（需组件改传构造选项，属后续议题）；<br>#25 真实 smoke 后定夺 |
-| `<BMapMarker3d>` / `<BMapMask>` | v4 下创建即抛 `BMAP_CAPABILITY_UNSUPPORTED`（4.0.4 与官方参考都没有声明） | 用 Marker + 自定义 icon 替代 3D 标记；MapMask 属迁移期能力 |
-| `<BInfoWindow>` 未传 `position` 时打开 | v4 先尝试运行时 `InfoWindow#openInfoWindow()`（告警一次），拿到就打开，拿不到抛 `BMAP_INVALID_ARGUMENT` | 显式传 `position`（推荐），或等 #25 的真实能力确认 |
+| `<BMapMarker3d>` / `<BMapMask>` | 真实 4.0 运行时**提供**这两个构造器（类型包无类声明），本 Facet 按结构创建 → 可正常挂载/摘除；只有运行时缺成员的 SDK 才会抛 `BMAP_CAPABILITY_UNSUPPORTED` | 无需改动；两者未进公共声明，消费者侧类型仍按 `OverlayHandle` |
+| `<BInfoWindow>` 未传 `position` | v4 抛 `BMAP_INVALID_ARGUMENT`（实测运行时**没有** `InfoWindow#openInfoWindow`，没有可回退的路径） | 显式传 `position` |
+| `<BInfoWindow>` 快速 `open → close`（同一 tick） | 4.0 的打开是异步的；修复后同 tick 的 `closeInfoWindow` 也能真正关掉（smoke `quickCase` 已验证） | 无需改动 |
 | `Polyline` 的 `fillColor` / `fillOpacity` 在 v4 | 显式告警并忽略（Polyline 没有填充语义） | 改用 `Polygon` / `Rectangle` |
 | `InfoWindow` 的 `offset` 运行期变更 | 归入 `recreate`：`setOptions` 不生效并告警 | 用 `applyOptions`（会自动重建一次），或在构造期给定 |
 | `MarkerIconInput.printImageUrl` | v4 `IconOptions` 无对应项，构造时丢弃并告警 | 需要打印图时改用自定义 icon 的 `imageUrl` |
@@ -206,11 +221,40 @@ updatePolicy(overlay: OverlayHandle, key: string): OverlayPropertyPolicy | undef
 - 不为 `Marker3D` / `MapMask` 新增 augmentation，也不改 `driver/jsapi-v4/**` 的声明边界规则。
 - 不改 `useSdkResource`（无消费者，见 §5）。
 
+## 真实 AK smoke 记录（2026-09-11）
+
+用 docs 站点示例里的 AK（`docs/examples/layer/panoramaCoverage.vue`）在真实 JSAPI 4.0 上跑通了
+Facet：headless Chromium（WebGL，SwiftShader）+ 临时 Vite 页面直接 `import` Facet 源码，逐项断言
+（临时 harness 未入库，跑完即删；AK 只经 URL 查询参数传入，不落盘）。
+
+| 检查 | 结果 |
+| --- | --- |
+| 14 个 kind 的构造器是否存在（`BMap.<ctor>`） | **全部存在**，含类型包未声明的 `Marker3D` / `MapMask` |
+| 描述符里声明为 `mutable` 的 setter / 成对开关在真实实例上是否存在 | **14/14 kind 零缺失**（逐个 spec 比对） |
+| 12 类覆盖物 `add` → `remove` 的 `map.getOverlays()` 记账 | 每次 `+1 / -1`，**全部精确**（含 Marker3D / MapMask） |
+| 字段级更新读回 | `marker.getTitle/getRotation/getOffset`、`polyline.getPath/getStrokeColor`、`polygon.getFillColor/getFillOpacity`、`circle.getRadius/getCenter`、`rectangle.getBounds`、`label.getContent`、`ground.getOpacity`、`prism.getAltitude`、`bezier.getControlPoints` 全部与写入一致 |
+| `buildIcon`（对象形式 / 内置名称） | 产出真实 `BMap.Icon`，`imageUrl` / `imageOffset` / `imageSize` 键名与领域映射一致 |
+| `CustomOverlay.setPosition` 是否重建 DOM | DOM 工厂调用次数：create 0 → add 1 → setPosition **1**（只位移，符合设计） |
+| `InfoWindow` 专用 API | `openInfoWindow(iw, point)` → ~100ms 后 `isOpen() === true` 且 `map.getInfoWindow() === iw`；`closeInfoWindow(iw)` → `false` / `null` |
+| `InfoWindow.prototype.openInfoWindow` | **不存在**（`undefined`）→ 「不给位置」必然抛 `BMAP_INVALID_ARGUMENT`（实测确认） |
+| `closeInfoWindow` 幂等（未打开 / 重复 / 别人的气泡） | 未打开与重复调用不抛错；别人的气泡打开时不去关它 |
+| 几何值对象双向互操作 | `Size{width,height}` / `Point{lng,lat}` / `Pixel{x,y}` / `Bounds{sw,ne}` 形状与 Fake 一致；`fromRawSize(map.getSize())`、`fromRawBounds(map.getBounds())` 正确 |
+
+smoke 顺带确认的运行时事实（已回写到上文的决策里）：
+
+- `BMap.Icons`（26 个语义图标 + `createIcon`）、`Symbol`、`GroundPoint`、`PointCollection`
+  在 4.0 运行时**都存在**——内置图标表可以后续从 canvas 雪碧图切到官方 `Icons`（本次不改，属后续议题）。
+- `BMap.VERSION` 在真实 v4 SDK 上是 `"gl"`（不是 `"4.0"`）：**不要**用它做 v4 版本判定。
+- `map.getOverlays()` 会把**打开过的 InfoWindow** 计入，且 `closeInfoWindow()` 之后它仍留在列表里：
+  真实 SDK 上不能用 `getOverlays().length` 判断「子资源是否摘干净」（那是 `Fake` 的
+  `destroyedWithOverlays` 诊断字段要表达的事，两者不要混为一谈）。
+
 ## 已知限制（显式接受）
 
-- **未做真实 AK smoke**：`Rectangle` / `CustomOverlay` / `GroundOverlay` / `Prism` / `BezierCurve`
-  的真实渲染、`Icons`/`Symbol` 内置图标、`ContextMenu` 的 DOM 外观、`InfoWindow#openInfoWindow`
-  这一运行时成员是否真的存在，都只在官方文档/类型层面核对过；真实浏览器验证属 M3A.3（#25）。
+- **真实 AK smoke 覆盖面**：上面的 smoke 用 headless Chromium（SwiftShader）在单个 AK 上跑通，
+  覆盖了构造/更新/加摘/InfoWindow/几何互操作；**没有**覆盖真实交互（拖拽、编辑顶点、右键菜单弹出位置）、
+  多分辨率/多浏览器、以及 `Icons` / `Symbol` / `PlaceDetail` 这些不在本 issue 范围的成员。
+  这些留在 M3A.3（#25）的浏览器验证里。
 - **图标雪碧图重复**：`jsapi-v4/overlays.ts` 复制了 `webgl-v1/overlays.ts` 的内置图标表
   （同名同图同偏移），因为它们绑定了同一个 canvas 雪碧图资源；跨引擎抽取会让 #26 待删除的实现
   阻塞 v4 底座，故刻意保留两份，`#26` 删除 v1 时自然收敛。
@@ -247,6 +291,9 @@ updatePolicy(overlay: OverlayHandle, key: string): OverlayPropertyPolicy | undef
   `setPath` 的 setter 名改为从描述符派生、`closeInfoWindow` 不再删除归属记账、字符串路径
   （`isBoundary`）在 `setPath` 与 `setOptions({path})` 上口径统一、`useOverlayResource` 不再静默
   吞错、Fake 去掉未被调用的 getter 家族并让 `Circle` / `Rectangle` 不再继承 `path`。
+- 真实 AK smoke 又发现并修掉一个**真 bug**：`openInfoWindow` 之后同一 tick 的 `closeInfoWindow`
+  会因为 `map.getInfoWindow()` 仍为空而变成 no-op（4.0 打开是异步的）→ 判据改为「只有别的气泡
+  正开着才不动手」；回归用例进 `src/driver/jsapi-v4/overlays.test.ts`，真实环境由 smoke `quickCase` 覆盖。
 - 官方 4.0 API 参考：`BMap.Overlay` / `Marker` / `Label` / `InfoWindow` / `Polyline` / `Polygon` /
   `Rectangle` / `Circle` / `GroundOverlay` / `Prism` / `BezierCurve` / `CustomOverlay` / `ContextMenu` /
   `MenuItem` / `Icon` 与 `Map#addOverlay/openInfoWindow/closeInfoWindow/getInfoWindow/addContextMenu`
