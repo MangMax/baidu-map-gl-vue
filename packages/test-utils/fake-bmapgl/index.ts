@@ -247,6 +247,41 @@ export class FakeMap extends FakeEventTarget {
     }
   }
 
+  /**
+   * 投影转换（M3A2-MAP / #20）。
+   *
+   * 公共 `MapDriver` 在 #20 新增 `pointToPixel` / `pixelToPoint`，共享契约
+   * （`packages/test-utils/driver-contract.ts`）会在两个 Fake 上跑同一套断言，因此这里
+   * 与 `fake-bmap-v4` 使用**同一个**简化公式：以当前中心点为原点、按 `2 ** zoom` 像素/度
+   * 线性映射（非真实墨卡托投影，只要求往返精确、中心点落在容器中心）。
+   * 真实投影行为由 #25 的浏览器 smoke 验证。
+   */
+  pointToPixel(point: FakePoint | null): { x: number; y: number } {
+    this.callLog.push('pointToPixel')
+    const size = this.getSize()
+    const center = (this.center as FakePoint | null) ?? { lng: 0, lat: 0 }
+    const scale = 2 ** (this.zoom ?? 12)
+    const lng = point?.lng ?? 0
+    const lat = point?.lat ?? 0
+    return {
+      x: size.width / 2 + (lng - center.lng) * scale,
+      y: size.height / 2 - (lat - center.lat) * scale,
+    }
+  }
+
+  pixelToPoint(pixel: { x: number; y: number } | null): { lng: number; lat: number } {
+    this.callLog.push('pixelToPoint')
+    const size = this.getSize()
+    const center = (this.center as FakePoint | null) ?? { lng: 0, lat: 0 }
+    const scale = 2 ** (this.zoom ?? 12)
+    const x = pixel?.x ?? 0
+    const y = pixel?.y ?? 0
+    return {
+      lng: center.lng + (x - size.width / 2) / scale,
+      lat: center.lat - (y - size.height / 2) / scale,
+    }
+  }
+
   centerAndZoom(point: FakePoint | string, zoom?: number) {
     this.callLog.push('centerAndZoom')
     this.center = typeof point === 'string' ? { lng: 0, lat: 0 } : point
@@ -340,6 +375,33 @@ export class FakeMap extends FakeEventTarget {
   }
   disablePinchToZoom() {
     this.callLog.push('disablePinchToZoom')
+  }
+  // M3A2-MAP（#20）：webgl-v1 Driver 的交互表声明了 rotate / rotate-gestures / tilt /
+  // tilt-gestures 四对方法，但 Fake 里缺这几对，导致共享契约对它们只能「空转通过」。
+  // 这里补齐，让共享契约在 webgl-v1 上真正抵达 SDK（方法名以 webgl-v1 Driver 的声明为准）。
+  enableRotate() {
+    this.callLog.push('enableRotate')
+  }
+  disableRotate() {
+    this.callLog.push('disableRotate')
+  }
+  enableRotateGestures() {
+    this.callLog.push('enableRotateGestures')
+  }
+  disableRotateGestures() {
+    this.callLog.push('disableRotateGestures')
+  }
+  enableTilt() {
+    this.callLog.push('enableTilt')
+  }
+  disableTilt() {
+    this.callLog.push('disableTilt')
+  }
+  enableTiltGestures() {
+    this.callLog.push('enableTiltGestures')
+  }
+  disableTiltGestures() {
+    this.callLog.push('disableTiltGestures')
   }
   enableAutoResize() {
     this.callLog.push('enableAutoResize')

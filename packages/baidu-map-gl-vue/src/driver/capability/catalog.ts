@@ -224,7 +224,10 @@ export const CAPABILITY_CATALOG: Record<Capability, CapabilityDescriptor> = {
     family: "map",
     description: "经纬度与像素互转（pointToPixel / pixelToPoint）",
     rawMembers: ["pointToPixel", "pixelToPoint"],
-    engines: V4_ONLY,
+    // M3A2-MAP（#20）：该能力提升为公共 MapDriver 成员后 webgl-v1 也必须实现，
+    // 而 BMapGL 同名成员本就存在（jsapi_webgl_1_0 参考：pointToPixel / pixelToPoint），
+    // 因此从 V4_ONLY 放宽为 WEBGL_V4，避免 catalog 与实际支持漂移。
+    engines: WEBGL_V4,
     status: "native",
     runtimeOnly: true,
   },

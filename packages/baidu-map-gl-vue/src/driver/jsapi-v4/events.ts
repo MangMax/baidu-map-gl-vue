@@ -52,6 +52,18 @@ export interface CreateJsapiV4EventDriverInput {
   geometry: GeometryDriver;
 }
 
+/**
+ * v4 EventDriver：公共 `EventDriver` 契约 + **只在 Driver 内部使用**的 target 释放入口。
+ *
+ * `release` 是 Map Facet 的 `destroy()` 需要的（M3A2-MAP / #20）：销毁地图时必须先摘掉
+ * Driver 自己在该 target 上的订阅分组，否则 `groups` 会以强引用长期持有已销毁的 raw 对象
+ * （`groups` 是 `Map`，不是 `WeakMap`）。它不进公共 `EventDriver` 类型，消费者看不到。
+ */
+export interface JsapiV4EventDriver extends EventDriver {
+  /** 释放该 target 上由 Driver 建立的全部订阅（解绑 raw listener 并删除分组）。 */
+  release(target: SdkHandle<string>): void;
+}
+
 function noop(): void {}
 
 /** 幂等 disposer：重复调用只执行一次释放逻辑。 */
@@ -64,7 +76,7 @@ function createDisposer(release: () => void): () => void {
   };
 }
 
-export function createJsapiV4EventDriver(input: CreateJsapiV4EventDriverInput): EventDriver {
+export function createJsapiV4EventDriver(input: CreateJsapiV4EventDriverInput): JsapiV4EventDriver {
   const { registry, geometry } = input;
 
   /** target → type → 订阅组；集合为空时删除条目，不长期持有 raw 对象。 */
@@ -143,6 +155,24 @@ export function createJsapiV4EventDriver(input: CreateJsapiV4EventDriverInput): 
         else group.claims.delete(typed);
         if (group.claims.size === 0) removeGroup(rawTarget, type, group, remove);
       });
+    },
+
+    release(target) {
+      // 所有权校验：跨 Client 句柄在这里失败，不会被当成「没有订阅」而静默通过
+      const rawTarget = registry.resolve<object>(target);
+      const byType = groups.get(rawTarget);
+      if (!byType) return;
+      const removeEventListener = readNamespaceMember(rawTarget, "removeEventListener");
+      if (typeof removeEventListener !== "function") {
+        // 目标没有解绑能力（同 on() 的告警分支）：只丢弃分组，不抛错
+        groups.delete(rawTarget);
+        return;
+      }
+      const remove = removeEventListener as RawMethod;
+      // 逐条走 removeGroup：复用分组身份校验与「集合空则删除 target 条目」的收尾逻辑
+      for (const [type, group] of [...byType]) {
+        removeGroup(rawTarget, type, group, remove);
+      }
     },
   };
 }

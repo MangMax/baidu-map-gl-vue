@@ -44,7 +44,7 @@
 | map | `map.animate` | native | ✓ | — | — | ✓ | startViewAnimation, cancelViewAnimation | — | 视角关键帧动画（startViewAnimation / cancelViewAnimation） |
 | map | `map.screenshot` | native | ✓ | ✓ | — | ✓ | getScreenshot | — | 地图截图（getScreenshot） |
 | map | `map.check-resize` | native | ✓ | ✓ | ✓ | ✓ | checkResize | — | 容器尺寸变化后重算视图（checkResize） |
-| map | `map.pixel-conversion` | native | ✓ | — | — | ✓ | pointToPixel, pixelToPoint | — | 经纬度与像素互转（pointToPixel / pixelToPoint） |
+| map | `map.pixel-conversion` | native | ✓ | ✓ | — | ✓ | pointToPixel, pixelToPoint | — | 经纬度与像素互转（pointToPixel / pixelToPoint） |
 | map | `map.style` | native | ✓ | ✓ | — | ✓ | setMapStyle | — | 个性化地图样式（setMapStyle） |
 | map | `map.destroy` | native | ✓ | — | — | ✓ | destroy | — | 销毁地图并释放资源（v4 destroy） |
 | overlay | `overlay.marker` | native | — | ✓ | ✓ | ✓ | Marker | — | 点标记（Marker） |

@@ -192,6 +192,7 @@
       "status": "native",
       "runtimeOnly": true,
       "engines": [
+        "webgl-v1",
         "jsapi-v4"
       ],
       "rawMembers": [

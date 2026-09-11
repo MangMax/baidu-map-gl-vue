@@ -161,6 +161,14 @@ export class MapRuntime {
         try {
           client.driver.map.initializeView(map, this.options.initialView);
         } catch (e) {
+          // 视野初始化失败时 map 尚未写入 this.map.value，外层 catch 的「部分创建资源」
+          // 分支拿不到它（见下方注释），因此在抛错前就地销毁，否则会泄漏一个已创建的
+          // WebGL Map（#20 的能力守卫在 throw 策略下就会走到这里）。
+          try {
+            client.driver.map.destroy(map);
+          } catch {
+            /* ignore */
+          }
           throw e instanceof BMapError
             ? e
             : new BMapError("BMAP_RESOURCE_CREATE_FAILED", `initializeView failed: ${(e as Error)?.message ?? e}`, { cause: e });

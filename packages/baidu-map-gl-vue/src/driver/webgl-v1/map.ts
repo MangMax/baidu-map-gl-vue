@@ -118,6 +118,22 @@ export function createWebGlV1MapDriver(input: WebGlV1MapDriverInput): MapDriver 
       return geometry.fromRawSize(sdkCall("map.getSize", () => raw.getSize!()));
     },
 
+    // M3A2-MAP（#20）：公共 MapDriver 新增投影转换成员，webgl-v1 同步实现。
+    // BMapGL 的 `pointToPixel` / `pixelToPoint` 与 v4 同名同形，因此这里不需要引擎映射。
+    pointToPixel(map, point) {
+      const raw = map.raw as { pointToPixel?: (point: unknown) => unknown };
+      return geometry.fromRawPixel(
+        sdkCall("map.pointToPixel", () => raw.pointToPixel!(geometry.toRawPoint(point))),
+      );
+    },
+
+    pixelToPoint(map, pixel) {
+      const raw = map.raw as { pixelToPoint?: (pixel: unknown) => unknown };
+      return geometry.fromRawPoint(
+        sdkCall("map.pixelToPoint", () => raw.pixelToPoint!(geometry.toRawPixel(pixel))),
+      );
+    },
+
     panTo(map, point) {
       callOptional(map.raw, "panTo", geometry.toRawPoint(point));
     },

@@ -120,6 +120,22 @@ export function callOptional(instance: unknown, method: string, ...args: unknown
   return undefined;
 }
 
+/**
+ * 必需方法调用：成员缺失抛 `BMAP_SDK_CALL_FAILED`，调用异常由 `sdkCall` 归一。
+ *
+ * 与 `callOptional` 的分工是「失败是否可接受」：读视图状态（`getCenter` / `getBounds`）
+ * 这类无法用缺省值代替的调用必须显式失败，否则会把「SDK 缺成员」伪装成「读到了空值」。
+ */
+export function callRequired(instance: unknown, method: string, ...args: unknown[]): unknown {
+  const fn = readNamespaceMember(instance, method);
+  if (typeof fn !== "function") {
+    throw new BMapError("BMAP_SDK_CALL_FAILED", `SDK 实例缺少方法 ${method}()`, {
+      engine: "jsapi-v4",
+    });
+  }
+  return sdkCall(method, () => (fn as (...a: unknown[]) => unknown).apply(instance, args));
+}
+
 /* -------------------------------------------------------------------------- */
 /* 官方类型一致性（类型层断言，零运行时开销）                                    */
 /* -------------------------------------------------------------------------- */
