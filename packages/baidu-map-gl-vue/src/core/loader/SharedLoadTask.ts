@@ -338,8 +338,7 @@ export class SharedLoadTask {
       try {
         result = this.options.exportGetter();
       } catch (cause) {
-        // exportGetter 是调用方的「就绪校验点」：它抛出的 BMapError 已带明确原因
-        // （缺成员 / 版本不符等），直接透传，避免包一层后丢失细节。
+        // exportGetter 抛出的 BMapError 已带明确原因，直接透传，避免包一层后丢失细节。
         this.fail(
           cause instanceof BMapError
             ? cause
@@ -348,8 +347,9 @@ export class SharedLoadTask {
         return;
       }
     }
-    // 成功前校验是**必经**的：无论结果来自回调实参还是 exportGetter 都会执行，
-    // 因此「脚本加载成功但 SDK 不可用」不会先写入成功缓存（否则重试会命中缓存）。
+    // 成功前校验是**必经**的（与 exportGetter 的兜底取值定位不同）：无论结果来自回调
+    // 实参还是 exportGetter 都会执行，因此「脚本加载成功但 SDK 不可用」不会先写入成功缓存
+    // （否则重试会命中缓存）。需要「就绪」把关的调用方应把校验放在 `assertReady`。
     if (this.options.assertReady) {
       try {
         this.options.assertReady(result);

@@ -37,10 +37,13 @@ export function readJsapiV4Global(): unknown {
  * 「脚本加载成功但全局命名空间缺失 / 不完整」是 v4 最常见的失败形态，统一在这里
  * 收敛，Provider 不必各写一份。
  *
- * 同时请把它当作 Loader 的 `exportGetter` 使用（`exportGetter: () => requireJsapiV4Global(id)`）：
- * 校验必须发生在底层**成功提交之前**。若放在 Provider `await` 之后，底层已经把这次加载
- * 记为成功并缓存，Provider 侧再失败就只删掉了 registry 条目——重试会命中底层成功缓存、
- * 不再插入 script，失败的 script 也不会被回收。
+ * 请把它交给 Loader 的 **`assertReady`**（`assertReady: () => requireJsapiV4Global(id)`），
+ * 而**不是** `exportGetter`：`assertReady` 是成功提交前的必经校验，`exportGetter` 只是
+ * 「回调没带实参时的取值兜底」，回调带实参时会整段跳过，拿它当校验点会留下绕过路径。
+ *
+ * 为什么必须在成功提交之前：若放在 Provider `await` 之后，底层已经把这次加载记为成功并
+ * 缓存，Provider 侧再失败就只删掉了 registry 条目——重试会命中底层成功缓存、不再插入
+ * script，失败的 script 也不会被回收。
  */
 export function requireJsapiV4Global(providerId: string): Record<string, unknown> {
   const value = readJsapiV4Global();
