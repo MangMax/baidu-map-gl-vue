@@ -152,11 +152,15 @@ options.onSearchComplete?.(results);            // 原样转发业务自己的�
   失去独占（`lostExclusivity`），不因为随后又变回只读而恢复资格（可编辑期间触发的原生请求可能
   仍在等回包），在飞的程序化请求同时被**显式失败**。调用方需重建实例。
   **只看当前状态还不够**（六轮复审 P2）：`解除只读 → 用户输入发出原生检索 → 恢复只读` 之后两道
-  检查看到的都是只读，那段窗口完全没有记录。因此 Driver 在创建实例时对绑定输入框挂一个
-  `MutationObserver`（`attributeFilter: ["readonly","disabled","type"]`），**按属性变化记录**
-  判定（回调里逐条看 `attributeName`，而不是重读「当前」值——否则解除→恢复会看起来没变过；
-  也刻意不依赖 `attributeOldValue`，本仓库测试环境 happy-dom 未实现它），一旦相关属性变过就按
-  失去独占处理。观察器有明确**释放路径**：实例进入终态（`loseExclusivity`）时立即 `disconnect()`。
+  检查看到的都是只读，那段窗口完全没有记录。六轮先用 `MutationObserver` 观察属性变化，**七轮复审
+  P2-2 证明这个口径过宽**：真实 Chromium 里 `input.readOnly = true` 重复赋同值也会产生属性记录，
+  于是「始终只读、只随 loading 切 `disabled`」这类完全安全的用法会被永久禁用。现行做法是监听
+  **输入活动**（`input` 事件）——它才是官方文档里原生检索的触发源（「输入框中的字符输入会触发
+  检索」），既不误伤属性写入，又覆盖那个没有检查点的窗口。
+  **监听器必须有释放路径**（七轮复审 P2-1）：输入框通常比实例活得久，SDK 的 `dispose()` 也不知道
+  Driver 挂过监听器，所以 `JsapiV4ServiceDriver.dispose(handle)` 提供显式释放入口（解绑监听器 +
+  把在飞调用显式失败 + 调用 SDK 自身的 `dispose()`，幂等），`loseExclusivity` 复用同一个解绑函数。
+  只用联想 UI（不调用 `suggest()`）的实例也**应该**在结束使用时调用它。
   这把「通道是否独占」变成调用方**可判定、可复核**的前置条件，而不是 Driver 事后猜；
   `AutocompleteOptions.input` 的 JSDoc 与 `suggest()` 的类型文档都写明了这条。
 
@@ -616,6 +620,33 @@ Fake 为此加了 `flushOne(index)`（按索引触发单个回包）与 `include
 
 验证：`pnpm test:unit` **91 files / 980 tests**；typecheck / build / 边界扫描（含 `--src` 全树）/
 `check:public-dts` / 能力矩阵 / manifest 全绿；真实 AK smoke **28/28**。
+
+## 外部评审第七轮（PR #63，基线 `d2c6cb9`）
+
+上轮的翻转窗口已通过；本轮两项都属于新增观察器本身：
+
+| 发现 | 处置 |
+| --- | --- |
+| P2-1 观察器**只在失去独占时**释放——输入框一直保持只读、实例正常结束使用的路径不会清理；SDK 自己的 `dispose()` 也不知道 Driver 挂过观察器。结果：反复创建/销毁会持续累积（复审在真实浏览器里实测 100 次 → 100 个注册） | ① **不再用观察器**（见下），改为带显式解绑的输入活动监听；② 新增 `JsapiV4ServiceDriver.dispose(handle)`：解绑监听器 + 把在飞调用显式失败 + 调用 SDK 自身的 `dispose()`（实例无该成员时跳过），**幂等**，释放后该句柄不再可用于程序化检索；③ `loseExclusivity` 复用同一个解绑函数，但它不再是唯一入口 |
+| P2-2 「属性被写过」不等于「曾经可输入」：真实 Chromium 里 `input.readOnly = true` **重复赋同值**也产生属性记录，于是「始终只读、只随 loading 切 `disabled` / `type="hidden"` 时切 `disabled`」这类完全安全的用法被永久禁用 | **换判定信号**：不再观察属性，改为监听输入框的 **`input` 事件**——它是官方文档里原生检索的触发源（「输入框中的字符输入会触发检索」）。属性写入完全不再影响判定（三条用例固定：同值写入 / 只切 `disabled` / `type=hidden` 只切 `disabled` 都不失效），而 `解除只读 → 用户输入 → 恢复只读` 那个窗口仍被覆盖（用户输入必然会触发 `input`） |
+
+**为什么换信号而不是去解析属性记录**：要区分「同值写入」（必须忽略）与「解除→恢复」（必须判失效），
+只能比对有序记录 + `attributeOldValue`；而本仓库测试环境 happy-dom **不实现 `attributeOldValue`**
+（实测确认），这条逻辑在门禁里无法被验证。改监听输入活动后，判定与属性无关，问题从结构上消失。
+
+**没能在本仓库复现 P2-2**：happy-dom 不为同值写入产生记录，所以那三条「不得失效」的用例在本仓库
+是**语义锚**（防回归），不是在 happy-dom 里红过的证据；真实证据是复审给出的 Chromium 复现。
+
+真实 AK 实测（本轮新增，最小 harness，3/3）：
+
+| 检查 | 结果 |
+| --- | --- |
+| 对照组：`suggest` 正常路径 | `success`（`北京市`） |
+| `dispose()` 在真实 4.0 上 | **不抛错**（`disposeThrew: null`）；释放后 `suggest` → `failed: BMAP_SERVICE_FAILED` |
+| `dispose()` 幂等 | 连续两次调用不抛错 |
+
+验证：`pnpm test:unit` **91 files / 985 tests**；typecheck / build / 边界扫描（含 `--src` 全树）/
+`check:public-dts` / 能力矩阵 / manifest 全绿。
 
 ## 参考
 

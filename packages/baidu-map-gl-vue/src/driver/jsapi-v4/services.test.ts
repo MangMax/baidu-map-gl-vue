@@ -529,9 +529,9 @@ describe("v4 Service Facet：Autocomplete 的回包归属（PR #63 复审 P2-1�
 
   // 六轮复审 P2：只看「检查时」的当前状态发现不了检查间隔内的翻转——
   // 解除只读 → 用户输入发出原生检索 → 又恢复只读，两道检查看到的都是只读。
-  const flushObservers = () => new Promise((resolve) => setTimeout(resolve, 0));
-
-  it("未观察到的翻转窗口（解除只读 → 原生检索 → 恢复只读）之后 suggest() 必须拒绝", async () => {
+  // 七轮复审后判定改为**监听输入活动**（`input` 事件，官方文档里原生检索的触发源），
+  // 因为「属性被写过」不等于「曾经可输入」（同值写入也会产生属性记录）。
+  it("未观察到的翻转窗口（解除只读 → 用户输入 → 恢复只读）之后 suggest() 必须拒绝", async () => {
     const el = document.createElement("input");
     el.readOnly = true;
     document.body.appendChild(el);
@@ -540,10 +540,10 @@ describe("v4 Service Facet：Autocomplete 的回包归属（PR #63 复审 P2-1�
     autocomplete.queue.auto = false;
 
     el.readOnly = false; // 用户可输入——没有任何 Driver 检查在这个时刻运行
+    el.dispatchEvent(new Event("input")); // 用户输入活动（原生检索的触发源）
     autocomplete.pois = [{ business: "TYPED", province: "北京市" }];
     (autocomplete as unknown as { search(keyword: string): void }).search("K"); // 原生检索已发出
     el.readOnly = true; // 恢复只读
-    await flushObservers(); // 属性变化记录异步到达
 
     const call = services.suggest(handle, "K");
     autocomplete.queue.flush(); // 原生回包（TYPED）到达
@@ -564,15 +564,106 @@ describe("v4 Service Facet：Autocomplete 的回包归属（PR #63 复审 P2-1�
     const call = services.suggest(handle, "K");
 
     el.readOnly = false;
+    el.dispatchEvent(new Event("input"));
     autocomplete.pois = [{ business: "TYPED", province: "上海市" }];
     (autocomplete as unknown as { search(keyword: string): void }).search("K");
     el.readOnly = true;
-    await flushObservers();
 
     autocomplete.queue.flush(); // 原生回包到达
     const result = await call.result;
     expect(result.status).toBe("failed");
     expect(result.data).toBeNull();
+  });
+
+  // 七轮复审 P2-2：`input.readOnly = true` 这类**同值写入**在真实 Chromium 里同样产生属性记录，
+  // 把「属性被写过」当成「曾经可输入」会永久禁用完全安全的实例。
+  it("反复写入同样的只读属性（始终没有可输入窗口）不得使实例失效", async () => {
+    const el = document.createElement("input");
+    el.readOnly = true;
+    document.body.appendChild(el);
+    const handle = services.createAutocomplete({ input: el });
+    const autocomplete = fake.createdAutocompletes[0];
+    autocomplete.queue.auto = false;
+
+    autocomplete.pois = [{ business: "NEW", province: "北京市" }];
+    const call = services.suggest(handle, "K");
+    el.readOnly = true; // 同值写入
+    el.readOnly = true;
+    autocomplete.queue.flush();
+
+    const result = await call.result;
+    expect(result.status).toBe("success");
+    expect(result.data?.[0]?.title).toBe("NEW");
+  });
+
+  it("始终只读、只随 loading 切换 disabled 时不得使实例失效", async () => {
+    const el = document.createElement("input");
+    el.readOnly = true;
+    el.disabled = true;
+    document.body.appendChild(el);
+    const handle = services.createAutocomplete({ input: el });
+    const autocomplete = fake.createdAutocompletes[0];
+    autocomplete.queue.auto = false;
+
+    el.disabled = false; // loading 结束
+    el.disabled = true; // 又进入 loading
+    autocomplete.pois = [{ business: "NEW", province: "北京市" }];
+    const call = services.suggest(handle, "K");
+    autocomplete.queue.flush();
+
+    expect((await call.result).status).toBe("success");
+  });
+
+  it("始终 type=hidden、只切换 disabled 时不得使实例失效", async () => {
+    const el = document.createElement("input");
+    el.type = "hidden";
+    document.body.appendChild(el);
+    const handle = services.createAutocomplete({ input: el });
+    const autocomplete = fake.createdAutocompletes[0];
+    autocomplete.queue.auto = false;
+
+    el.disabled = true;
+    el.disabled = false;
+    autocomplete.pois = [{ business: "NEW", province: "北京市" }];
+    const call = services.suggest(handle, "K");
+    autocomplete.queue.flush();
+
+    expect((await call.result).status).toBe("success");
+  });
+
+  // 七轮复审 P2-1：监听器必须随「正常销毁」释放，不能只在失去独占时释放。
+  it("dispose() 解绑输入活动监听（输入框留存、反复创建/销毁不累积）", async () => {
+    const el = document.createElement("input");
+    el.readOnly = true;
+    document.body.appendChild(el);
+    const removeSpy = vi.spyOn(el, "removeEventListener");
+
+    const handles = [0, 1, 2].map(() => services.createAutocomplete({ input: el }));
+    for (const handle of handles) services.dispose(handle);
+
+    expect(removeSpy).toHaveBeenCalledTimes(3);
+    expect(removeSpy.mock.calls.every(([type]) => type === "input")).toBe(true);
+  });
+
+  it("dispose() 幂等：释放后程序化检索被拒绝，在飞调用显式失败，SDK dispose 被调用", async () => {
+    const el = document.createElement("input");
+    el.readOnly = true;
+    document.body.appendChild(el);
+    const handle = services.createAutocomplete({ input: el });
+    const autocomplete = fake.createdAutocompletes[0];
+    autocomplete.queue.auto = false;
+
+    autocomplete.pois = [{ business: "NEW", province: "北京市" }];
+    const call = services.suggest(handle, "K");
+
+    services.dispose(handle);
+    expect((await call.result).status).toBe("failed");
+    expect(() => services.dispose(handle)).not.toThrow(); // 幂等
+
+    const after = await services.suggest(handle, "K2").result;
+    expect(after.status).toBe("failed");
+    expect(after.error?.message).toContain("dispose");
+    expect(autocomplete.callLog).toContain("dispose");
   });
 
   it("收到不属于任何程序化请求的回包（用户在输入框里打字）不会污染后续调用（也不消费槽位）", async () => {

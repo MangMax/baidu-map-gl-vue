@@ -251,5 +251,15 @@ export interface ServiceInvocationDriver {
   ): ServiceCall<PlaceSuggestion[]>;
 }
 
-/** JSAPI 4.0 的 Service Facet：创建面 + 归一化调用面。 */
-export interface JsapiV4ServiceDriver extends ServiceDriver, ServiceInvocationDriver {}
+/** JSAPI 4.0 的 Service Facet：创建面 + 归一化调用面 + Driver 侧释放入口。 */
+export interface JsapiV4ServiceDriver extends ServiceDriver, ServiceInvocationDriver {
+  /**
+   * 释放服务实例（幂等）：解绑 Driver 侧资源（输入活动监听、把在飞调用显式失败）并调用 SDK 自身的
+   * `dispose()`（实例没有该成员时跳过）。
+   *
+   * **正常结束使用时也必须调用**：输入框通常比实例活得久，Driver 挂在它上面的监听器不会因为 SDK
+   * 实例被回收而消失——不释放就会让监听器长期持有旧实例与闭包（反复创建/销毁会持续累积）。
+   * 释放后该句柄不再可用于程序化检索。
+   */
+  dispose(handle: ServiceHandle<string>): void;
+}

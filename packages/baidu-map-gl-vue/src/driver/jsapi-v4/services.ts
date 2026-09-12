@@ -332,19 +332,19 @@ export function createJsapiV4ServiceDriver(
    */
   const boundInput = new WeakMap<object, unknown>();
   const lostExclusivity = new WeakSet<object>();
+  /** 已被 `dispose()` 释放的实例：此后一律拒绝（释放时会把在飞调用显式失败）。 */
+  const disposed = new WeakSet<object>();
   /**
-   * 输入框「独占相关属性」的观察器。
+   * 绑定输入框上的「用户输入活动」监听（`input` 事件）——**释放路径见 `releaseInputWatcher`**。
    *
-   * **只看当前状态不够**（六轮复审 P2）：`解除只读 → 用户输入发出原生检索 → 恢复只读` 之后，
-   * 两道检查看到的都是「只读」，但那段窗口里已经产生了原生请求。属性变化记录是唯一能在事后发现
-   * 它的信号——观察器**异步**触发，所以只要在回调里发现相关属性变过就按失去独占处理。
+   * 六轮曾用 `MutationObserver` 观察属性变化，但**「属性被写过」不等于「曾经可输入」**（七轮复审
+   * P2-2）：真实 Chromium 里 `input.readOnly = true` 重复赋同值同样会产生一条记录，于是「始终只读、
+   * 只是随 loading 切 `disabled`」这类完全安全的用法会被永久禁用。
    *
-   * 刻意**不看** `attributeOldValue`（也不在回调里重读当前值）：本仓库的测试环境
-   * （happy-dom）未实现 `attributeOldValue`，而「相关属性变过」这一条本身就足以判定——
-   * 调用方若要使用 `suggest()`，就不该在使用期间改动绑定输入框的这些属性。
+   * 改为监听**输入活动**：它才是官方文档里原生检索的触发源（「输入框中的字符输入会触发检索」），
+   * 既不误伤属性写入，又覆盖了 `解除只读 → 用户输入 → 恢复只读` 那个没有观察点的窗口。
    */
-  const observers = new WeakMap<object, MutationObserver>();
-  const EXCLUSIVE_ATTRIBUTES = new Set(["readonly", "disabled", "type"]);
+  const inputWatchers = new WeakMap<object, { target: EventTarget; listener: EventListener }>();
 
   /** 输入框是否可被用户输入（决定回调通道是否独占）。缺输入框时按「不独占」处理。 */
   const isTypableInput = (input: unknown): boolean => {
@@ -357,16 +357,31 @@ export function createJsapiV4ServiceDriver(
   const EXCLUSIVITY_LOST_HINT = "请重建 Autocomplete 实例（用不可输入的输入框）后再做程序化检索";
 
   /**
+   * 解绑输入框上的输入活动监听。**这是监听器的唯一释放路径**，必须在实例进入终态时调用
+   * （失去独占 / 被 `dispose()`）：输入框通常比实例活得久，不解绑就会让监听器长期持有旧的 raw
+   * 实例与闭包（七轮复审 P2-1）。
+   */
+  const releaseInputWatcher = (raw: Record<string, unknown>): void => {
+    const watcher = inputWatchers.get(raw);
+    if (!watcher) return;
+    inputWatchers.delete(raw);
+    try {
+      watcher.target.removeEventListener("input", watcher.listener);
+    } catch {
+      /* 解绑失败不阻断：输入框可能已被替换或宿主未完整实现 EventTarget */
+    }
+  };
+
+  /**
    * 标记实例失去独占，并把在飞的程序化请求**显式失败**：那些回包可能来自用户输入，不能再被当成
    * 程序化检索的结果（宁可失败也不猜）。永久生效，见 `lostExclusivity`。
    */
   const loseExclusivity = (raw: Record<string, unknown>, reason: string): void => {
     if (lostExclusivity.has(raw)) return;
     lostExclusivity.add(raw);
-    // 释放路径：观察器只在「实例可能被用于程序化检索」期间需要，终止态一定断开，
-    // 不留下持有输入框与闭包的活观察器。
-    observers.get(raw)?.disconnect();
-    observers.delete(raw);
+    // 释放路径：监听器只在「实例可能被用于程序化检索」期间需要，终止态一定解绑，
+    // 不留下持有输入框与闭包的活监听器。
+    releaseInputWatcher(raw);
     const queue = pendingSuggest.get(raw) ?? [];
     pendingSuggest.delete(raw);
     for (const entry of queue) {
@@ -375,42 +390,37 @@ export function createJsapiV4ServiceDriver(
   };
 
   /**
-   * 开始观察输入框的独占相关属性（`readonly` / `disabled` / `type`）。
+   * 开始监听输入框的**输入活动**（`input` 事件）。
    *
-   * 失败时静默退化为「每次检查当前状态」（四轮行为）——观察能力缺失不应让实例不可用。
+   * 绑定失败时静默退化为「每次检查当前状态」——监听能力缺失不应让实例不可用。
    */
-  const watchExclusiveInput = (raw: Record<string, unknown>, input: unknown): void => {
-    if (typeof MutationObserver !== "function") return;
+  const watchInputActivity = (raw: Record<string, unknown>, input: unknown): void => {
     if (typeof input !== "object" || input === null) return;
+    const target = input as Partial<EventTarget>;
+    if (typeof target.addEventListener !== "function") return;
+    const listener: EventListener = () => {
+      loseExclusivity(
+        raw,
+        "该 Autocomplete 实例绑定的输入框在实例使用期间收到过用户输入：用户输入会触发原生检索，" +
+          "其回包与程序化检索无法区分（可能把用户那次的结果当成程序化调用的结果）；" +
+          EXCLUSIVITY_LOST_HINT,
+      );
+    };
     try {
-      const observer = new MutationObserver((records) => {
-        // 逐条看 attributeName，而不是在回调里重读「当前」值：解除→恢复同一批记录里，
-        // 当前值看起来仍是只读，但属性确实变过（这正是六轮复审要覆盖的窗口）。
-        const changed = records.some(
-          (record) => record.attributeName !== null && EXCLUSIVE_ATTRIBUTES.has(record.attributeName),
-        );
-        if (!changed) return;
-        loseExclusivity(
-          raw,
-          "该 Autocomplete 实例绑定的输入框在实例使用期间改动过 readonly / disabled / type：" +
-            "期间可能已产生用户输入触发的原生检索，其回包与程序化检索无法区分；" +
-            EXCLUSIVITY_LOST_HINT,
-        );
-      });
-      observer.observe(input as Node, {
-        attributes: true,
-        attributeFilter: [...EXCLUSIVE_ATTRIBUTES],
-      });
-      observers.set(raw, observer);
+      target.addEventListener("input", listener);
+      inputWatchers.set(raw, { target: target as EventTarget, listener });
     } catch {
-      /* 观察器不可用（非 DOM 环境等）：退化为每次检查当前状态 */
+      /* 非 DOM 环境等：退化为每次检查当前状态 */
     }
   };
 
   /** 每次调用 / 每次回包都要跑的独占校验；返回失败原因（null 表示仍然独占）。 */
   const exclusivityFailure = (raw: Record<string, unknown>): string | null => {
+    if (disposed.has(raw)) {
+      return "该服务实例已被 dispose() 释放：请重建实例后再做程序化检索";
+    }
     if (lostExclusivity.has(raw)) {
-      return `该 Autocomplete 实例已失去回调通道独占（输入框曾被观察到可输入、或其属性被改动过）：${EXCLUSIVITY_LOST_HINT}`;
+      return `该 Autocomplete 实例已失去回调通道独占（输入框曾可输入、或收到过用户输入）：${EXCLUSIVITY_LOST_HINT}`;
     }
     if (isTypableInput(boundInput.get(raw))) {
       const message =
@@ -553,9 +563,9 @@ export function createJsapiV4ServiceDriver(
       );
       raw = instance as unknown as Record<string, unknown>;
       // 记下输入框**引用**：独占判定在每次 `suggest()` 与每次回包时重新校验（见 `boundInput`）；
-      // 另外观察它的独占相关属性——只看当前状态发现不了「检查间隔内发生过的翻转」（见 `observers`）
+      // 另外监听它的**输入活动**——只看当前状态发现不了「检查间隔内发生过的输入」（见 `inputWatchers`）
       boundInput.set(raw, options.input);
-      watchExclusiveInput(raw, options.input);
+      watchInputActivity(raw, options.input);
       return registry.adopt("service:autocomplete", instance);
     },
 
@@ -586,6 +596,38 @@ export function createJsapiV4ServiceDriver(
           "4.0 的对应能力是原生图层 TrackLine（driver.nativeLayers.create('track-line')）",
         { engine: "jsapi-v4", capability: "service.track-animation" },
       );
+    },
+
+    /**
+     * 释放服务实例（Driver 侧释放入口，七轮复审 P2-1）。
+     *
+     * 官方 `Autocomplete` 有 `dispose()`，但它不知道 Driver 另外挂在输入框上的监听器；**释放必须由
+     * Driver 自己提供入口**，否则「输入框一直保持只读、实例正常结束使用」这条路径上监听器永远不会
+     * 解绑（输入框通常比实例活得久 → 监听器长期持有旧 raw 与闭包，反复创建/销毁会持续累积）。
+     *
+     * 语义：① 幂等；② 先释放 Driver 侧资源（输入活动监听 + 把在飞调用显式失败），再调用 SDK 自身的
+     * `dispose()`（实例没有该成员时跳过，不算错误）；③ 释放后该句柄不再可用于程序化检索。
+     */
+    dispose(handle: ServiceHandle<string>) {
+      const raw = resolve<Record<string, unknown>>(handle, "ServiceDriver.dispose");
+      if (disposed.has(raw)) return;
+      disposed.add(raw);
+
+      releaseInputWatcher(raw);
+      const queue = pendingSuggest.get(raw) ?? [];
+      pendingSuggest.delete(raw);
+      for (const entry of queue) {
+        entry.settle.failed({
+          code: "BMAP_SERVICE_FAILED",
+          message: "该服务实例在请求进行中被 dispose() 释放",
+        });
+      }
+
+      // SDK 自身的释放（官方 Autocomplete#dispose）：没有该成员的实例直接跳过
+      const disposeMember = readNamespaceMember(raw, "dispose");
+      if (typeof disposeMember === "function") {
+        sdkCall("Service.dispose", () => callRequired(raw, "dispose"));
+      }
     },
 
     /* -------------------------------------------------------- 归一化调用面 */

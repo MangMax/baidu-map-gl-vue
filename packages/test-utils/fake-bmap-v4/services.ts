@@ -324,4 +324,9 @@ export class FakeV4Autocomplete {
       | undefined
     this.queue.dispatch(() => onSearchComplete?.(results))
   }
+
+  /** 官方 `Autocomplete#dispose()`：Driver 的 dispose 入口会调用它 */
+  dispose(): void {
+    this.callLog.push('dispose')
+  }
 }
