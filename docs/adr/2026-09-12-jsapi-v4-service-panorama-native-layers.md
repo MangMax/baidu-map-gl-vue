@@ -164,6 +164,28 @@ options.onSearchComplete?.(results);            // 原样转发业务自己的�
 承诺——不填充时归属退化为顺序 FIFO，不同形时该次 `suggest()` 会走到 `timeout`（而不是猜）。二者
 连同上面的独立实例设计一起，属 M3A.3（#25）的真机核对项。
 
+**参考实现的评估（`huiyan-fe/react-bmap` 的 `src/hooks/services/useAutocomplete.ts`）**：它的做法是
+`raw.setSearchCompleteCallback(cb)`，每次 `search()` 前换一个闭包，闭包里用 `requestIdRef` 守卫
+（`if (requestId !== requestIdRef.current) return`）。逐条核对：
+
+- **那个守卫就是「最新者胜」**（旧响应一律丢弃）——与本 issue 二轮试过的「取最新同名项」同源。
+  对**下拉列表**够用（用户又打字了，旧结果本就该丢），对**数据契约**不够（`suggest()` 的结果要么
+  属于本次、要么明确失败，不能把另一次的结果给它）。因此不采纳，维持「通道独占 + 同关键词互斥」
+  的显式契约。
+- 它调用的 `setSearchCompleteCallback` **不在官方 `Autocomplete` 的声明与文档里**（官方只对
+  `LocalSearch` / `DrivingRouteLine` / `TransitRoute` 声明它）。真实 4.0 的 `Autocomplete` 实例上
+  实测**确实有**这个方法（`typeof === "function"`），但按本仓库的 SDK 边界规则（成员必须能在官方
+  API 参考的方法表或上游 `.d.ts` 里核对到）**不建立在它上面**——方向与 `#22` 对
+  `PanoramaCoverageLayer` 的判断相反（那边是官方文档有、类型包没有，才可以用结构探测）。
+- 「换回调能否按请求归属」（回调是**请求时捕获**还是**响应时读取**）本次**未得出可发布结论**：
+  该探测跑在 smoke 页面**末尾**，所有 Autocomplete 检索（**含只装构造回调的对照组**）都拿不到
+  回包，最可能是同页大量服务检索触发服务端配额 / QPS；对照组同样无回包，因此**不能**据此断言
+  方法无效。留给 `#38` 用**独立页面**验证。
+- **真正有用的指向**：`LocalSearch`（真实 4.0 上存在，且**官方文档明确**支持
+  `setSearchCompleteCallback`）是面向程序化检索的 SDK 类——不绑输入框（没有 UI 共享通道问题）、
+  有 `getStatus()`。「精确的逐请求归属」因此应当在 LocalSearch / ServiceSpec 那一层实现，正是 M7
+  `#38` 的范围；参考实现也是这个分层（driver 只创建实例，逐请求 API 在 hook 层）。
+
 ### 6. `TrackAnimation` 显式失败，指向 `TrackLine`
 
 Catalog 的 `service.track-animation` 是 `unsupported`（该插件属 `BMapGLLib`，迁移结论属 M8 #43）。
@@ -537,6 +559,9 @@ Fake 为此加了 `flushOne(index)`（按索引触发单个回包）与 `include
   `references/runtime-extended-apis.md`、`references/search-and-geocoding.md`、
   `references/geolocation-and-convertor.md`、`references/panorama.md`、
   `references/data-layers.md`
+- 参考实现（社区封装，用于核对「程序化检索的归属」这一层怎么做）：
+  `huiyan-fe/react-bmap` 的 `src/hooks/services/useAutocomplete.ts`（`setSearchCompleteCallback`
+  + `requestId` 守卫；结论见 §5「参考实现的评估」）
 - 代码：`src/driver/jsapi-v4/{services,panorama,native-layers}.ts`、
   `src/driver/normalize/{serviceCall,jsonpProbe}.ts`、`src/driver/createJsapiV4Driver.ts`、
   `src/driver/types/{services,panorama,native-layers,bmap}.ts`、
