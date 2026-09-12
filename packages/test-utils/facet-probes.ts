@@ -56,16 +56,18 @@ export const DEFAULT_SERVICE_FACET_FIXTURE: ServiceFacetFixture = {
   boundaryName: "北京市",
   convert: { points: [{ lng: 116.404, lat: 39.915 }], from: 3, to: 5 },
   /**
-   * 默认输入框：**必须挂到文档上**。
+   * 默认输入框：**挂到文档 + 不可输入**（两个都是硬要求）。
    *
-   * 真实 4.0 里 `new BMap.Autocomplete({ input })` 对**脱离文档**的 input 会直接抛
-   * `TypeError: Cannot read properties of null (reading 'top')`；挂到文档（无论有没有尺寸容器）
-   * 之后 `search()` 才真的能拿到回包（2026-09-12 smoke 实测三种形态：detached 抛错、
-   * attached-body 与 attached-box 都是 `suggest=success`）。Fake 不看输入框，因此这个前提
-   * 只在真实 SDK 上暴露——fixture 不给可用输入框，live 档测到的就是 fixture 自己的缺陷。
+   * - 真实 4.0 里 `new BMap.Autocomplete({ input })` 对**脱离文档**的 input 会直接抛
+   *   `TypeError: Cannot read properties of null (reading 'top')`；挂到文档之后 `search()` 才真
+   *   能拿到回包（2026-09-12 smoke 三种形态：detached 抛错、attached-body / attached-box 都
+   *   `suggest=success`）；
+   * - `suggest()` 还要求回调通道**独占**：可输入的输入框上，用户输入触发的同关键词回包与程序化
+   *   回包无法区分，会被 Driver 拒绝（PR #63 四轮复审 P2-2），所以这里用 `readOnly`。
    */
   input: () => {
     const el = document.createElement("input");
+    el.readOnly = true;
     document.body.appendChild(el);
     return el;
   },

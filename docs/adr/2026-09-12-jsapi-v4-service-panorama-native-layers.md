@@ -136,18 +136,29 @@ options.onSearchComplete?.(results);            // 原样转发业务自己的�
   留在原处吸收那个回包，否则迟到回包会结算**下一个**调用；
 - **「带 keyword 但不匹配」不落回 FIFO**：用户输入触发的回包（同一条 `onSearchComplete`）、以及
   被上界丢掉的旧请求的迟到回包都属于这一类，落回 FIFO 会结算给下一个调用；
-- **`search()` 同步抛错时回滚槽位**：请求没发出去就不会有回包，留着会永久错位一格；队列另有上界
-  （`MAX_PENDING_SUGGESTS = 16`，超出丢最旧并告警一次）作为 SDK 长期丢回调时的自愈手段。
+- **`search()` 同步抛错时回滚槽位**：请求没发出去就不会有回包，留着会永久错位一格。
+- **队列到上限时拒绝新调用，而不是淘汰旧记录**（四轮复审 P2-1）：淘汰并不会取消 SDK 请求，
+  被淘汰请求的回包仍会到达；一旦它的关键词又出现在队列里（取消旧 K 之后再查 K），那个回包就会
+  被错误地结算给新调用。上限（`MAX_PENDING_SUGGESTS = 16`）因此只是「SDK 长期不回包」时的资源
+  护栏，触发时**显式失败**，且旧记录保留到自己的回包到达为止。
+- **回调通道必须独占**（四轮复审 P2-2）：`Autocomplete` 只有一条 `onSearchComplete`，用户输入
+  触发的检索与程序化 `search()` 共用它，回包里没有「谁触发的」信息——所以**可输入的输入框上，
+  同关键词的原生回包与程序化回包无法区分**。`suggest()` 因此要求实例的输入框不可输入
+  （`readOnly` / `disabled` / `type="hidden"`），否则**前置拒绝**（`failed` +
+  `BMAP_SERVICE_FAILED`，消息给出替代方案）。这把「通道是否独占」变成调用方**可判定**的前置
+  条件，而不是 Driver 事后猜；`AutocompleteOptions.input` 的 JSDoc 与 `suggest()` 的类型文档
+  都写明了这条。
 
-**「每次请求一个独立实例 + 回调闭包」为什么不在本 issue 做**（那是唯一能彻底去掉顺序假设的做法，
-也是三轮复审的首选建议）：机制本身**已用真实 AK 验证可行**——三种输入框形态的对比是
-「脱离文档 ⇒ `new Autocomplete` 直接抛 `TypeError … reading 'top'`」「挂到文档（有无尺寸容器都一样）
-⇒ `suggest = success`」（见 smoke 记录）。但它要求 **Driver 自己创建并持有一个挂到文档上的隐藏
-输入框**：这会引入 DOM 所有权（SSR / 无 DOM 环境下不成立）、每个请求一个实例 + 一个隐藏输入框的
-资源与 `dispose()` 收尾、以及隐藏输入框仍可能被 SDK 挂上下拉面板的副作用；而且它改变 `suggest()`
-的语义（不再需要用业务那个实例）。这些都属于「输入提示的 UX 语义」范畴，登记为 M7（#38 / #41）
-的接口设计项。本 issue 的过渡契约（同关键词重叠 ⇒ 显式失败）保证**任何**允许执行的调用都不会
-拿到错误归属的数据。
+**「每次请求一个独立实例 + 回调闭包」为什么不在本 issue 做**（唯一能彻底去掉顺序假设与前置拒绝
+的做法，也是三轮复审的首选建议）：真实 AK 实测给了三条结论——**脱离文档**的输入框构造即抛
+`TypeError … reading 'top'`；**挂到文档且不可输入**（`readOnly`）时 `suggest = success`；
+**挂到文档但可输入**时被新规则拒绝（`failed: BMAP_SERVICE_FAILED`）；而**不带 `input`** 的实例
+能构造却 **3s 内 0 回包**（不能当作程序化专用通道）。也就是说独占通道**只能由调用方用不可输入的
+输入框表达**；若由 Driver 自己造一个挂到文档的隐藏输入框，就要引入 DOM 所有权（SSR / 无 DOM 环境
+不成立）与**释放路径**（当前 `ServiceDriver` 没有 per-service dispose，隐藏输入框会随页面常驻，
+违反仓库「所有资源都要有释放路径」的原则）。因此登记为 M7（#38 / #41）的接口设计项——那里会同时
+定义「输入提示」的 UX 语义与实例/输入框的所有权。本 issue 的过渡契约保证**任何允许执行的调用都
+不会拿到错误归属的数据**。
 
 **残留限制（显式接受）**：`keyword` 由运行时可选填充，是否填充、是否与请求参数同形都未在文档中
 承诺——不填充时归属退化为顺序 FIFO，不同形时该次 `suggest()` 会走到 `timeout`（而不是猜）。二者
@@ -310,7 +321,7 @@ v4 的 `createTrackAnimation` 抛出带 `capability: "service.track-animation"` 
 | `panorama.supported` | true |
 | `createTrackAnimation` | 抛 `BMAP_CAPABILITY_UNSUPPORTED`（消息指向 `TrackLine`） |
 | Service facet：7 个归一化调用 + 取消 | `geocode` success、`reverseGeocode` success、`convert` success(0)、`boundary` success、`locate` **failed(6)**、`locateCity` success、`suggest` success、`canceled` canceled |
-| Autocomplete 的输入框形态（三轮复审引出的 fixture 缺陷） | **detached ⇒ `new Autocomplete` 抛 `TypeError: Cannot read properties of null (reading 'top')`**；attached-body ⇒ `suggest=success`；attached-box（有尺寸容器）⇒ `suggest=success` |
+| Autocomplete 的输入框形态（三轮 + 四轮复审引出的 fixture 缺陷与新规则） | **detached（readOnly 或可输入）⇒ `new Autocomplete` 抛 `TypeError: Cannot read properties of null (reading 'top')`**；**attached + readOnly ⇒ `suggest=success`**；**attached + 可输入 ⇒ `suggest=failed:BMAP_SERVICE_FAILED`**（通道非独占的前置拒绝）；**不带 input ⇒ 构造 ok 但 3s 内回包数 0** |
 | 原生图层逐 kind：探针（走 `supports()`） | 8 个 kind 全部结算；**不支持的操作 100% 显式失败**（`rejectedWhenUnsupported: true`） |
 | 原生图层逐 kind：**直接调用 raw**（绕过 `supports()`） | `point-icon/shape/line/fill` 11 项全 ok、`hitTest` 缺成员；`point` 8 项 ok（`setEnablePicked`/`hitTest` ok，状态与 `setMinZoom` 缺成员）；`cluster`/`heatmap`/`track-line` 6 项 ok |
 | `Panorama` viewer 生命周期 | `create` / `setPosition` / `setPov` / `setZoom` / `show` / `hide` 全部 ok；**`destroy` 抛 `TypeError: Cannot read properties of undefined (reading 'START')`**（未加载场景的实例） |
@@ -332,11 +343,18 @@ smoke 顺带确认（并已回写进决策）的运行时事实：
 
 - **`Autocomplete` 需要一个挂到文档上的输入框**：真实 4.0 里 `new BMap.Autocomplete({ input })`
   对**脱离文档**的 input 直接抛 `TypeError: Cannot read properties of null (reading 'top')`，
-  挂到文档之后 `search()` 才能真的回包（smoke 三种形态实测）。这条前提原先只写在组件用法里，
+  挂到文档之后 `search()` 才能真的回包（smoke 实测）。这条前提原先只写在组件用法里，
   三轮复审的排查顺带把它暴露成**共享契约 fixture 的缺陷**（`probeServiceFacet` 的默认输入框
   当时是脱离文档的，导致 live 档的 `suggest` 一直报 `failed`）——已修 fixture，现在 live 档
   `suggest = success`。SSR / 无 DOM 环境下 `suggest()` 不具备可用前提（构造即失败），
   这条限制登记在 M7（#38 / #41）与 #25 的真机核对项里。
+- **`suggest()` 的两条前置条件**（四轮复审 P2-1/P2-2）：①实例的输入框必须**不可输入**
+  （`readOnly` / `disabled` / `type="hidden"`，否则用户输入的回包与程序化的无法区分）；
+  ②该实例上不能已有**同关键词**的未完成请求；③待回包记录达到 16 条时新调用被拒绝（不淘汰记录）。
+  三者都是**显式失败**而不是猜测。彻底去掉这些限制需要「每次请求一个独立实例」，
+  即由调用方或未来的 ServiceSpec 提供独占通道（M7 #38 / #41）——真实 AK 已确认「不带 input 的
+  实例能构造但不回包」，所以独占通道**必须**有一个挂到文档且不可输入的输入框，DOM 所有权因此
+  留在调用方一侧。
 - **`Autocomplete` 的回包归属依赖 SDK 填充 `keyword`**：官方把它声明为可选且不承诺填充。
   不填充时退化为顺序 FIFO；填充但与请求参数不同形（例如被归一化）时，匹配失败会让该次
   `suggest()` 走到 `timeout`——这是**刻意**的取舍（宁可超时也不把结果塞给不匹配的调用）。
@@ -479,6 +497,31 @@ Fake 为此加了 `flushOne(index)`（按索引触发单个回包）与 `include
    于是 live 档的 `suggest` 一直显示 `failed`，我此前把它误读成「headless 没有真实输入交互」。
    三种形态对比后修了 fixture（挂到文档），**live 档 `suggest` 现在真的返回 `success`**。
 2. **`keyword` 不足以当请求身份**：参见 §5 的三条反例表。
+
+## 外部评审第四轮（PR #63，基线 `57ef0ad`）
+
+四轮复审接受「同关键词重叠 ⇒ 显式拒绝」的方向（明确不要求支持同关键词并发），但指出两条**绕过
+路径**，都会以 `success` 返回错误归属的数据；两条都成立：
+
+| 发现 | 复现结果（红） | 处置 |
+| --- | --- | --- |
+| P2-1 队列到上限时**淘汰**旧记录，而 `hasPendingKeyword` 只看队列 ⇒ 被淘汰但仍在飞的同关键词请求被误判为「不存在」，它的回包会结算新调用 | 「取消旧 K → 再发起并取消 16 个不同关键词 → 重新 suggest(K)」中，新调用拿到 `K-OLD`（实测以 5s 挂起/成功呈现） | **取消淘汰**：到上限时拒绝新调用（`isQueueFull` + 显式失败），旧记录保留到自己的回包到达；把旧用例改成「第 17 次被拒绝、已登记的 16 个各归其位」 |
+| P2-2 `suggest()` 只能看到自己登记的请求，而**输入框的原生检索与它共用 `onSearchComplete`** ⇒ 用户输入的同关键词回包会结算程序化调用（反向亦然） | 「可输入输入框的实例上 `suggest(K)`」实测 `success`（应为拒绝） | 引入**通道独占**前置条件：`suggest()` 只在输入框不可输入（`readOnly` / `disabled` / `type="hidden"`）时放行，否则前置拒绝并给出替代方案；`AutocompleteOptions.input` 与 `suggest()` 的类型文档写明 |
+
+四轮复审还指出「仅增大上限只是推迟触发」——本轮按此改掉了上限的语义（护栏而非淘汰），并且
+**没有**重开已关闭的全景 / `locateCity` / `convert` 三项。
+
+真实 AK 实测（本轮新增，决定了 P2-2 的方案）：
+
+| 输入框形态 | 结果 |
+| --- | --- |
+| 脱离文档 | `new Autocomplete` 抛 `TypeError: Cannot read properties of null (reading 'top')` |
+| 挂到文档 + **不可输入**（`readOnly`） | **`suggest = success`** |
+| 挂到文档 + 可输入 | **`suggest = failed: BMAP_SERVICE_FAILED`**（新的通道独占前置拒绝真的生效） |
+| **不带 `input`** | 构造 ok，但 **3s 内回包数 = 0** → 不能当「程序化专用通道」 |
+
+验证：`pnpm test:unit` **91 files / 972 tests**；typecheck / build / 边界扫描（含 `--src` 全树）/
+`check:public-dts` / 能力矩阵 / manifest 全绿；真实 AK smoke **27/27**。
 
 ## 参考
 

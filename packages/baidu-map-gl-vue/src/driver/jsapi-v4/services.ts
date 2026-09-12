@@ -242,8 +242,16 @@ export function createJsapiV4ServiceDriver(
     Array<{ keyword: string; settle: ServiceCallSettle<PlaceSuggestion[]> }>
   >();
 
-  /** `search()` 数量与回包数量长期不匹配时的队列上界（自愈用，不是正常路径）。 */
+  /**
+   * 待回包队列的上限。**达到上限时拒绝新调用，而不是淘汰旧记录**（PR #63 四轮复审 P2-1）：
+   * 淘汰并不会取消 SDK 请求，被淘汰的请求的回包仍会到达；一旦它的关键词又出现在队列里
+   * （例如取消旧 K 之后再查 K），那个回包就会被错误地结算给新调用。上限只作为「SDK 长期
+   * 不回包」时的资源护栏，失败是显式的。
+   */
   const MAX_PENDING_SUGGESTS = 16;
+
+  const isQueueFull = (raw: Record<string, unknown>): boolean =>
+    (pendingSuggest.get(raw)?.length ?? 0) >= MAX_PENDING_SUGGESTS;
 
   const enqueueSuggest = (
     raw: Record<string, unknown>,
@@ -252,14 +260,6 @@ export function createJsapiV4ServiceDriver(
   ): void => {
     const queue = pendingSuggest.get(raw) ?? [];
     queue.push({ keyword, settle });
-    if (queue.length > MAX_PENDING_SUGGESTS) {
-      queue.shift();
-      warnOnce(
-        "suggest:backlog",
-        `ServiceDriver.suggest: 同一个 Autocomplete 的 pending 回包已超过 ${MAX_PENDING_SUGGESTS} 个，` +
-          "丢弃最旧的一个（SDK 回包数量长期少于 search 次数时会走到这里）",
-      );
-    }
     pendingSuggest.set(raw, queue);
   };
 
@@ -311,6 +311,28 @@ export function createJsapiV4ServiceDriver(
    */
   const hasPendingKeyword = (raw: Record<string, unknown>, keyword: string): boolean =>
     (pendingSuggest.get(raw) ?? []).some((entry) => entry.keyword === keyword);
+
+  /**
+   * 回调通道**独占**的实例：输入框不可输入（`readOnly` / `disabled` / `type="hidden"`）。
+   *
+   * `Autocomplete` 只有一条 `onSearchComplete`，用户输入触发的检索与程序化 `search()` 共用它，
+   * 而回包里没有任何「这次是谁触发的」信息——因此**可输入的实例上，同关键词的原生回包与程序化
+   * 回包无法区分**（PR #63 四轮复审 P2-2）。`suggest()` 因此只在独占通道上放行。
+   *
+   * 为什么不直接建一个「程序化专用实例」：真实 4.0 里不带 `input` 的实例**能构造但 `search()`
+   * 不回包**（2026-09-12 smoke 实测：`no-input` / `input: undefined` 两种都是「构造 ok；3s 内
+   * 回包数=0」），而挂到文档的输入框才是 `search()` 能回包的前提——所以独占通道只能由调用方用
+   * 「不可输入的输入框」表达，Driver 不替它造 DOM（DOM 所有权与释放路径都留在调用方一侧）。
+   */
+  const exclusiveChannel = new WeakSet<object>();
+
+  /** 输入框是否可被用户输入（决定回调通道是否独占）。缺输入框时按「不独占」处理。 */
+  const isTypableInput = (input: unknown): boolean => {
+    if (typeof input !== "object" || input === null) return false;
+    const el = input as { readOnly?: unknown; disabled?: unknown; type?: unknown };
+    if (el.readOnly === true || el.disabled === true) return false;
+    return el.type !== "hidden";
+  };
 
   /** 空结果还是失败：`null` 回包 + JSONP 注册表里的错误码 ⇒ 失败。 */
   const settleNull = <T>(
@@ -436,6 +458,8 @@ export function createJsapiV4ServiceDriver(
         }),
       );
       raw = instance as unknown as Record<string, unknown>;
+      // 记下「这条回包通道是否独占」：只在输入框不可输入时独占（见 `exclusiveChannel`）
+      if (!isTypableInput(options.input)) exclusiveChannel.add(raw);
       return registry.adopt("service:autocomplete", instance);
     },
 
@@ -712,17 +736,34 @@ export function createJsapiV4ServiceDriver(
       }
       const raw = resolve<Record<string, unknown>>(handle, "ServiceDriver.suggest");
 
-      // 同关键词的重叠请求**显式失败**，而不是猜归属：`Autocomplete` 的回包不带请求身份，
-      // 两次同名请求的回包互相不可区分——旧回包先到会把旧结果塞给新请求，新回包先到又会让
-      // 旧请求失效（两种情况都在 PR #63 的复审里被复现过）。拒绝之后同一关键词在任意时刻
-      // 最多只有一个槽位，归属与到达顺序无关。
-      // 精确隔离需要「每次请求一个独立实例 + 自己的回调闭包」，那需要 Driver 自己造 DOM /
-      // 输入框（与 SSR 和分层约束冲突），属 M7（#38 / #41）的接口设计，见 ADR 已知限制。
+      // 前置拒绝 1（通道独占）：实例绑定了**可输入**的输入框时，用户输入触发的检索会走同一条
+      // `onSearchComplete`，同关键词的回包与程序化的无法区分（PR #63 四轮复审 P2-2）。
+      if (!exclusiveChannel.has(raw)) {
+        return serviceFailedCall<PlaceSuggestion[]>(
+          "Autocomplete.search",
+          "该 Autocomplete 实例绑定了可输入的输入框：用户输入触发的检索与程序化检索共用同一条 " +
+            "onSearchComplete，关键词相同时回包无法区分（可能把用户那次的结果当成程序化调用的结果）。" +
+            '请用不可输入的输入框（readOnly / disabled / type="hidden"）创建程序化检索实例，' +
+            "或改用该实例的 onSearchComplete 回调",
+        );
+      }
+
+      // 前置拒绝 2（同关键词互斥）：`Autocomplete` 的回包不带请求身份，两次同名请求的回包互相
+      // 不可区分——旧回包先到会把旧结果塞给新请求，新回包先到又会让旧请求失效（两种情况都在
+      // PR #63 的复审里被复现过）。拒绝之后同一关键词在任意时刻最多只有一个槽位，归属与到达
+      // 顺序无关。彻底的隔离（每次请求一个独立实例 + 回调闭包）属 M7（#38 / #41），见 ADR。
       if (hasPendingKeyword(raw, keyword)) {
         return serviceFailedCall<PlaceSuggestion[]>(
           "Autocomplete.search",
           `同一 Autocomplete 实例上已有关键词 "${keyword}" 的未完成请求：Autocomplete 的回包不带请求标识，` +
             "本次与它的回包无法区分（旧结果可能被当成新结果）；请等它结算后再查，或改用不同关键词",
+        );
+      }
+      if (isQueueFull(raw)) {
+        return serviceFailedCall<PlaceSuggestion[]>(
+          "Autocomplete.search",
+          `同一 Autocomplete 实例上等待回包的程序化检索已达上限 ${MAX_PENDING_SUGGESTS}：` +
+            "旧请求的记录必须保留到它的回包到达为止（淘汰它们会让迟到回包被错误归属），请等待结算后再查",
         );
       }
 

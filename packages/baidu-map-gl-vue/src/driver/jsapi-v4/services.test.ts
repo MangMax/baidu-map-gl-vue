@@ -38,7 +38,22 @@ function buildDriver(unsupported: UnsupportedBehavior = "throw"): JsapiV4Service
   });
 }
 
+/**
+ * 程序化检索用的输入框：**必须不可输入**（`readOnly`）。
+ *
+ * `Autocomplete` 的回包通道与输入框共享：可输入的输入框上，用户输入触发的同关键词回包与程序化
+ * 回包无法区分，因此 `suggest()` 会拒绝（四轮复审 P2-2）。要「通道独占」，输入框必须是
+ * `readOnly` / `disabled` / `type="hidden"` 之一。
+ */
 function input(): HTMLInputElement {
+  const el = document.createElement("input");
+  el.readOnly = true;
+  document.body.appendChild(el);
+  return el;
+}
+
+/** 可输入的输入框（默认形态）：用于验证 `suggest()` 的「通道独占」前置拒绝。 */
+function typableInput(): HTMLInputElement {
   const el = document.createElement("input");
   document.body.appendChild(el);
   return el;
@@ -426,6 +441,24 @@ describe("v4 Service Facet：Autocomplete（事件式服务的归一化）", () 
 });
 
 describe("v4 Service Facet：Autocomplete 的回包归属（PR #63 复审 P2-1）", () => {
+  it("可输入的输入框 ⇒ suggest() 被拒绝（回包通道与用户输入共享，无法区分）", async () => {
+    const handle = services.createAutocomplete({ input: typableInput() });
+
+    const result = await services.suggest(handle, "K").result;
+    expect(result.status).toBe("failed");
+    expect(result.error?.message).toContain("无法区分");
+    // 请求根本不该发出去
+    expect(fake.createdAutocompletes[0].callLog).not.toContain("search:K");
+  });
+
+  it("readOnly 输入框 ⇒ 通道独占，suggest() 正常可用", async () => {
+    const handle = services.createAutocomplete({ input: input() });
+
+    const result = await services.suggest(handle, "天安门").result;
+    expect(result.status).toBe("success");
+    expect(fake.createdAutocompletes[0].callLog).toContain("search:天安门");
+  });
+
   it("取消 A 之后 A 的迟到回包不得结算 B", async () => {
     const handle = services.createAutocomplete({ input: input() });
     const autocomplete = fake.createdAutocompletes[0];
@@ -632,21 +665,53 @@ describe("v4 Service Facet：Autocomplete 的回包归属（PR #63 复审 P2-1�
     expect((await first.result).status).toBe("canceled");
   });
 
-  it("被队列上界丢弃的旧请求，其迟到回包不得结算队列里的其它调用", async () => {
+  it("待回包队列达到上限时拒绝新调用（不淘汰旧记录），同关键词保护因此不会失效", async () => {
     const handle = services.createAutocomplete({ input: input() });
     const autocomplete = fake.createdAutocompletes[0];
     autocomplete.queue.auto = false;
 
-    // 17 次 suggest：第 1 次会被上界（16）挤掉，它的回包随后才到
+    // 旧 K 取消，回包仍在飞
+    autocomplete.pois = [{ business: "K-OLD", province: "北京市" }];
+    const oldK = services.suggest(handle, "K");
+    oldK.cancel();
+
+    // 再发起并取消 16 个不同关键词，把待回包记录顶到上限
+    for (let index = 0; index < 16; index += 1) {
+      autocomplete.pois = [{ business: `N${index}`, province: "北京市" }];
+      services.suggest(handle, `N${index}`).cancel();
+    }
+
+    // 旧 K 的回包仍在飞：此时再次请求 K 必须被拒绝（淘汰记录会让它被误判为「不存在」）
+    autocomplete.pois = [{ business: "K-NEW", province: "上海市" }];
+    const retry = services.suggest(handle, "K");
+    const result = await retry.result;
+
+    expect(result.status).toBe("failed");
+    expect(result.data).toBeNull();
+
+    // 旧回包到达后只能被它自己的记录吸收，不会落到任何别的调用上
+    autocomplete.queue.flush();
+    expect(result.data).toBeNull();
+  });
+
+  it("待回包队列达到上限：第 17 次调用被拒绝，已登记的请求仍各归其位", async () => {
+    const handle = services.createAutocomplete({ input: input() });
+    const autocomplete = fake.createdAutocompletes[0];
+    autocomplete.queue.auto = false;
+
     const calls: Array<ReturnType<typeof services.suggest>> = [];
-    for (let index = 0; index < 17; index += 1) {
+    for (let index = 0; index < 16; index += 1) {
       autocomplete.pois = [{ business: `N${index}`, province: "北京市" }];
       calls.push(services.suggest(handle, `K${index}`));
     }
 
+    autocomplete.pois = [{ business: "N16", province: "北京市" }];
+    const overflow = services.suggest(handle, "K16");
+    expect((await overflow.result).status).toBe("failed");
+
     autocomplete.queue.flush();
-    // K0 已被丢弃：它的回包不能把 K1 的结果顶替掉
-    expect((await calls[1]!.result).data?.[0]?.title).toBe("N1");
-    expect((await calls[16]!.result).data?.[0]?.title).toBe("N16");
+    // 16 个已登记的请求各自拿到自己的回包（没有淘汰、也没有错位）
+    expect((await calls[0]!.result).data?.[0]?.title).toBe("N0");
+    expect((await calls[15]!.result).data?.[0]?.title).toBe("N15");
   });
 });

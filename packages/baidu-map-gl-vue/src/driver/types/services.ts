@@ -14,6 +14,14 @@ import type { MapHandle, ServiceHandle } from "./handles";
 import type { Point } from "./geometry";
 
 export interface AutocompleteOptions {
+  /**
+   * 绑定到 SDK 实例的输入框。
+   *
+   * **要使用 `suggest()`（程序化检索），这个输入框必须不可输入**
+   * （`readOnly` / `disabled` / `type="hidden"`）：`Autocomplete` 只有一条
+   * `onSearchComplete`，可输入的输入框上用户打字触发的检索与程序化检索共用它，关键词相同时
+   * 回包无法区分——Driver 会因此拒绝 `suggest()`。只用输入框的联想 UI 时不受此限制。
+   */
   input: HTMLInputElement;
   location?: unknown;
   types?: string[];
@@ -222,10 +230,15 @@ export interface ServiceInvocationDriver {
   /**
    * 输入提示（`Autocomplete#search` + `onSearchComplete`）。
    *
-   * **同一实例上同关键词的重叠请求会被拒绝**（`status: "failed"` + `BMAP_SERVICE_FAILED`）：
-   * `Autocomplete` 的回包**不带请求身份**（只有可选的 `keyword`），两次同名请求的回包互相
-   * 不可区分，猜归属会把旧结果当成新结果。等前一次结算（或改用不同关键词）即可正常调用；
-   * 精确的并发隔离需要「每次请求一个独立实例」，属 M7（#38 / #41）的接口设计。
+   * 两条件缺一即**拒绝**（`status: "failed"` + `BMAP_SERVICE_FAILED`），因为都不满足时回包
+   * 归属无法确定（`Autocomplete` 的回包不带请求身份，只有可选的 `keyword`）：
+   *
+   * 1. **回调通道独占**：实例绑定的输入框必须不可输入（`readOnly` / `disabled` /
+   *    `type="hidden"`）——可输入的输入框上，用户打字触发的同关键词回包与程序化回包无法区分；
+   * 2. **同关键词互斥**：该实例上不能已有同关键词的未完成请求，等它结算（或改用不同关键词）
+   *    之后再调用。
+   *
+   * 彻底去掉第 2 条（以及顺序假设）需要「每次请求一个独立实例 + 回调闭包」，属 M7（#38 / #41）。
    */
   suggest(
     handle: ServiceHandle<"service:autocomplete">,
