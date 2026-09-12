@@ -489,7 +489,7 @@ export function createFakeBMapV4(version = '4.0'): FakeBMapV4 {
   }
   class AutocompleteClass extends FakeV4Autocomplete {
     constructor(options?: Record<string, unknown>) {
-      super(options ?? {})
+      super(options ?? {}, stats)
       createdAutocompletes.push(this)
     }
   }

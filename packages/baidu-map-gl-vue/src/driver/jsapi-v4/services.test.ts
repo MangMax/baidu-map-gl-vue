@@ -11,6 +11,8 @@ import { CAPABILITY_CATALOG } from "../capability/catalog";
 import { createCapabilityRegistry } from "../capability/registry";
 import type { CapabilityRegistry } from "../capability/registry";
 import type { UnsupportedBehavior } from "../capability/unsupported";
+import { createJsapiV4EventDriver } from "./events";
+import type { JsapiV4EventDriver } from "./events";
 import { createJsapiV4GeometryDriver } from "./geometry";
 import { createJsapiV4HandleRegistry } from "./registry";
 import type { JsapiV4HandleRegistry } from "./registry";
@@ -21,6 +23,7 @@ let fake: FakeBMapV4;
 let registry: JsapiV4HandleRegistry;
 let capabilities: CapabilityRegistry;
 let services: JsapiV4ServiceDriver;
+let events: JsapiV4EventDriver;
 
 function buildDriver(unsupported: UnsupportedBehavior = "throw"): JsapiV4ServiceDriver {
   const geometry = createJsapiV4GeometryDriver(fake.namespace);
@@ -30,11 +33,13 @@ function buildDriver(unsupported: UnsupportedBehavior = "throw"): JsapiV4Service
     rawSdk: fake.namespace,
     unsupported,
   });
+  events = createJsapiV4EventDriver({ registry, geometry });
   return createJsapiV4ServiceDriver({
     rawSdk: fake.namespace,
     geometry,
     capabilities,
     registry,
+    events,
   });
 }
 
@@ -140,6 +145,10 @@ describe("v4 Service Facet：创建面", () => {
       geometry: createJsapiV4GeometryDriver(fake.namespace),
       capabilities,
       registry: createJsapiV4HandleRegistry(),
+      events: createJsapiV4EventDriver({
+        registry: createJsapiV4HandleRegistry(),
+        geometry: createJsapiV4GeometryDriver(fake.namespace),
+      }),
     });
     const foreign = other.createGeocoder();
     expect(() => services.geocode(foreign, { address: "北京市海淀区中关村" })).toThrowError(
@@ -674,6 +683,39 @@ describe("v4 Service Facet：Autocomplete 的回包归属（PR #63 复审 P2-1�
       // @ts-expect-error 专用入口只接受 Autocomplete 句柄（类型契约；此处验证运行期兜底）
       services.disposeAutocomplete(geocoder),
     ).toThrowError(expect.objectContaining({ code: "BMAP_INVALID_ARGUMENT" }));
+  });
+
+  // 九轮复审 P2：订阅（EventListener / 分组）也是 Driver 侧资源——SDK 清空自己的监听器不会删除
+  // EventDriver 的强引用分组，所以专用释放入口必须一并释放该目标的订阅（与 Map / Panorama 同源）。
+  it("disposeAutocomplete() 释放 EventDriver 持有的订阅（分组归零，反复创建/释放不累积）", async () => {
+    for (let round = 0; round < 3; round += 1) {
+      const el = document.createElement("input");
+      el.readOnly = true;
+      document.body.appendChild(el);
+      const handle = services.createAutocomplete({ input: el });
+      const autocomplete = fake.createdAutocompletes[round]!;
+
+      events.on(handle, "confirm", vi.fn());
+      events.on(handle, "highlight", vi.fn());
+      // 两个不同事件类型 ⇒ 两个 raw listener（同类型内的多个 handler 才共用一份）
+      expect(autocomplete.getListenerCount()).toBe(2);
+
+      services.disposeAutocomplete(handle);
+      expect(autocomplete.getListenerCount(), `第 ${round + 1} 轮释放后订阅必须归零`).toBe(0);
+    }
+  });
+
+  it("SDK 销毁钩子里重入 disposeAutocomplete()：不会真的销毁两次", async () => {
+    const el = document.createElement("input");
+    el.readOnly = true;
+    document.body.appendChild(el);
+    const handle = services.createAutocomplete({ input: el });
+    const autocomplete = fake.createdAutocompletes[0];
+
+    autocomplete.onDispose = () => services.disposeAutocomplete(handle);
+    services.disposeAutocomplete(handle);
+
+    expect(autocomplete.callLog.filter((entry) => entry === "dispose")).toHaveLength(1);
   });
 
   // 八轮复审 P2-2：SDK 销毁抛错时，句柄必须保持「不再接受业务调用」，但**不能**因此

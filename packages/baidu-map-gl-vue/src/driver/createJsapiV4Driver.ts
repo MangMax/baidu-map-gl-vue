@@ -74,7 +74,7 @@ export function createJsapiV4Driver(input: CreateJsapiV4DriverInput): JsapiV4Dri
     overlays: createJsapiV4OverlayDriver({ rawSdk, geometry, capabilities, registry }),
     controls: createJsapiV4ControlDriver({ rawSdk, geometry, registry }),
     layers: createJsapiV4LayerDriver({ rawSdk, capabilities, registry }),
-    services: createJsapiV4ServiceDriver({ rawSdk, geometry, capabilities, registry }),
+    services: createJsapiV4ServiceDriver({ rawSdk, geometry, capabilities, registry, events }),
     panorama: createJsapiV4PanoramaDriver({ rawSdk, geometry, capabilities, registry, events }),
     nativeLayers: createJsapiV4NativeLayerDriver({ rawSdk, capabilities, registry }),
   };

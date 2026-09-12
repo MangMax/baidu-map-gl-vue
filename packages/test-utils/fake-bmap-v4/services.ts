@@ -20,6 +20,12 @@
 
 /* ------------------------------------------------------------- 回包时序控制 */
 
+import { FakeV4EventStats, FakeV4EventTarget } from './event-target.ts'
+
+/* -------------------------------------------------------------------------- */
+/* 回调队列与 JSONP 注册表                                                      */
+/* -------------------------------------------------------------------------- */
+
 export class FakeV4CallbackQueue {
   /** true（默认）：回包在下一个微任务自动触发；false：进入队列等 `flush()`。 */
   auto = true
@@ -296,7 +302,12 @@ export class FakeV4AutocompleteResult {
   }
 }
 
-export class FakeV4Autocomplete {
+/**
+ * 官方 `Autocomplete`：事件式服务，且**本身是 EventTarget**（`addEventListener` / `removeEventListener`），
+ * Driver 的 EventDriver 正是通过这两个成员在它上面挂订阅——所以 Fake 也必须继承事件目标基类，
+ * 否则「Service 释放时是否释放了 EventDriver 订阅」这条跨 Facet 路径在 Fake 上根本观察不到。
+ */
+export class FakeV4Autocomplete extends FakeV4EventTarget {
   readonly callLog: string[] = []
   readonly queue = new FakeV4CallbackQueue()
   /** 下一次 `search` 的结果条目 */
@@ -309,10 +320,13 @@ export class FakeV4Autocomplete {
   includeKeyword = true
   /** 下一次 `dispose()` 抛出的错误（注入 SDK 销毁失败，用后即清） */
   failNextDispose: Error | null = null
+  /** `dispose()` 期间同步执行的回调（用来注入「销毁钩子里重入 dispose」的场景） */
+  onDispose: (() => void) | null = null
 
   readonly options: Record<string, unknown>
 
-  constructor(options: Record<string, unknown> = {}) {
+  constructor(options: Record<string, unknown> = {}, stats = new FakeV4EventStats()) {
+    super(stats)
     this.options = options
     this.callLog.push('construct')
   }
@@ -330,10 +344,13 @@ export class FakeV4Autocomplete {
   /** 官方 `Autocomplete#dispose()`：Driver 的 dispose 入口会调用它 */
   dispose(): void {
     this.callLog.push('dispose')
+    const reenter = this.onDispose
     const failure = this.failNextDispose
     if (failure) {
       this.failNextDispose = null
       throw failure
     }
+    // 真实 SDK 的销毁流程可能触发业务回调（本仓库的 Map / Panorama 都已按「可能重入」防护）
+    reenter?.()
   }
 }

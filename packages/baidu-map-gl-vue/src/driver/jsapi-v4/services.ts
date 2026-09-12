@@ -58,6 +58,7 @@ import {
   sdkCall,
   type JsapiV4Namespace,
 } from "./internal";
+import type { JsapiV4EventDriver } from "./events";
 import type { JsapiV4HandleRegistry } from "./registry";
 
 /* -------------------------------------------------------------------------- */
@@ -141,6 +142,11 @@ export interface CreateJsapiV4ServiceDriverInput {
   geometry: GeometryDriver;
   capabilities: CapabilityRegistry;
   registry: JsapiV4HandleRegistry;
+  /**
+   * 同 Client 的 v4 EventDriver：`disposeAutocomplete` 需要它的 target 释放入口
+   * （与 Map / Panorama Facet 同一份，九轮复审 P2）。
+   */
+  events: JsapiV4EventDriver;
 }
 
 /** 把 `"lng1,lat1;lng2,lat2;…"` 的边界点串解析成坐标数组（非法片段直接丢弃）。 */
@@ -213,7 +219,7 @@ function readGeolocationStatus(
 export function createJsapiV4ServiceDriver(
   input: CreateJsapiV4ServiceDriverInput,
 ): JsapiV4ServiceDriver {
-  const { rawSdk, geometry, capabilities, registry } = input;
+  const { rawSdk, geometry, capabilities, registry, events } = input;
   const namespace: JsapiV4Namespace = assertJsapiV4Namespace(rawSdk);
 
   const warnOnce = createWarnOnce();
@@ -334,6 +340,9 @@ export function createJsapiV4ServiceDriver(
   const lostExclusivity = new WeakSet<object>();
   /** 已被 `disposeAutocomplete()` 释放的实例：此后一律拒绝（释放时会把在飞调用显式失败）。 */
   const disposed = new WeakSet<object>();
+  /** 清理**正在执行**（重入保护）：SDK 的销毁回调里再次调用 `disposeAutocomplete()` 必须短路，
+   *  否则同一个底层对象会被销毁两次（与 Map / Panorama Facet 同源）。 */
+  const disposing = new WeakSet<object>();
   /**
    * SDK 侧 `dispose()` **已成功执行**的实例。
    *
@@ -633,27 +642,57 @@ export function createJsapiV4ServiceDriver(
       }
 
       disposed.add(raw); // 先停止接受业务调用（这一个是「一旦释放就不再恢复」的状态）
+      // 正在清理期间的重入直接短路（SDK 销毁钩子里再次 dispose 的场景，见 `disposing`）
+      if (disposing.has(raw)) return;
+      disposing.add(raw);
 
-      // Driver 侧清理：幂等，重试时重复执行没有代价
-      releaseInputWatcher(raw);
-      const queue = pendingSuggest.get(raw) ?? [];
-      pendingSuggest.delete(raw);
-      for (const entry of queue) {
-        entry.settle.failed({
-          code: "BMAP_SERVICE_FAILED",
-          message: "该服务实例在请求进行中被 disposeAutocomplete() 释放",
-        });
+      const failures: unknown[] = [];
+      try {
+        // 顺序与 Map / Panorama Facet 一致：**先让业务事件与监听器下线，再销毁 SDK 对象**。
+        // 解绑失败不阻断后续步骤，但汇总抛出（九轮复审 P2：订阅也是 Driver 侧资源，
+        // EventDriver 的 `groups` 是强引用 Map，SDK 清空自己的监听器不会删除这份记录）。
+        try {
+          releaseInputWatcher(raw);
+          events.release(handle);
+        } catch (error) {
+          failures.push(error);
+        }
+
+        // 在飞建议调用显式失败（幂等，重试时重复执行没有代价）
+        const queue = pendingSuggest.get(raw) ?? [];
+        pendingSuggest.delete(raw);
+        for (const entry of queue) {
+          entry.settle.failed({
+            code: "BMAP_SERVICE_FAILED",
+            message: "该服务实例在请求进行中被 disposeAutocomplete() 释放",
+          });
+        }
+
+        // SDK 自身的释放（官方 Autocomplete#dispose）：**成功才记账**，失败留给下一次重试
+        if (!sdkDisposed.has(raw)) {
+          const disposeMember = readNamespaceMember(raw, "dispose");
+          if (typeof disposeMember !== "function") {
+            sdkDisposed.add(raw); // 没有该成员 ⇒ 视为已完成（不是错误）
+          } else {
+            sdkCall("Autocomplete.dispose", () => callRequired(raw, "dispose"));
+            sdkDisposed.add(raw);
+          }
+        }
+      } finally {
+        disposing.delete(raw);
       }
 
-      // SDK 自身的释放（官方 Autocomplete#dispose）：**成功才记账**，失败留给下一次重试
-      if (sdkDisposed.has(raw)) return;
-      const disposeMember = readNamespaceMember(raw, "dispose");
-      if (typeof disposeMember !== "function") {
-        sdkDisposed.add(raw); // 没有该成员 ⇒ 视为已完成（不是错误）
-        return;
+      if (failures.length > 0) {
+        const details = failures
+          .map((failure) => (failure as Error)?.message ?? String(failure))
+          .join("; ");
+        throw new BMapError(
+          "BMAP_SDK_CALL_FAILED",
+          `disposeAutocomplete 有 ${failures.length} 项 Driver 侧清理未完成（其余步骤已尽力执行；` +
+            `再次调用只会重试未完成的那一步）: ${details}`,
+          { cause: failures[0], engine: "jsapi-v4" },
+        );
       }
-      sdkCall("Autocomplete.dispose", () => callRequired(raw, "dispose"));
-      sdkDisposed.add(raw);
     },
 
     /* -------------------------------------------------------- 归一化调用面 */

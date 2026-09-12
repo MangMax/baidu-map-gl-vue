@@ -132,6 +132,20 @@ describe("v4 装配后的跨 facet 不变式（#23）", () => {
     expect(driver.capabilities.supports("service.track-animation")).toBe(false);
   });
 
+  it("装配后释放服务实例时，EventDriver 持有的订阅也必须释放（events 已注入 Service Facet）", () => {
+    const el = document.createElement("input");
+    el.readOnly = true;
+    document.body.appendChild(el);
+    const handle = driver.services.createAutocomplete({ input: el });
+    const raw = fake.createdAutocompletes[0]!;
+
+    driver.events.on(handle, "confirm", vi.fn());
+    expect(raw.getListenerCount()).toBe(1);
+
+    driver.services.disposeAutocomplete(handle);
+    expect(raw.getListenerCount(), "dispose 之后 Driver 侧订阅必须已释放").toBe(0);
+  });
+
   it("销毁全景时释放 EventDriver 持有的订阅（否则 raw 对象与业务回调被长期持有）", () => {
     const container = document.createElement("div");
     const viewer = driver.panorama.create(container);

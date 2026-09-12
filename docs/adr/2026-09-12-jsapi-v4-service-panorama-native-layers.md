@@ -667,6 +667,24 @@ P2-1 的「通用入口对 Geocoder 什么都不做」与复审复现一致（�
 验证：`pnpm test:unit` **91 files / 987 tests**；typecheck / build / 边界扫描（含 `--src` 全树）/
 `check:public-dts` / 能力矩阵 / manifest 全绿。
 
+## 外部评审第九轮（PR #63，基线 `00b5534`）
+
+上轮两项（接口收窄、SDK 清理失败可重试）已关闭；本轮 1 项 P2 + 1 条补充加固：
+
+| 发现 | 处置 |
+| --- | --- |
+| P2 专用释放入口**漏了 EventDriver 的订阅**：`disposeAutocomplete()` 解绑了输入监听、失败了在飞调用、也调了 SDK `dispose()`，但没有 `events.release(handle)`；Service Facet 的装配也没有注入 `events`。EventDriver 的 `groups` 是强引用 `Map<rawTarget, …>`，SDK 清空自己的监听器**不会**删除这份记录——反复创建/订阅/释放会持续累积 | 与 Map / Panorama 同源：`createJsapiV4ServiceDriver` 现在接收**同一份** `events`（装配点传入），`disposeAutocomplete` 按「业务事件先下线、再销毁 SDK 对象」的顺序调用 `events.release(handle)`；解绑失败不阻断 SDK 销毁，最后**汇总抛出**（重试语义保留：Driver 侧清理每次都跑、SDK 步骤成功才记账） |
+| 补充（未列为 P2）：SDK 销毁钩子里**重入** `disposeAutocomplete()` 会让 SDK 销毁执行两次 | 加 `disposing`（清理在飞）标记，与 Map / Panorama 的重入保护同源；Fake 增加 `onDispose` 钩子把这条路径固定成回归用例 |
+
+回归用例 +3：订阅 `confirm` / `highlight` → 释放 → Driver 分组归零（**反复三轮**）、装配后（跨 Facet）
+释放同样归零、SDK 销毁钩子重入只销毁一次。
+
+红/绿是实测的：把实现回退到 `00b5534`，订阅用例报 `第 1 轮释放后订阅必须归零: expected 2 to be +0`，
+重入用例同样失败；恢复后 58/58 转绿。
+
+验证：`pnpm test:unit` **91 files / 990 tests**；typecheck / build / 边界扫描（含 `--src` 全树）/
+`check:public-dts` / 能力矩阵 / manifest 全绿。
+
 ## 参考
 
 - issue #23 `[M3A2] 实现 Service/Panorama/Native Layer Facet 并完善 Driver Contract`
