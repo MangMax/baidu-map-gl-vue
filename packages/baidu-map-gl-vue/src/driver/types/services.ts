@@ -251,15 +251,23 @@ export interface ServiceInvocationDriver {
   ): ServiceCall<PlaceSuggestion[]>;
 }
 
-/** JSAPI 4.0 的 Service Facet：创建面 + 归一化调用面 + Driver 侧释放入口。 */
+/** JSAPI 4.0 的 Service Facet：创建面 + 归一化调用面 + **Autocomplete 专用**释放入口。 */
 export interface JsapiV4ServiceDriver extends ServiceDriver, ServiceInvocationDriver {
   /**
-   * 释放服务实例（幂等）：解绑 Driver 侧资源（输入活动监听、把在飞调用显式失败）并调用 SDK 自身的
-   * `dispose()`（实例没有该成员时跳过）。
+   * 释放 **Autocomplete** 服务实例（幂等）。
    *
-   * **正常结束使用时也必须调用**：输入框通常比实例活得久，Driver 挂在它上面的监听器不会因为 SDK
-   * 实例被回收而消失——不释放就会让监听器长期持有旧实例与闭包（反复创建/销毁会持续累积）。
-   * 释放后该句柄不再可用于程序化检索。
+   * 语义：① 停止接受该实例的业务调用；② 解绑 Driver 侧资源（输入活动监听）并把在飞的 `suggest()`
+   * 显式失败；③ 调用 SDK 自身的 `dispose()`——**只有成功才记账**，抛错时调用方收到错误，句柄仍保持
+   * 不可用，再次调用会**重试**未完成的 SDK 清理。
+   *
+   * **为什么是专用入口、而不是通用 `dispose(ServiceHandle<string>)`**：契约必须与实现一致。目前只有
+   * Autocomplete 在 Driver 侧持有资源（输入活动监听 + 待回包队列），其余服务（Geocoder / Boundary /
+   * Convertor / LocalCity / Geolocation）的调用没有登记在飞请求、也没有释放标记——通用入口会承诺
+   * 「在飞调用会失败、释放后拒绝新调用」而实现做不到。统一的服务生命周期（在飞请求登记 + 取消）
+   * 属 M7（#38 的 ServiceSpec / AsyncTaskController）。
+   *
+   * 只用输入框联想 UI（不调用 `suggest()`）的实例也**应该**在结束使用时调用它：输入框通常比实例
+   * 活得久，Driver 挂在它上面的监听器不会随 SDK 实例被回收而消失。
    */
-  dispose(handle: ServiceHandle<string>): void;
+  disposeAutocomplete(handle: ServiceHandle<"service:autocomplete">): void;
 }

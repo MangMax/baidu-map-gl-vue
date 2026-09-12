@@ -307,6 +307,8 @@ export class FakeV4Autocomplete {
   respond = true
   /** 回包是否带 `AutocompleteResult.keyword`（官方声明为可选，运行时是否填充未承诺） */
   includeKeyword = true
+  /** 下一次 `dispose()` 抛出的错误（注入 SDK 销毁失败，用后即清） */
+  failNextDispose: Error | null = null
 
   readonly options: Record<string, unknown>
 
@@ -328,5 +330,10 @@ export class FakeV4Autocomplete {
   /** 官方 `Autocomplete#dispose()`：Driver 的 dispose 入口会调用它 */
   dispose(): void {
     this.callLog.push('dispose')
+    const failure = this.failNextDispose
+    if (failure) {
+      this.failNextDispose = null
+      throw failure
+    }
   }
 }

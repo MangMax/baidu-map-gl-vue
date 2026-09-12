@@ -32,7 +32,7 @@ import { toPlainPoint } from "../normalize/results";
 import type { Capability } from "../capability/catalog";
 import type { CapabilityRegistry } from "../capability/registry";
 import type { GeometryDriver, Point } from "../types/geometry";
-import type { MapHandle, SdkHandle, ServiceHandle } from "../types/handles";
+import { HANDLE_BRAND, type MapHandle, type SdkHandle, type ServiceHandle } from "../types/handles";
 import type {
   AutocompleteOptions,
   BoundaryRequest,
@@ -332,8 +332,15 @@ export function createJsapiV4ServiceDriver(
    */
   const boundInput = new WeakMap<object, unknown>();
   const lostExclusivity = new WeakSet<object>();
-  /** 已被 `dispose()` 释放的实例：此后一律拒绝（释放时会把在飞调用显式失败）。 */
+  /** 已被 `disposeAutocomplete()` 释放的实例：此后一律拒绝（释放时会把在飞调用显式失败）。 */
   const disposed = new WeakSet<object>();
+  /**
+   * SDK 侧 `dispose()` **已成功执行**的实例。
+   *
+   * 与 `disposed` 分开记账（八轮复审 P2-2）：SDK 销毁抛错时句柄必须保持「不再接受业务调用」，
+   * 但**不能**因此跳过后续重试——只有成功才记账，失败留给下一次 `disposeAutocomplete()` 重试。
+   */
+  const sdkDisposed = new WeakSet<object>();
   /**
    * 绑定输入框上的「用户输入活动」监听（`input` 事件）——**释放路径见 `releaseInputWatcher`**。
    *
@@ -417,7 +424,7 @@ export function createJsapiV4ServiceDriver(
   /** 每次调用 / 每次回包都要跑的独占校验；返回失败原因（null 表示仍然独占）。 */
   const exclusivityFailure = (raw: Record<string, unknown>): string | null => {
     if (disposed.has(raw)) {
-      return "该服务实例已被 dispose() 释放：请重建实例后再做程序化检索";
+      return "该服务实例已被 disposeAutocomplete() 释放：请重建实例后再做程序化检索";
     }
     if (lostExclusivity.has(raw)) {
       return `该 Autocomplete 实例已失去回调通道独占（输入框曾可输入、或收到过用户输入）：${EXCLUSIVITY_LOST_HINT}`;
@@ -599,35 +606,54 @@ export function createJsapiV4ServiceDriver(
     },
 
     /**
-     * 释放服务实例（Driver 侧释放入口，七轮复审 P2-1）。
+     * 释放 **Autocomplete** 服务实例（Driver 侧释放入口，七/八轮复审）。
      *
-     * 官方 `Autocomplete` 有 `dispose()`，但它不知道 Driver 另外挂在输入框上的监听器；**释放必须由
-     * Driver 自己提供入口**，否则「输入框一直保持只读、实例正常结束使用」这条路径上监听器永远不会
-     * 解绑（输入框通常比实例活得久 → 监听器长期持有旧 raw 与闭包，反复创建/销毁会持续累积）。
+     * 为什么是专用入口而不是通用 `dispose(ServiceHandle<string>)`（八轮复审 P2-1）：契约必须与实现
+     * 一致。当前只有 Autocomplete 在 Driver 侧持有资源（输入活动监听 + 待回包队列），其余服务
+     * （Geocoder / Boundary / Convertor …）的调用**没有登记在飞请求、也没有释放标记**——一个通用的
+     * `dispose()` 会承诺「在飞调用会失败、释放后拒绝新调用」，而实现做不到。统一的服务生命周期
+     * （在飞请求登记 + 取消）属 M7（#38 的 ServiceSpec / AsyncTaskController）。
      *
-     * 语义：① 幂等；② 先释放 Driver 侧资源（输入活动监听 + 把在飞调用显式失败），再调用 SDK 自身的
-     * `dispose()`（实例没有该成员时跳过，不算错误）；③ 释放后该句柄不再可用于程序化检索。
+     * 语义：① 幂等；② **Driver 侧清理**（解绑输入活动监听 + 把在飞建议调用显式失败）每次都执行
+     * （幂等）；③ **SDK 自身的 `dispose()` 只有成功才记账**：抛错时调用方会收到错误，而句柄保持
+     * 「不再接受业务调用」，再次 dispose 会**重试**未完成的 SDK 清理（八轮复审 P2-2）。
      */
-    dispose(handle: ServiceHandle<string>) {
-      const raw = resolve<Record<string, unknown>>(handle, "ServiceDriver.dispose");
-      if (disposed.has(raw)) return;
-      disposed.add(raw);
+    disposeAutocomplete(handle: ServiceHandle<"service:autocomplete">) {
+      const raw = resolve<Record<string, unknown>>(handle, "ServiceDriver.disposeAutocomplete");
+      // 运行期种类校验（类型是编译期契约，JS 调用方仍需在边界拦住）：与 layers / controls /
+      // native-layers 同源，按 Handle 品牌判断，避免把别的服务句柄悄悄当 Autocomplete 处理
+      const brand = String(handle[HANDLE_BRAND]);
+      if (brand !== "service:autocomplete") {
+        throw new BMapError(
+          "BMAP_INVALID_ARGUMENT",
+          `disposeAutocomplete 只接受 createAutocomplete 的句柄，收到 "${brand}"；` +
+            "其他服务当前没有 Driver 侧资源需要释放（统一释放入口属 M7 #38）",
+          { engine: "jsapi-v4" },
+        );
+      }
 
+      disposed.add(raw); // 先停止接受业务调用（这一个是「一旦释放就不再恢复」的状态）
+
+      // Driver 侧清理：幂等，重试时重复执行没有代价
       releaseInputWatcher(raw);
       const queue = pendingSuggest.get(raw) ?? [];
       pendingSuggest.delete(raw);
       for (const entry of queue) {
         entry.settle.failed({
           code: "BMAP_SERVICE_FAILED",
-          message: "该服务实例在请求进行中被 dispose() 释放",
+          message: "该服务实例在请求进行中被 disposeAutocomplete() 释放",
         });
       }
 
-      // SDK 自身的释放（官方 Autocomplete#dispose）：没有该成员的实例直接跳过
+      // SDK 自身的释放（官方 Autocomplete#dispose）：**成功才记账**，失败留给下一次重试
+      if (sdkDisposed.has(raw)) return;
       const disposeMember = readNamespaceMember(raw, "dispose");
-      if (typeof disposeMember === "function") {
-        sdkCall("Service.dispose", () => callRequired(raw, "dispose"));
+      if (typeof disposeMember !== "function") {
+        sdkDisposed.add(raw); // 没有该成员 ⇒ 视为已完成（不是错误）
+        return;
       }
+      sdkCall("Autocomplete.dispose", () => callRequired(raw, "dispose"));
+      sdkDisposed.add(raw);
     },
 
     /* -------------------------------------------------------- 归一化调用面 */

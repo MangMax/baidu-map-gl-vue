@@ -632,20 +632,21 @@ describe("v4 Service Facet：Autocomplete 的回包归属（PR #63 复审 P2-1�
   });
 
   // 七轮复审 P2-1：监听器必须随「正常销毁」释放，不能只在失去独占时释放。
-  it("dispose() 解绑输入活动监听（输入框留存、反复创建/销毁不累积）", async () => {
+  // 八轮复审 P2-1：入口收窄为 Autocomplete 专用（`disposeAutocomplete`），并在运行期校验句柄种类。
+  it("disposeAutocomplete() 解绑输入活动监听（输入框留存、反复创建/销毁不累积）", async () => {
     const el = document.createElement("input");
     el.readOnly = true;
     document.body.appendChild(el);
     const removeSpy = vi.spyOn(el, "removeEventListener");
 
     const handles = [0, 1, 2].map(() => services.createAutocomplete({ input: el }));
-    for (const handle of handles) services.dispose(handle);
+    for (const handle of handles) services.disposeAutocomplete(handle);
 
     expect(removeSpy).toHaveBeenCalledTimes(3);
     expect(removeSpy.mock.calls.every(([type]) => type === "input")).toBe(true);
   });
 
-  it("dispose() 幂等：释放后程序化检索被拒绝，在飞调用显式失败，SDK dispose 被调用", async () => {
+  it("disposeAutocomplete() 幂等：释放后程序化检索被拒绝，在飞调用显式失败，SDK dispose 被调用", async () => {
     const el = document.createElement("input");
     el.readOnly = true;
     document.body.appendChild(el);
@@ -656,14 +657,48 @@ describe("v4 Service Facet：Autocomplete 的回包归属（PR #63 复审 P2-1�
     autocomplete.pois = [{ business: "NEW", province: "北京市" }];
     const call = services.suggest(handle, "K");
 
-    services.dispose(handle);
+    services.disposeAutocomplete(handle);
     expect((await call.result).status).toBe("failed");
-    expect(() => services.dispose(handle)).not.toThrow(); // 幂等
+    expect(() => services.disposeAutocomplete(handle)).not.toThrow(); // 幂等
 
     const after = await services.suggest(handle, "K2").result;
     expect(after.status).toBe("failed");
     expect(after.error?.message).toContain("dispose");
     expect(autocomplete.callLog).toContain("dispose");
+  });
+
+  it("别的服务句柄传进专用释放入口：类型上不允许，运行期也拦下来（不悄悄当成 Autocomplete）", () => {
+    const geocoder = services.createGeocoder();
+
+    expect(() =>
+      // @ts-expect-error 专用入口只接受 Autocomplete 句柄（类型契约；此处验证运行期兜底）
+      services.disposeAutocomplete(geocoder),
+    ).toThrowError(expect.objectContaining({ code: "BMAP_INVALID_ARGUMENT" }));
+  });
+
+  // 八轮复审 P2-2：SDK 销毁抛错时，句柄必须保持「不再接受业务调用」，但**不能**因此
+  // 让后续 dispose 直接短路——否则底层资源永远失去重试清理的入口。
+  it("SDK dispose 抛错：句柄立即停用，且再次调用会重试未完成的 SDK 清理", async () => {
+    const el = document.createElement("input");
+    el.readOnly = true;
+    document.body.appendChild(el);
+    const handle = services.createAutocomplete({ input: el });
+    const autocomplete = fake.createdAutocompletes[0];
+    autocomplete.queue.auto = false;
+
+    autocomplete.pois = [{ business: "NEW", province: "北京市" }];
+    const call = services.suggest(handle, "K");
+
+    autocomplete.failNextDispose = new TypeError("Cannot read properties of undefined");
+    expect(() => services.disposeAutocomplete(handle)).toThrow();
+
+    // ① 句柄已停用（新调用被拒绝）、② 在飞调用已被显式失败
+    expect((await services.suggest(handle, "K3").result).status).toBe("failed");
+    expect((await call.result).status).toBe("failed");
+
+    // ③ 再次调用会重试 SDK 清理，并且这次成功
+    expect(() => services.disposeAutocomplete(handle)).not.toThrow();
+    expect(autocomplete.callLog.filter((entry) => entry === "dispose")).toHaveLength(2);
   });
 
   it("收到不属于任何程序化请求的回包（用户在输入框里打字）不会污染后续调用（也不消费槽位）", async () => {

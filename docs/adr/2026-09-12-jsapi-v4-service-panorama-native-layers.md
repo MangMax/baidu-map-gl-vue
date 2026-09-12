@@ -648,6 +648,25 @@ Fake 为此加了 `flushOne(index)`（按索引触发单个回包）与 `include
 验证：`pnpm test:unit` **91 files / 985 tests**；typecheck / build / 边界扫描（含 `--src` 全树）/
 `check:public-dts` / 能力矩阵 / manifest 全绿。
 
+## 外部评审第八轮（PR #63，基线 `d97de8e`）
+
+上轮的输入活动监听与正常释放已通过；本轮两项都在新加的 `dispose()` 上：
+
+| 发现 | 处置 |
+| --- | --- |
+| P2-1 `dispose(handle: ServiceHandle<string>)` **契约过宽**：只终止了 Autocomplete 的 `pendingSuggest`，而 `disposed` 只在 Autocomplete 的独占检查里读取——Geocoder 等服务的在飞调用仍会成功回写、释放后仍能再次调用。公开类型却承诺了通用释放 | **收窄为 Autocomplete 专用**：`disposeAutocomplete(handle: ServiceHandle<"service:autocomplete">)`。类型上禁止传其它服务句柄，运行期再按 Handle 品牌校验一次（与 `layers` / `controls` / `native-layers` 同源），传错时抛 `BMAP_INVALID_ARGUMENT` 并说明「其他服务当前没有 Driver 侧资源；统一释放入口属 M7 #38」。类型文档写清了这个边界与原因 |
+| P2-2 「先记账再调 SDK」：`disposed.add(raw)` 在 SDK `dispose()` 之前，SDK 抛错后再次调用直接短路 ⇒ 底层资源失去重试清理的入口 | 把状态拆开：`disposed`（一旦释放就不再接受业务调用，**不因失败回滚**）+ `sdkDisposed`（**只有 SDK dispose 成功才记账**）。Driver 侧清理（解绑监听 + 在飞调用显式失败）幂等、每次都跑；SDK 清理失败时抛错给调用方，下次 `disposeAutocomplete()` **重试**未完成的那一步 |
+
+P2-2 的红/绿是实测的：临时把记账顺序还原成旧写法，用例 `SDK dispose 抛错：…再次调用会重试未完成的 SDK 清理`
+报 `expected [ 'dispose' ] to have a length of 2 but got 1`（SDK 只被尝试了一次），恢复后转绿。
+
+P2-1 的「通用入口对 Geocoder 什么都不做」与复审复现一致（代码路径上 `pendingSuggest` 无该实例、
+`disposed` 无人读、Geocoder 也没有 SDK `dispose()` 成员 ⇒ 静默返回）；现在这个用法在类型上就不成立，
+运行期还会显式拒绝，并新增对应用例。
+
+验证：`pnpm test:unit` **91 files / 987 tests**；typecheck / build / 边界扫描（含 `--src` 全树）/
+`check:public-dts` / 能力矩阵 / manifest 全绿。
+
 ## 参考
 
 - issue #23 `[M3A2] 实现 Service/Panorama/Native Layer Facet 并完善 Driver Contract`
