@@ -45,8 +45,10 @@ export function normalizeProvider(provider: AnyBMapProviderLike): NormalizedProv
 /**
  * 默认 Driver 工厂：只接受 `jsapi-v4`。
  *
- * `createJsapiV4Driver` 目前只提供契约（Facet Driver 本体属 M3A.2 / #19~#23）；
- * M3A.3（#25）默认 cutover 之前，组件默认路径走 `withMigrationDriver()`。
+ * M3A.2 收口（#23）已把 `createJsapiV4Driver` 装配成真实 Driver（Map / Overlay / Control /
+ * Layer / Service / Panorama / Native Layer 七面齐全），因此本工厂不再是「明确失败」的占位。
+ * `createBMapClient()` 的默认路径现在会装出可用的 v4 Client；组件默认路径的切换（默认
+ * Provider / Playground / Docs）仍是 M3A.3（#25）的事。
  */
 export const jsapiV4DriverFactory: BMapDriverFactory = (input) => {
   const loaded = assertLoadedJsapiV4(input.loaded);

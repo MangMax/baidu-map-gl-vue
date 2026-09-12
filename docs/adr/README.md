@@ -12,6 +12,7 @@
 | [2026-09-11](./2026-09-11-jsapi-v4-map-facet.md) | v4 Map Facet（构造选项映射 / 初次视野 / 交互开关 / 释放语义） | Accepted |
 | [2026-09-11](./2026-09-11-jsapi-v4-overlay-facet.md) | v4 Overlay Facet（覆盖物构造 / mutable-recreate 分类 / InfoWindow 与 Target） | Accepted |
 | [2026-09-11](./2026-09-11-jsapi-v4-control-layer-facets.md) | v4 Control / Layer Facet（停靠常量表 / option 更新分类 / 统一 addLayer 与 Target） | Accepted |
+| [2026-09-12](./2026-09-12-jsapi-v4-service-panorama-native-layers.md) | v4 Service / Panorama / Native Layer Facet（归一化服务调用 / 运行时注入探测 / 装配收口） | Accepted |
 
 ## 约定
 

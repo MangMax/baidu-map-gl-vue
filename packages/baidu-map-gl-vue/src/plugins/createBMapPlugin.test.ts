@@ -17,6 +17,7 @@ import * as manifestComponents from "../components/index";
 import { DEFAULT_VERSION } from "../core/loader/url";
 import { defaultClientDefinitionKey } from "../core/context/client";
 import { createBMapClient } from "../client/createBMapClient";
+import { createFakeBMapV4 } from "../../../test-utils";
 import { createLoadedJsapiV4 } from "../core/loader/providers";
 import type { CreateBMapClientOptions } from "../client/types";
 import { logger } from "../core/logger";
@@ -63,7 +64,7 @@ describe("createBMapPlugin", () => {
               versionSource: "url",
               options: { ak: "test" },
               fingerprint: "fp-v4",
-              namespace: { Map: class {}, Point: class {}, Marker: class {} },
+              namespace: createFakeBMapV4().namespace,
               loadedAt: 0,
             }),
         },
@@ -71,12 +72,12 @@ describe("createBMapPlugin", () => {
     );
     app.mount(document.createElement("div"));
 
-    // 分派必须落在 v4 路径（Facet Driver 未实现 ⇒ BMAP_CAPABILITY_UNSUPPORTED），
-    // 而不是被当成 legacy/被默认 legacy 工厂拒绝（那会是 BMAP_SDK_ENGINE_MISMATCH）
-    await expect(createBMapClient(captured.definition!)).rejects.toMatchObject({
-      code: "BMAP_CAPABILITY_UNSUPPORTED",
-      message: expect.stringContaining("M3A.2"),
-    });
+    // 分派必须落在 v4 路径，而不是被当成 legacy（那会是 BMAP_SDK_ENGINE_MISMATCH）。
+    // #23 装配了 `createJsapiV4Driver`，因此这里从「v4 路径明确失败」改成**正向**断言：
+    // 同一条 definition 现在能装出 v4 Client。
+    const client = await createBMapClient(captured.definition!);
+    expect(client.engine).toBe("jsapi-v4");
+    expect(client.driver.capabilities.supports("overlay.marker")).toBe(true);
   });
 
   it("按需导入与全局注册指向同一组件实现（Manifest 单一事实源）", async () => {

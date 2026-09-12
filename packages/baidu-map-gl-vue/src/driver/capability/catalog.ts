@@ -66,6 +66,9 @@ export type Capability =
   | "layer.mvt"
   | "layer.dom"
   | "layer.cluster"
+  | "layer.point"
+  | "layer.heatmap"
+  | "layer.track-line"
   // Service
   | "service.local-search"
   | "service.autocomplete"
@@ -497,6 +500,38 @@ export const CAPABILITY_CATALOG: Record<Capability, CapabilityDescriptor> = {
     description: "聚合图层；优先使用 SDK 原生能力，缺失时由项目提供 fallback 聚类",
     engines: ALL,
     status: "extended",
+    runtimeOnly: true,
+  },
+  // M3A2-SERVICES-NATIVE（#23）补齐原生数据图层里缺少的三个能力槽位。
+  // 三者都是「4.0 运行时公开、4.0.4 类型包没有类声明」的扩展 API：`runtimeOnly: true`
+  // 表达「存在性只能在运行时按结构探测」，`experimental` 表达「接口面可能变」（官方把这
+  // 几个类归在「扩展 API」下，且可视化实现是**异步注入**的）。
+  "layer.point": {
+    id: "layer.point",
+    family: "layer",
+    description: "原生点图层（PointLayer）；支持形状或图标，属扩展 API",
+    rawMembers: ["PointLayer"],
+    engines: V4_ONLY,
+    status: "experimental",
+    runtimeOnly: true,
+  },
+  "layer.heatmap": {
+    id: "layer.heatmap",
+    family: "layer",
+    description: "热力图（Heatmap）；按权重渲染点密度，属扩展 API",
+    rawMembers: ["Heatmap"],
+    engines: V4_ONLY,
+    status: "experimental",
+    runtimeOnly: true,
+  },
+  "layer.track-line": {
+    id: "layer.track-line",
+    family: "layer",
+    description:
+      "轨迹线（TrackLine）；数据的绘制/播放/跟随，属扩展 API；播放控制与迁移结论见 M8（#43）",
+    rawMembers: ["TrackLine"],
+    engines: V4_ONLY,
+    status: "experimental",
     runtimeOnly: true,
   },
 

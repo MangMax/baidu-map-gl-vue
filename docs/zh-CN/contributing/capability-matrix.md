@@ -5,7 +5,7 @@
 > 由 `packages/baidu-map-gl-vue/src/driver/capability/catalog.ts` 生成，请勿手工编辑。
 > 更新 Catalog 后运行 `pnpm generate:capability-matrix`，CI 用 `--check` 校验无漂移。
 
-能力总数：**61**
+能力总数：**64**
 
 ## 状态说明
 
@@ -13,7 +13,7 @@
 | --- | --- | --- |
 | `native` | SDK 原生能力，直接映射官方 API | 44 |
 | `extended` | 项目在 SDK 之上的扩展能力（需要额外实现或组合） | 4 |
-| `experimental` | 实验性能力，API 可能变更或移除 | 11 |
+| `experimental` | 实验性能力，API 可能变更或移除 | 14 |
 | `unsupported` | 明确不支持；`supports()` 恒为 false（用户 override 除外） | 2 |
 
 ## 家族分布
@@ -22,7 +22,7 @@
 | --- | --- |
 | `map` | 14 |
 | `overlay` | 15 |
-| `layer` | 12 |
+| `layer` | 15 |
 | `service` | 13 |
 | `panorama` | 3 |
 | `runtime` | 4 |
@@ -74,6 +74,9 @@
 | layer | `layer.mvt` | experimental | — | — | — | ✓ | MVTLayer | — | MVT 矢量瓦片图层（MVTLayer） |
 | layer | `layer.dom` | experimental | — | — | — | ✓ | DOMLayer | — | DOM 图层（DOMLayer） |
 | layer | `layer.cluster` | extended | ✓ | ✓ | ✓ | ✓ | — | — | 聚合图层；优先使用 SDK 原生能力，缺失时由项目提供 fallback 聚类 |
+| layer | `layer.point` | experimental | ✓ | — | — | ✓ | PointLayer | — | 原生点图层（PointLayer）；支持形状或图标，属扩展 API |
+| layer | `layer.heatmap` | experimental | ✓ | — | — | ✓ | Heatmap | — | 热力图（Heatmap）；按权重渲染点密度，属扩展 API |
+| layer | `layer.track-line` | experimental | ✓ | — | — | ✓ | TrackLine | — | 轨迹线（TrackLine）；数据的绘制/播放/跟随，属扩展 API；播放控制与迁移结论见 M8（#43） |
 | service | `service.local-search` | native | — | ✓ | ✓ | ✓ | LocalSearch | — | 本地检索（LocalSearch） |
 | service | `service.autocomplete` | native | — | ✓ | ✓ | ✓ | Autocomplete | — | 输入提示（Autocomplete） |
 | service | `service.driving-route` | native | — | ✓ | ✓ | ✓ | DrivingRoute | — | 驾车路线规划（DrivingRoute） |

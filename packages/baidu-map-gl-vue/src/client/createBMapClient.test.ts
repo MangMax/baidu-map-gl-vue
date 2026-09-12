@@ -1,5 +1,6 @@
 import { describe, it, expect, vi } from "vitest";
 import { createBMapClient, jsapiV4DriverFactory, normalizeProvider } from "./createBMapClient";
+import { createFakeBMapV4 } from "../../../test-utils";
 import { createLoadedJsapiV4, type LoadedJsapiV4 } from "../core/loader/providers";
 import { BMapError } from "../core/errors/BMapError";
 import { LIBRARY_VERSION } from "../version";
@@ -7,11 +8,15 @@ import type { BMapDriver, BMapEngine } from "../driver/types/bmap";
 import type { CapabilityRegistry } from "../driver/capability/registry";
 import type { BMapDriverFactory } from "./types";
 
-const v4Namespace = {
-  Map: class {},
-  Point: class {},
-  Marker: class {},
-};
+/**
+ * v4 命名空间。
+ *
+ * M3A2-SERVICES-NATIVE（#23）装配了默认 Driver 工厂之后，默认路径需要**完整的** v4
+ * 命名空间（`Map/Point/Pixel/Size/Bounds`）才能装出 Driver——不再是「随便给个对象，
+ * 反正工厂会抛」的时代了。用 Fake v4 命名空间而不是手写最小对象，是为了让本文件的
+ * 默认路径断言与其它 v4 测试跑在同一套形状上。
+ */
+const v4Namespace = createFakeBMapV4().namespace;
 
 function loadedV4(overrides: Partial<{ version: string; fingerprint: string }> = {}): LoadedJsapiV4 {
   return createLoadedJsapiV4({
@@ -39,20 +44,43 @@ function stubDriver(
 }
 
 describe("createBMapClient（默认 v4 收口）", () => {
-  it("默认注入 createJsapiV4Driver，因此默认路径在 M3A.2 之前明确失败", async () => {
-    const client = createBMapClient({
+  it("默认注入 createJsapiV4Driver：默认路径装出可用的 v4 Client", async () => {
+    // #23 之前这里是「明确失败」（抛 BMAP_CAPABILITY_UNSUPPORTED，消息含 M3A.2）——
+    // Facet 装配完成后，同一条调用必须真的装出 Driver。断言保留「engine + Facet 齐全」，
+    // 这样 #25 的默认 Provider 切换前就有可回归的基线。
+    const client = await createBMapClient({
       provider: { load: async () => loadedV4() },
       loadOptions: { ak: "test-ak-1234" },
     });
-    await expect(client).rejects.toThrow(BMapError);
+
+    expect(client.engine).toBe("jsapi-v4");
+    expect(client.driver.engine).toBe("jsapi-v4");
+    expect(client.driver.capabilities.supports("overlay.marker")).toBe(true);
+    expect(client.driver.services.createGeocoder().raw).toBeTruthy();
+  });
+
+  it("v4 命名空间不完整时（Provider 声明了 v4 但缺成员）按 SDK 边界失败", async () => {
     await expect(
       createBMapClient({
-        provider: { load: async () => loadedV4() },
+        provider: {
+          load: async () =>
+            createLoadedJsapiV4({
+              providerId: "baidu-jsapi-v4",
+              mode: "jsonp",
+              version: "4.0",
+              versionSource: "url",
+              options: { ak: "test-ak-1234" },
+              fingerprint: "fp-v4-partial",
+              // 缺 Pixel/Size/Bounds：加载成功但命名空间不可用 → 不可重试的调用失败
+              namespace: { Map: class {}, Point: class {} },
+              loadedAt: 0,
+            }),
+        },
         loadOptions: {},
       }),
     ).rejects.toMatchObject({
-      code: "BMAP_CAPABILITY_UNSUPPORTED",
-      message: expect.stringContaining("M3A.2"),
+      code: "BMAP_SDK_CALL_FAILED",
+      message: expect.stringContaining("Pixel"),
     });
   });
 

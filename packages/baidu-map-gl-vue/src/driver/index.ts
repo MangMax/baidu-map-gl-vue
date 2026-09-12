@@ -81,10 +81,51 @@ export type {
 } from "./types/overlays";
 export type { ControlKind, ControlOptions, CopyrightEntry, ControlDriver } from "./types/controls";
 export type { LayerKind, LayerDriver } from "./types/layers";
-export type { AutocompleteOptions, ServiceDriver } from "./types/services";
-export type { PanoramaDriver } from "./types/panorama";
+export type {
+  NativeLayerData,
+  NativeLayerDriver,
+  NativeLayerFeatureKeys,
+  NativeLayerFeatureState,
+  NativeLayerHandle,
+  NativeLayerKind,
+  NativeLayerOperation,
+  NativeLayerPick,
+  NativeLayerZoomRange,
+} from "./types/native-layers";
+export type {
+  AutocompleteOptions,
+  BoundaryRequest,
+  ConvertorRequest,
+  CoordinateFromType,
+  CoordinateToType,
+  GeocodeRequest,
+  GeocodedAddress,
+  GeolocationAddressInfo,
+  GeolocationFix,
+  GeolocationOptions,
+  JsapiV4ServiceDriver,
+  LocalCityFix,
+  PlaceSuggestion,
+  ReverseGeocodeRequest,
+  ServiceCall,
+  ServiceCallOptions,
+  ServiceCallSettle,
+  ServiceCallStatus,
+  ServiceDriver,
+  ServiceErrorInfo,
+  ServiceInvocationDriver,
+  ServiceResult,
+} from "./types/services";
+export type {
+  PanoramaDataInfo,
+  PanoramaDriver,
+  PanoramaHandle,
+  PanoramaPov,
+  PanoramaServiceHandle,
+  PanoramaViewerDriver,
+} from "./types/panorama";
 export type { MapMouseEvent, EventDriver } from "./types/events";
-export type { BMapDriver, BMapEngine } from "./types/bmap";
+export type { BMapDriver, BMapEngine, JsapiV4Driver } from "./types/bmap";
 export type {
   Capability,
   CapabilityDescriptor,

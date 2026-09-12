@@ -1,0 +1,301 @@
+/**
+ * v4 Native Layer Facet 单测（M3A2-SERVICES-NATIVE / issue #23）
+ *
+ * 覆盖 issue「测试要求」的 Native Layer 部分：**数据、显隐、状态、拾取、remove**，
+ * 外加 `supports()` 与实现的一致性（「不支持的操作必须显式失败」这条不变式不能只写在注释里）。
+ */
+import { describe, it, expect, beforeEach } from "vitest";
+import { createFakeBMapV4, type FakeBMapV4 } from "../../../../test-utils";
+import type { FakeV4LineLayer, FakeV4PointLayer } from "../../../../test-utils";
+import {
+  callNativeLayerOperation,
+  NATIVE_LAYER_FACET_KINDS as KINDS,
+  NATIVE_LAYER_FACET_OPERATIONS as OPERATIONS,
+} from "../../../../test-utils/driver-contract";
+import { createCapabilityRegistry } from "../capability/registry";
+import type { CapabilityRegistry } from "../capability/registry";
+import type { UnsupportedBehavior } from "../capability/unsupported";
+import type { LayerHandle } from "../types/handles";
+import type { NativeLayerKind } from "../types/native-layers";
+import { createJsapiV4HandleRegistry } from "./registry";
+import type { JsapiV4HandleRegistry } from "./registry";
+import { createJsapiV4NativeLayerDriver } from "./native-layers";
+import type { NativeLayerDriver } from "../types/native-layers";
+
+let fake: FakeBMapV4;
+let registry: JsapiV4HandleRegistry;
+let capabilities: CapabilityRegistry;
+let layers: NativeLayerDriver;
+
+function buildDriver(unsupported: UnsupportedBehavior = "throw"): NativeLayerDriver {
+  capabilities = createCapabilityRegistry({
+    engine: "jsapi-v4",
+    version: fake.namespace.VERSION,
+    rawSdk: fake.namespace,
+    unsupported,
+  });
+  return createJsapiV4NativeLayerDriver({ rawSdk: fake.namespace, capabilities, registry });
+}
+
+function mapHandle() {
+  return registry.adopt("map", new fake.namespace.Map(document.createElement("div")));
+}
+
+beforeEach(() => {
+  fake = createFakeBMapV4();
+  registry = createJsapiV4HandleRegistry();
+  layers = buildDriver();
+});
+
+describe("v4 Native Layer Facet：八种图层", () => {
+  it.each(KINDS)("%s 可创建，句柄品牌带种类", (kind) => {
+    const layer = layers.create(kind);
+    expect(layer.raw).toBeTruthy();
+    expect(registry.resolve(layer)).toBeTruthy();
+    expect(fake.createdNativeLayers).toHaveLength(1);
+  });
+
+  it("未知 kind 直接失败（不做「默认当成某个图层」的兜底）", () => {
+    expect(() => layers.create("bogus" as NativeLayerKind)).toThrowError(
+      expect.objectContaining({ code: "BMAP_INVALID_ARGUMENT" }),
+    );
+  });
+
+  it("runtime-only 图层按「加载后就绪」探测：注入前失败、注入后同一 Driver 可创建", () => {
+    const namespace = fake.namespace as unknown as Record<string, unknown>;
+    const original = namespace.PointLayer;
+    delete namespace.PointLayer;
+    try {
+      expect(() => layers.create("point")).toThrowError(
+        expect.objectContaining({ code: "BMAP_CAPABILITY_UNSUPPORTED" }),
+      );
+      // 官方：可视化实现是**异步注入**的——同一个 Driver 不应在构造期冻结结论
+      namespace.PointLayer = original;
+      expect(() => layers.create("point")).not.toThrow();
+    } finally {
+      namespace.PointLayer = original;
+    }
+  });
+
+  it("声明的四类图层在命名空间缺构造器时抛 BMAP_SDK_CALL_FAILED（不是「不支持」）", () => {
+    const namespace = fake.namespace as unknown as Record<string, unknown>;
+    const original = namespace.LineLayer;
+    delete namespace.LineLayer;
+    try {
+      const lenient = buildDriver("warn");
+      expect(() => lenient.create("line")).toThrowError(
+        expect.objectContaining({ code: "BMAP_SDK_CALL_FAILED" }),
+      );
+    } finally {
+      namespace.LineLayer = original;
+    }
+  });
+
+  it("能力标记为 unsupported 的 kind 在建实例之前失败", () => {
+    const capabilitiesWithOverride = createCapabilityRegistry({
+      engine: "jsapi-v4",
+      version: fake.namespace.VERSION,
+      rawSdk: fake.namespace,
+      unsupported: "throw",
+      overrides: { "layer.heatmap": false },
+    });
+    const guarded = createJsapiV4NativeLayerDriver({
+      rawSdk: fake.namespace,
+      capabilities: capabilitiesWithOverride,
+      registry,
+    });
+
+    expect(() => guarded.create("heatmap")).toThrowError(
+      expect.objectContaining({ code: "BMAP_CAPABILITY_UNSUPPORTED" }),
+    );
+    expect(fake.createdNativeLayers).toHaveLength(0);
+  });
+});
+
+describe("v4 Native Layer Facet：挂载与释放", () => {
+  it("add 记账：重复 add 只挂一次，remove 后计数归零并可重挂", () => {
+    const target = { kind: "map" as const, handle: mapHandle() };
+    const rawMap = fake.createdMaps[0];
+    const layer = layers.create("line");
+
+    expect(rawMap.layers).toHaveLength(0);
+    layers.add(target, layer);
+    expect(rawMap.layers).toHaveLength(1);
+    layers.add(target, layer);
+    expect(rawMap.layers).toHaveLength(1);
+
+    layers.remove(target, layer);
+    expect(rawMap.layers).toHaveLength(0);
+    expect(() => layers.remove(target, layer)).not.toThrow();
+    expect(rawMap.layers).toHaveLength(0);
+
+    layers.add(target, layer);
+    expect(rawMap.layers).toHaveLength(1);
+  });
+
+  it("非 Map 目标显式失败（不静默 no-op）", () => {
+    const layer = layers.create("line");
+    expect(() => layers.add({ kind: "overlay", handle: mapHandle() }, layer)).toThrowError(
+      expect.objectContaining({ code: "BMAP_CAPABILITY_UNSUPPORTED" }),
+    );
+  });
+
+  it("挂载失败回滚记账：用同一个句柄可以重试", () => {
+    const target = { kind: "map" as const, handle: mapHandle() };
+    const rawMap = fake.createdMaps[0];
+    const layer = layers.create("line");
+
+    rawMap.failNextAddLayer = new Error("addLayer boom");
+    expect(() => layers.add(target, layer)).toThrowError(/boom/);
+    expect(rawMap.layers).toHaveLength(0);
+
+    layers.add(target, layer);
+    expect(rawMap.layers).toHaveLength(1);
+  });
+
+  it("拒绝 LayerDriver 的句柄（品牌不同，不能跨 Facet 混用）", () => {
+    const foreign = registry.adopt("layer:tile", {}) as unknown as LayerHandle;
+    expect(() =>
+      layers.setData(foreign as never, { type: "FeatureCollection", features: [] }),
+    ).toThrowError(expect.objectContaining({ code: "BMAP_INVALID_ARGUMENT" }));
+  });
+});
+
+describe("v4 Native Layer Facet：数据 / 样式 / 显隐 / 层级 / 状态", () => {
+  const collection = { type: "FeatureCollection", features: [{ type: "Feature" }] };
+
+  it("setData / clearData 落到实例", () => {
+    const layer = layers.create("line");
+    layers.setData(layer, collection);
+    layers.clearData(layer);
+
+    const raw = layer.raw as FakeV4LineLayer;
+    expect(raw.callLog).toEqual(["setData", "clearData"]);
+    expect(raw.data).toBeNull();
+  });
+
+  it("声明的四类图层：setStyle 走 setStyleOptions 并显式重绘", () => {
+    const layer = layers.create("point-icon");
+    layers.setStyle(layer, { icon: "data:image/svg+xml,x", sizes: [24, 24] });
+
+    const raw = layer.raw as unknown as { styleOptions: Record<string, unknown>; drawCount: number };
+    expect(raw.styleOptions).toEqual({ icon: "data:image/svg+xml,x", sizes: [24, 24] });
+    expect(raw.drawCount).toBe(1);
+  });
+
+  it("扩展 API 图层：setStyle 走整袋 setOptions（官方只给这一个入口）", () => {
+    const layer = layers.create("heatmap");
+    layers.setStyle(layer, { size: 28, max: 100 });
+
+    expect((layer.raw as unknown as { options: Record<string, unknown> }).options).toMatchObject({
+      size: 28,
+      max: 100,
+    });
+  });
+
+  it("显隐 / 透明度 / 层级 / 缩放范围（只改给到的一端）", () => {
+    const layer = layers.create("fill");
+    layers.setVisible(layer, false);
+    layers.setOpacity(layer, 0.4);
+    layers.setZIndex(layer, 7);
+    layers.setZoomRange(layer, { min: 5 });
+
+    const raw = layer.raw as unknown as {
+      visible: boolean;
+      opacity: number;
+      zIndex: number;
+      minZoom: number | null;
+      maxZoom: number | null;
+    };
+    expect(raw.visible).toBe(false);
+    expect(raw.opacity).toBeCloseTo(0.4);
+    expect(raw.zIndex).toBe(7);
+    expect(raw.minZoom).toBe(5);
+    // 没给的一端必须保持不动（当成默认值会把调用方先前的设置悄悄改掉）
+    expect(raw.maxZoom).toBeNull();
+  });
+
+  it("要素状态：updateState 的 append 语义、removeState、clearState", () => {
+    const layer = layers.create("point-shape");
+    const raw = layer.raw as unknown as {
+      state: Record<string, Record<string, unknown>>;
+      callLog: string[];
+    };
+
+    layers.updateState(layer, ["a", "b"], { selected: true });
+    expect(raw.state).toEqual({ a: { selected: true }, b: { selected: true } });
+
+    layers.updateState(layer, "a", { hovered: true }, true);
+    expect(raw.state.a).toEqual({ selected: true, hovered: true });
+
+    layers.updateState(layer, "a", { hovered: false });
+    expect(raw.state.a).toEqual({ hovered: false });
+
+    layers.removeState(layer, "a");
+    expect(raw.state.a).toBeUndefined();
+
+    layers.clearState(layer);
+    expect(raw.state).toEqual({});
+  });
+
+  it("要素状态在扩展 API 图层上显式失败（它们没有状态入口）", () => {
+    const layer = layers.create("cluster");
+    expect(() => layers.clearState(layer)).toThrowError(
+      expect.objectContaining({ code: "BMAP_CAPABILITY_UNSUPPORTED" }),
+    );
+  });
+});
+
+describe("v4 Native Layer Facet：拾取", () => {
+  it("声明图层的拾取开关走基础配置项（enablePicked）", () => {
+    const layer = layers.create("line");
+    layers.setEnablePicked(layer, true);
+    expect((layer.raw as unknown as { baseOptions: Record<string, unknown> }).baseOptions).toEqual({
+      enablePicked: true,
+    });
+  });
+
+  it("PointLayer：setEnablePicked 与 hitTest 直接落到实例", () => {
+    const layer = layers.create("point");
+    layers.setEnablePicked(layer, true);
+    const pick = layers.hitTest(layer, { x: 120, y: 80 });
+
+    const raw = layer.raw as FakeV4PointLayer;
+    expect(raw.enablePicked).toBe(true);
+    expect(raw.callLog).toContain("hitTest:120,80");
+    expect(pick).toEqual({ dataIndex: 0, dataItem: { properties: { id: "point-1" } } });
+  });
+
+  it("hitTest 未命中时回 null（不把 -1 当成「命中了第 0 个」）", () => {
+    const layer = layers.create("point");
+    (layer.raw as FakeV4PointLayer).hitResult = null;
+    expect(layers.hitTest(layer, { x: 0, y: 0 })).toBeNull();
+  });
+
+  it("没有 hitTest 入口的 kind 显式失败", () => {
+    const layer = layers.create("fill");
+    expect(() => layers.hitTest(layer, { x: 1, y: 1 })).toThrowError(
+      expect.objectContaining({ code: "BMAP_CAPABILITY_UNSUPPORTED" }),
+    );
+  });
+});
+
+describe("v4 Native Layer Facet：supports() 与实现一致", () => {
+  /** 每个操作在「支持时必须不报 unsupported」与「不支持时必须报」两边的真实调用。 */
+  it.each(KINDS.flatMap((kind) => OPERATIONS.map((op) => [kind, op] as const)))(
+    "%s × %s：supports() 的答案与调用结果一致",
+    (kind, operation) => {
+      const layer = layers.create(kind);
+      // 「怎么调」与共享契约共存一份实现：契约里的调用序列就是这里断言的调用序列
+      // （否则测试与契约会各自漂移）。
+      const call = () => callNativeLayerOperation(layers, layer, operation);
+      if (layers.supports(kind, operation)) {
+        expect(call, `${kind}.${operation} 声明支持却调用失败`).not.toThrow();
+        return;
+      }
+      expect(call, `${kind}.${operation} 声明不支持却静默成功`).toThrowError(
+        expect.objectContaining({ code: "BMAP_CAPABILITY_UNSUPPORTED" }),
+      );
+    },
+  );
+});
