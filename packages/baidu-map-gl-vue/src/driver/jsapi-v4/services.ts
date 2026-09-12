@@ -221,22 +221,21 @@ export function createJsapiV4ServiceDriver(
   /**
    * 同一 `Autocomplete` 实例的 pending 结算**队列**。
    *
-   * `Autocomplete#search()` 不带请求标识，表面上无法把回包对应回某次调用；但一次
-   * `search()` **必定**换来恰好一次 `onSearchComplete`（用户在输入框里打字也走同一条路），
-   * 而且官方 `AutocompleteResult` 声明了 `keyword`——因此归属按三级判定：
+   * `Autocomplete#search()` **不带请求身份**：回包除了可选的 `keyword` 之外没有任何可用于
+   * 归因的信息。因此归属规则必须与「同一关键词最多只有一个槽位」这条**不变式**配套使用
+   * （由 `suggest()` 的前置拒绝保证），否则无论取最早还是取最新的同名项都只是按到达时间猜：
    *
-   * 1. 回包**带 `keyword` 且队列里有同名项** ⇒ 取**最后一个**同名项（同关键词可被请求多次，
-   *    本次回包属于最近那次；乱序到达也能落到正确的调用上）；
+   * 1. 回包**带 `keyword` 且队列里有同名项** ⇒ 取**最早**的同名项（回包与 `search()` 一一对应
+   *    并按请求顺序到达；由于同关键词只有一个槽位，取最早即等于「就是它自己的那个」）；
    * 2. 回包**带 `keyword` 但队列里没有同名项** ⇒ **不消费任何槽位**（不属于任何 `suggest()`，
-   *    或属于已被上界丢掉的旧请求）；
-   * 3. 回包**不带 `keyword`**（运行时是否填充未在文档中承诺）⇒ 退化为**先进先出**：第 N 个
-   *    回包属于第 N 次 `search()`。
+   *    或属于已被上界丢掉的旧请求）——落回 FIFO 会把用户输入触发的回包结算给下一个调用；
+   * 3. 回包**不带 `keyword`**（运行时是否填充未在文档中承诺）⇒ 退化为**先进先出**。
    *
-   * 两个直接推论（PR #63 复审 P2-1，两种错法都真的发生过）：
-   * - **被取消的那次 `search()` 的回包仍会到达**（SDK 没有取消入口），所以 `cancel()` 不能
+   * 两个直接推论：
+   * - **被取消 / 已超时的那次 `search()` 的回包仍会到达**（SDK 没有取消入口），所以取消不能
    *   从队列里删掉自己的槽位——否则它的迟到回包会去结算**下一个**调用（旧结果污染新请求）；
-   * - 取消后的结算由适配器的「先到者胜」吸收（已结算的 `ServiceCall` 再收到 `success` 是
-   *   no-op），队列只需要保证数量对齐。同理也能容纳「`suggest()` 超时之后才到的回包」。
+   * - 取消 / 超时后的结算由适配器的「先到者胜」吸收（已结算的 `ServiceCall` 再收到 `success`
+   *   是 no-op），墓碑只需要保证数量对齐；墓碑在自己那个回包到达时被移除。
    */
   const pendingSuggest = new WeakMap<
     object,
@@ -276,12 +275,12 @@ export function createJsapiV4ServiceDriver(
   };
 
   /**
-   * 取出本次回包对应的 pending 结算（见 `pendingSuggest` 的两级判定）。
+   * 取出本次回包对应的 pending 结算（判定规则见 `pendingSuggest` 的注释）。
    *
-   * 队列为空、或**回包带了 keyword 但队列里没有同名项**时返回 `null`——后者是 PR #63 二轮
-   * 复审 P2-1 的核心：那种回包既不属于任何 `suggest()`（用户在输入框里打字会触发同一条
-   * `onSearchComplete`），也可能是已被队列上界丢掉的旧请求的迟到回包。落回 FIFO 会把它
-   * 结算给队列里的**下一个**调用（旧结果污染新请求），所以这里必须**不消费任何槽位**。
+   * 队列为空、或**回包带了 keyword 但队列里没有同名项**时返回 `null`：那种回包既不属于任何
+   * `suggest()`（用户在输入框里打字会触发同一条 `onSearchComplete`），也可能是已被队列上界
+   * 丢掉的旧请求的迟到回包。落回 FIFO 会把它结算给队列里的**下一个**调用（旧结果污染新请求），
+   * 所以这里必须**不消费任何槽位**。
    */
   const shiftPending = (
     raw: Record<string, unknown>,
@@ -295,14 +294,23 @@ export function createJsapiV4ServiceDriver(
       // 回包不带 keyword（官方只承诺「可选」）⇒ 只能按顺序退化到队首
       return queue.shift()?.settle ?? null;
     }
-    // 带 keyword ⇒ 取**最后一个**同名项：同一个关键词可以被请求多次（重试 / 分页 / 取消后重查），
-    // 本次回包属于最近那次，而更早的同名项留给它自己的（迟到的）回包去吸收。
-    for (let index = queue.length - 1; index >= 0; index -= 1) {
-      const entry = queue[index];
-      if (entry && entry.keyword === keyword) return queue.splice(index, 1)[0]!.settle;
-    }
-    return null;
+    // 带 keyword ⇒ 取**最早**的同名项：回包与 `search()` 一一对应、且按请求顺序到达，
+    // 因此最早那个就是本次回包的归属。取最新会把**旧回包塞给新请求**（三轮复审用「按请求
+    // 顺序正常返回」的反例证明了这一点）。
+    const index = queue.findIndex((entry) => entry.keyword === keyword);
+    if (index < 0) return null;
+    const [entry] = queue.splice(index, 1);
+    return entry?.settle ?? null;
   };
+
+  /**
+   * 该关键词是否已有未完成的槽位（含已取消 / 已超时、但仍在等自己那个回包的墓碑）。
+   *
+   * `suggest()` 用它做**前置拒绝**：同关键词的重叠请求无法被归属（见 `suggest` 的注释），
+   * 拒绝之后同一关键词在任意时刻最多只有一个槽位，回包归属与到达顺序无关。
+   */
+  const hasPendingKeyword = (raw: Record<string, unknown>, keyword: string): boolean =>
+    (pendingSuggest.get(raw) ?? []).some((entry) => entry.keyword === keyword);
 
   /** 空结果还是失败：`null` 回包 + JSONP 注册表里的错误码 ⇒ 失败。 */
   const settleNull = <T>(
@@ -323,6 +331,16 @@ export function createJsapiV4ServiceDriver(
     createServiceCall<T>(
       (settle) =>
         settle.failed({ code: "BMAP_INVALID_ARGUMENT", message: `${label}: ${message}` }),
+      { label },
+    );
+
+  /**
+   * 前置条件不满足的调用（不是参数问题，也不是 SDK 调用失败）：以 `failed` 结算
+   * （`BMAP_SERVICE_FAILED`），不抛错、不猜。
+   */
+  const serviceFailedCall = <T>(label: string, message: string): ServiceCall<T> =>
+    createServiceCall<T>(
+      (settle) => settle.failed({ code: "BMAP_SERVICE_FAILED", message: `${label}: ${message}` }),
       { label },
     );
 
@@ -693,6 +711,21 @@ export function createJsapiV4ServiceDriver(
         return invalidCall<PlaceSuggestion[]>("Autocomplete.search", "keyword 必须是非空字符串");
       }
       const raw = resolve<Record<string, unknown>>(handle, "ServiceDriver.suggest");
+
+      // 同关键词的重叠请求**显式失败**，而不是猜归属：`Autocomplete` 的回包不带请求身份，
+      // 两次同名请求的回包互相不可区分——旧回包先到会把旧结果塞给新请求，新回包先到又会让
+      // 旧请求失效（两种情况都在 PR #63 的复审里被复现过）。拒绝之后同一关键词在任意时刻
+      // 最多只有一个槽位，归属与到达顺序无关。
+      // 精确隔离需要「每次请求一个独立实例 + 自己的回调闭包」，那需要 Driver 自己造 DOM /
+      // 输入框（与 SSR 和分层约束冲突），属 M7（#38 / #41）的接口设计，见 ADR 已知限制。
+      if (hasPendingKeyword(raw, keyword)) {
+        return serviceFailedCall<PlaceSuggestion[]>(
+          "Autocomplete.search",
+          `同一 Autocomplete 实例上已有关键词 "${keyword}" 的未完成请求：Autocomplete 的回包不带请求标识，` +
+            "本次与它的回包无法区分（旧结果可能被当成新结果）；请等它结算后再查，或改用不同关键词",
+        );
+      }
+
       // 刻意**不传 `onCancel`**：取消只影响本次 `ServiceCall` 的结果（由适配器结算成
       // `canceled`），队列槽位必须留在原处吸收那次 search 的回包——理由见 `pendingSuggest`。
       return createServiceCall<PlaceSuggestion[]>(

@@ -98,48 +98,60 @@ Fake 也把这条时序建模出来（回包走微任务），否则「嗅探没
 `const/StatusCodes.d.ts` 的一致性由文件末尾的类型断言钉死（同 `#22` 的锚点常量表口径）。
 `getStatus` 成员缺失或调用失败时返回 `null`，**不把缺成员伪装成状态 0**。
 
-### 5. `Autocomplete`：Driver 挂内部分发器 + **三级回包归属（keyword 末位匹配 → 不匹配即弃 → FIFO 退化）**
+### 5. `Autocomplete`：**「同关键词最多一个槽位」不变式 + FIFO 归属**（不靠到达时间猜）
 
-`Autocomplete#search()` 不带请求标识，表面上无法把回包对应回某次调用；但一次 `search()`
-**必定**换来恰好一次 `onSearchComplete`（用户在输入框里打字也走同一条路），而且官方
-`AutocompleteResult` 声明了 `keyword`——因此 Driver 维护**每个实例一个 pending 队列**，归属按三级判定：
+`Autocomplete#search()` **不带请求身份**：回包除了可选的 `keyword` 之外没有任何可归因的信息。
+三轮复审各给出了一组反例，结论是**任何「按到达时间猜」的规则都会错**：
+
+| 规则 | 反例 |
+| --- | --- |
+| 取**最早**同名项（`findIndex`） | 旧请求的回包**始终不到达**（请求被中断）时，新请求的回包被旧墓碑吸收 → 新请求饿死 |
+| 取**最新**同名项 | 旧回包**先到**（这是按请求顺序返回的正常情形）→ 新请求收到旧结果 |
+| 无匹配就落回 FIFO | 用户输入触发的回包、被上界丢掉的旧请求的迟到回包都会结算给下一个调用 |
+
+前两条互为反例、且区别只在「旧回包到底来不来」——**这一点在回包里观察不到**。因此本轮不再调整
+匹配顺序，而是消除歧义本身：
 
 ```ts
-onSearchComplete: (results) => {
-  // 1) 带 keyword 且队列有同名项 ⇒ 取「最后一个」同名项（同关键词可被请求多次）
-  // 2) 带 keyword 但无同名项         ⇒ 不消费任何槽位（不属于任何 suggest()，或被上界丢掉的旧请求）
-  // 3) 不带 keyword                  ⇒ 退化为 FIFO 队首
-  const settle = resolvePending(raw, results.keyword);
-  if (settle) settle.success(readSuggestions(results)) / settle.empty();
-  options.onSearchComplete?.(results);                       // 原样转发业务自己的监听
-}
+// suggest() 的前置拒绝：同关键词已有未完成槽位（含等自己回包的墓碑）⇒ 直接 failed
+if (hasPendingKeyword(raw, keyword)) return serviceFailedCall("Autocomplete.search", "…回包不带请求标识…");
+
+// onSearchComplete 的归属（不变式成立时，取最早同名项 == 就是它自己）
+const settle = resolvePending(raw, results.keyword);
+if (settle) settle.success(readSuggestions(results)) / settle.empty();
+options.onSearchComplete?.(results);            // 原样转发业务自己的监听
 ```
 
-四个要点：
+**不改动匹配顺序，改的是允许出现哪些请求**：拒绝同关键词的重叠之后，同一关键词在任意时刻最多
+只有一个槽位 ⇒ 回包归属**与到达顺序无关**（「两种顺序都正确」由构造保证），且永远不会把旧结果
+当成新结果。代价是「取消 / 超时后立刻用同一关键词重查」会被**显式拒绝**（`failed` +
+`BMAP_SERVICE_FAILED`，消息说明原因），而不是静默给出可能属于旧请求的数据——这正是三轮复审
+「无法确定归属时应明确失败，不能猜测后返回 `success`」的主张。等前一次结算（或它的回包到达、
+墓碑移除）之后，同关键词重查即可正常进行；**不同关键词的「取消 + 重查」不受任何限制**。
+
+其余要点：
 
 - **不吞掉业务监听**（`BAutoComplete.vue` 一直在用 `onSearchComplete`）；
-- **`cancel()` 不动队列**：被取消的 `search()` 的回包仍会到达（SDK 没有取消入口），它的槽位
-  必须留在原处吸收那个回包；取消本身由适配器的「先到者胜」表达成 `canceled`。若在取消时清空
-  队列，迟到回包就会去结算**下一个**调用（旧结果污染新请求），或者把新调用的槽位一起清掉
-  （新调用无回包可用而超时）——两种错法都在 PR #63 的一轮复审里被复现过；
-- **「带 keyword 但不匹配」不能落回 FIFO**（PR #63 二轮复审 P2-1）：用户输入触发的回包、
-  以及被队列上界丢掉的旧请求的迟到回包，都属于「带 keyword 却不匹配」——落回 FIFO 会把它们
-  结算给队列里的下一个调用。这一条比「缺 keyword 时退化」重要得多：后者是文档里写明的可选字段，
-  前者是**任何**非 `suggest()` 来源的回包；
-- **同名项取最后一个**（P2-2）：同一个关键词可以被请求多次（重试 / 分页 / 取消后重查），
-  `findIndex` 会永远命中最早那个，于是「新的回包被旧的已超时/已取消项吸收、新调用反过来超时」。
-  取末位后，新的回包归新的调用，旧的回包由旧项自己吸收（同关键词的两次响应内容等价，
-  因此这里不存在「拿到别人的数据」问题）；
-- **`search()` 同步抛错时回滚槽位**：请求没发出去就不会有回包，留着会永久错位一格；
-  队列另有上界（`MAX_PENDING_SUGGESTS = 16`，超出丢最旧并告警一次）作为 SDK 长期丢回调时的
-  自愈手段。
+- **`cancel()` 不动队列**：被取消的 `search()` 的回包仍会到达（SDK 没有取消入口），它的槽位必须
+  留在原处吸收那个回包，否则迟到回包会结算**下一个**调用；
+- **「带 keyword 但不匹配」不落回 FIFO**：用户输入触发的回包（同一条 `onSearchComplete`）、以及
+  被上界丢掉的旧请求的迟到回包都属于这一类，落回 FIFO 会结算给下一个调用；
+- **`search()` 同步抛错时回滚槽位**：请求没发出去就不会有回包，留着会永久错位一格；队列另有上界
+  （`MAX_PENDING_SUGGESTS = 16`，超出丢最旧并告警一次）作为 SDK 长期丢回调时的自愈手段。
 
-`keyword` 关联是**目前唯一可用的请求标识**（它不是唯一 ID，只是检索关键词）。官方类型把它标成
-可选，因此运行时可能不填充——那种情况下退化为顺序 FIFO，乱序回包会错位一格；「真机是否填充
-`keyword`、以及连发多次 `search()` 的回包顺序」属 M3A.3（#25）的真机核对项。另一条已登记的
-取舍：若运行时填充的 `keyword` 与请求参数**不同形**（例如被归一化过），匹配会失败——本实现选择
-**明确超时**而不是「猜一个 pending 塞进去」，因为把结果给错调用比超时更难排查（同二轮复审
-「无法确认归属时应明确失败」的主张）。
+**「每次请求一个独立实例 + 回调闭包」为什么不在本 issue 做**（那是唯一能彻底去掉顺序假设的做法，
+也是三轮复审的首选建议）：机制本身**已用真实 AK 验证可行**——三种输入框形态的对比是
+「脱离文档 ⇒ `new Autocomplete` 直接抛 `TypeError … reading 'top'`」「挂到文档（有无尺寸容器都一样）
+⇒ `suggest = success`」（见 smoke 记录）。但它要求 **Driver 自己创建并持有一个挂到文档上的隐藏
+输入框**：这会引入 DOM 所有权（SSR / 无 DOM 环境下不成立）、每个请求一个实例 + 一个隐藏输入框的
+资源与 `dispose()` 收尾、以及隐藏输入框仍可能被 SDK 挂上下拉面板的副作用；而且它改变 `suggest()`
+的语义（不再需要用业务那个实例）。这些都属于「输入提示的 UX 语义」范畴，登记为 M7（#38 / #41）
+的接口设计项。本 issue 的过渡契约（同关键词重叠 ⇒ 显式失败）保证**任何**允许执行的调用都不会
+拿到错误归属的数据。
+
+**残留限制（显式接受）**：`keyword` 由运行时可选填充，是否填充、是否与请求参数同形都未在文档中
+承诺——不填充时归属退化为顺序 FIFO，不同形时该次 `suggest()` 会走到 `timeout`（而不是猜）。二者
+连同上面的独立实例设计一起，属 M3A.3（#25）的真机核对项。
 
 ### 6. `TrackAnimation` 显式失败，指向 `TrackLine`
 
@@ -297,7 +309,8 @@ v4 的 `createTrackAnimation` 抛出带 `capability: "service.track-animation"` 
 | Capability Registry vs 真实命名空间 | 16 个能力为 true；`service.track-animation` 为 **false**（Catalog `unsupported`，与预期一致） |
 | `panorama.supported` | true |
 | `createTrackAnimation` | 抛 `BMAP_CAPABILITY_UNSUPPORTED`（消息指向 `TrackLine`） |
-| Service facet：7 个归一化调用 + 取消 | `geocode` success、`reverseGeocode` success、`convert` success(0)、`boundary` success、`locate` **failed(6)**、`locateCity` success、`suggest` **failed**、`canceled` canceled |
+| Service facet：7 个归一化调用 + 取消 | `geocode` success、`reverseGeocode` success、`convert` success(0)、`boundary` success、`locate` **failed(6)**、`locateCity` success、`suggest` success、`canceled` canceled |
+| Autocomplete 的输入框形态（三轮复审引出的 fixture 缺陷） | **detached ⇒ `new Autocomplete` 抛 `TypeError: Cannot read properties of null (reading 'top')`**；attached-body ⇒ `suggest=success`；attached-box（有尺寸容器）⇒ `suggest=success` |
 | 原生图层逐 kind：探针（走 `supports()`） | 8 个 kind 全部结算；**不支持的操作 100% 显式失败**（`rejectedWhenUnsupported: true`） |
 | 原生图层逐 kind：**直接调用 raw**（绕过 `supports()`） | `point-icon/shape/line/fill` 11 项全 ok、`hitTest` 缺成员；`point` 8 项 ok（`setEnablePicked`/`hitTest` ok，状态与 `setMinZoom` 缺成员）；`cluster`/`heatmap`/`track-line` 6 项 ok |
 | `Panorama` viewer 生命周期 | `create` / `setPosition` / `setPov` / `setZoom` / `show` / `hide` 全部 ok；**`destroy` 抛 `TypeError: Cannot read properties of undefined (reading 'START')`**（未加载场景的实例） |
@@ -317,13 +330,19 @@ smoke 顺带确认（并已回写进决策）的运行时事实：
 
 ## 已知限制（显式接受）
 
-- **`suggest` 在真实环境下返回 `failed`**：headless 页面里没有真实的输入框交互（`search()`
-  发起的请求结果形态与用户输入路径不同）。契约的 live 档只要求「结算且形状自洽」，
-  「输入提示端到端」留给 M7 #41 / M3A.3 #25。
+- **`Autocomplete` 需要一个挂到文档上的输入框**：真实 4.0 里 `new BMap.Autocomplete({ input })`
+  对**脱离文档**的 input 直接抛 `TypeError: Cannot read properties of null (reading 'top')`，
+  挂到文档之后 `search()` 才能真的回包（smoke 三种形态实测）。这条前提原先只写在组件用法里，
+  三轮复审的排查顺带把它暴露成**共享契约 fixture 的缺陷**（`probeServiceFacet` 的默认输入框
+  当时是脱离文档的，导致 live 档的 `suggest` 一直报 `failed`）——已修 fixture，现在 live 档
+  `suggest = success`。SSR / 无 DOM 环境下 `suggest()` 不具备可用前提（构造即失败），
+  这条限制登记在 M7（#38 / #41）与 #25 的真机核对项里。
 - **`Autocomplete` 的回包归属依赖 SDK 填充 `keyword`**：官方把它声明为可选且不承诺填充。
-  不填充时退化为顺序 FIFO（乱序回包会错位一格）；填充但与请求参数不同形（例如被归一化）时，
-  匹配失败会让该次 `suggest()` 走到 `timeout`——这是**刻意**的取舍（宁可超时也不把结果塞给
-  不匹配的调用）。两条都属 M3A.3（#25）的真机核对项。
+  不填充时退化为顺序 FIFO；填充但与请求参数不同形（例如被归一化）时，匹配失败会让该次
+  `suggest()` 走到 `timeout`——这是**刻意**的取舍（宁可超时也不把结果塞给不匹配的调用）。
+- **同一实例上同关键词的重叠 `suggest()` 被显式拒绝**（`failed` + `BMAP_SERVICE_FAILED`）：
+  `Autocomplete` 的回包不带请求身份，两次同名请求的回包不可区分。要彻底去掉这条限制（以及
+  FIFO 的顺序假设）需要「每次请求一个独立实例 + 回调闭包」，登记为 M7（#38 / #41）的接口设计项。
 - **`locate` 需要浏览器定位授权**：headless 下必然失败（`BMAP_STATUS_PERMISSION_DENIED`）。
   这里验证的是「状态码 → 归一化 `failed` + 可读原因」，不是「能拿到坐标」。
 - **`Panorama` 的真实场景渲染未覆盖**：smoke 只做构造 / 视角 / 显隐 / 销毁 / 检索；真实全景图块
@@ -426,6 +445,40 @@ Fake 为此加了 `flushOne(index)`（按索引触发单个回包）与 `include
 
 验证：`pnpm test:unit` **91 files / 966 tests**（+5 回归用例）；typecheck / build / 边界扫描（含
 `--src` 全树）/ `check:public-dts` / 能力矩阵 / manifest 全绿；真实 AK smoke 25/25。
+
+## 外部评审第三轮（PR #63，基线 `3cbaabe`）
+
+三轮复审只留 1 项 P2：**同关键词请求的归属仍未解决**——「取最新同名项」只是把「取最早」反过来，
+依然是在按到达时间猜。四个反例里**有三个是「按请求顺序正常返回」就能触发的**（不需要乱序）：
+
+| 场景 | `3cbaabe` 上的实际结果（红） |
+| --- | --- |
+| 取消旧 K → 重查 K → 旧回包先到 | 新请求收到 `OLD` |
+| 旧 K 超时 → 重查 K → 旧回包先到 | 新请求收到 `OLD` |
+| 两次 K 均未取消、按请求顺序回包 | 两个调用的结果互换 |
+| 已取消的旧 K 返回空、新 K 随后返回有效 | 新请求提前结算成 `empty`，有效结果被忽略 |
+
+同时指出了我上一轮测试的写法问题：两条「同关键词」用例都只走 `flushOne(1)`（新回包先到），
+**恰好迎合了「取最新」的假设**——测试写成了实现的样子。
+
+处置见 §5：**不再调匹配顺序，改为「同一关键词最多一个槽位」的不变式 + 前置拒绝**。相对上一轮：
+
+- 归属回到「最早同名项」，四个反例全部转正确（并新增 3 条拒绝用例 + 1 条「不同关键词两种到达顺序都正确」的用例）；
+- 删掉了上一轮那两条**把新回包先到当默认顺序**的用例（它们编码的是已被证伪的「取最新」契约），
+  并在测试文件里写明为什么删；
+- 三轮复审对「同关键词两次响应内容等价」的否认也被接受：`setLocation` / `setTypes` 可以让相同
+  关键词的两次检索语境不同，因此「各归其位」必须是硬要求，不能靠「内容等价」兜底。
+
+验证：`pnpm test:unit` **91 files / 969 tests**；typecheck / build / 边界扫描（含 `--src` 全树）/
+`check:public-dts` / 能力矩阵 / manifest 全绿；真实 AK smoke **26/26**。
+
+三轮复审还顺带暴露了两个我自己没看到的点，都已修：
+
+1. **共享契约 fixture 的缺陷**：`probeServiceFacet` 的默认输入框是**脱离文档**的，而真实
+   `new BMap.Autocomplete({ input })` 对脱离文档的输入框直接抛 `TypeError … reading 'top'`——
+   于是 live 档的 `suggest` 一直显示 `failed`，我此前把它误读成「headless 没有真实输入交互」。
+   三种形态对比后修了 fixture（挂到文档），**live 档 `suggest` 现在真的返回 `success`**。
+2. **`keyword` 不足以当请求身份**：参见 §5 的三条反例表。
 
 ## 参考
 

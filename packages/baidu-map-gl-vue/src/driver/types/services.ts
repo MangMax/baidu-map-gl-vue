@@ -219,7 +219,14 @@ export interface ServiceInvocationDriver {
   ): ServiceCall<GeolocationFix>;
   /** IP 定位城市（`LocalCity#get`） */
   locateCity(handle: ServiceHandle<"service:local-city">): ServiceCall<LocalCityFix>;
-  /** 输入提示（`Autocomplete#search` + `getResults`） */
+  /**
+   * 输入提示（`Autocomplete#search` + `onSearchComplete`）。
+   *
+   * **同一实例上同关键词的重叠请求会被拒绝**（`status: "failed"` + `BMAP_SERVICE_FAILED`）：
+   * `Autocomplete` 的回包**不带请求身份**（只有可选的 `keyword`），两次同名请求的回包互相
+   * 不可区分，猜归属会把旧结果当成新结果。等前一次结算（或改用不同关键词）即可正常调用；
+   * 精确的并发隔离需要「每次请求一个独立实例」，属 M7（#38 / #41）的接口设计。
+   */
   suggest(
     handle: ServiceHandle<"service:autocomplete">,
     keyword: string,

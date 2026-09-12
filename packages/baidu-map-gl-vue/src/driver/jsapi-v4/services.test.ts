@@ -542,7 +542,32 @@ describe("v4 Service Facet：Autocomplete 的回包归属（PR #63 复审 P2-1�
     expect(result.data?.[0]?.title).toBe("BBB");
   });
 
-  it("同关键词超时后重试：新请求必须由新回包结算，不被旧的已超时项吞掉", async () => {
+  // 二轮复审曾要求「同关键词重试必须由新回包结算」（当时用「取最新同名项」实现）。三轮复审用
+  // **按请求顺序正常返回**的反例证明那条规则会把旧回包塞给新请求；而「取最早同名项」又会在
+  // 旧回包始终不到达时让新请求饿死。两者都只是「按到达时间猜」，因为 `Autocomplete` 的回包
+  // **不带请求身份**。因此契约改为：**同关键词的并发/重叠请求直接显式失败**——这样同一关键词
+  // 在任意时刻最多只有一个槽位，回包归属与到达顺序无关（两种顺序都正确）。
+  it("取消旧 K 后立刻重查同关键词：显式失败（回包无法区分），旧结果不得交给新请求", async () => {
+    const handle = services.createAutocomplete({ input: input() });
+    const autocomplete = fake.createdAutocompletes[0];
+    autocomplete.queue.auto = false;
+
+    autocomplete.pois = [{ business: "K-OLD", province: "北京市" }];
+    const oldCall = services.suggest(handle, "K");
+    oldCall.cancel();
+
+    const retry = services.suggest(handle, "K");
+    const result = await retry.result;
+    expect(result.status).toBe("failed");
+    expect(result.data).toBeNull();
+    expect(result.error?.message).toContain("无法区分");
+
+    // 旧回包（按请求顺序先到）必须被它自己的槽位吸收，不能落到别处
+    expect(autocomplete.queue.flush()).toBe(1);
+    expect(autocomplete.queue.pending).toBe(0);
+  });
+
+  it("同关键词超时后立刻重查：同样显式失败（旧回包随时可能到达）", async () => {
     vi.useFakeTimers();
     const handle = services.createAutocomplete({ input: input() });
     const autocomplete = fake.createdAutocompletes[0];
@@ -553,18 +578,27 @@ describe("v4 Service Facet：Autocomplete 的回包归属（PR #63 复审 P2-1�
     vi.advanceTimersByTime(15000);
     expect((await first.result).status).toBe("timeout");
 
-    // 同一个关键词再查一次（分页/重试都会这么做）
-    autocomplete.pois = [{ business: "K-NEW", province: "上海市" }];
-    const second = services.suggest(handle, "K");
-    expect(autocomplete.queue.flushOne(1)).toBe(true);
-    vi.advanceTimersByTime(15000);
-
-    const result = await second.result;
-    expect(result.status).toBe("success");
-    expect(result.data?.[0]?.title).toBe("K-NEW");
+    const retry = services.suggest(handle, "K");
+    expect((await retry.result).status).toBe("failed");
   });
 
-  it("同关键词取消后乱序回包：新请求拿到自己的结果，而不是被已取消项吸收", async () => {
+  it("同关键词两次并发：第二次被拒绝，两个调用的结果绝不互换", async () => {
+    const handle = services.createAutocomplete({ input: input() });
+    const autocomplete = fake.createdAutocompletes[0];
+    autocomplete.queue.auto = false;
+
+    autocomplete.pois = [{ business: "K1", province: "北京市" }];
+    const first = services.suggest(handle, "K");
+    const second = services.suggest(handle, "K");
+
+    expect((await second.result).status).toBe("failed");
+    // 只有一个请求真的发出去了，因此它的回包只属于它自己
+    expect(autocomplete.callLog.filter((entry) => entry.startsWith("search:"))).toEqual(["search:K"]);
+    autocomplete.queue.flush();
+    expect((await first.result).data?.[0]?.title).toBe("K1");
+  });
+
+  it("旧 K 的回包到达（槽位释放）之后，同关键词重查可以正常进行", async () => {
     const handle = services.createAutocomplete({ input: input() });
     const autocomplete = fake.createdAutocompletes[0];
     autocomplete.queue.auto = false;
@@ -572,14 +606,30 @@ describe("v4 Service Facet：Autocomplete 的回包归属（PR #63 复审 P2-1�
     autocomplete.pois = [{ business: "K-OLD", province: "北京市" }];
     const oldCall = services.suggest(handle, "K");
     oldCall.cancel();
+    autocomplete.queue.flush(); // 旧回包到达 → 槽位释放
 
     autocomplete.pois = [{ business: "K-NEW", province: "上海市" }];
-    const newCall = services.suggest(handle, "K");
+    const retry = services.suggest(handle, "K");
+    autocomplete.queue.flush();
+    expect((await retry.result).data?.[0]?.title).toBe("K-NEW");
+  });
 
-    // 新请求的回包先到（index 1）
+  it("不同关键词的取消 + 重查不受限制（最常见用法仍然可用，且两种到达顺序都正确）", async () => {
+    const handle = services.createAutocomplete({ input: input() });
+    const autocomplete = fake.createdAutocompletes[0];
+    autocomplete.queue.auto = false;
+
+    autocomplete.pois = [{ business: "A-OLD", province: "北京市" }];
+    const first = services.suggest(handle, "A");
+    first.cancel();
+    autocomplete.pois = [{ business: "B", province: "上海市" }];
+    const second = services.suggest(handle, "B");
+
+    // 乱序到达：B 的回包先到
     expect(autocomplete.queue.flushOne(1)).toBe(true);
-    expect((await newCall.result).status).toBe("success");
-    expect((await newCall.result).data?.[0]?.title).toBe("K-NEW");
+    expect((await second.result).data?.[0]?.title).toBe("B");
+    expect(autocomplete.queue.flushOne(0)).toBe(true);
+    expect((await first.result).status).toBe("canceled");
   });
 
   it("被队列上界丢弃的旧请求，其迟到回包不得结算队列里的其它调用", async () => {
