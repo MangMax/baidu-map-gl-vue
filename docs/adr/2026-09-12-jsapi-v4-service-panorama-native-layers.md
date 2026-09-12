@@ -141,13 +141,18 @@ options.onSearchComplete?.(results);            // 原样转发业务自己的�
   被淘汰请求的回包仍会到达；一旦它的关键词又出现在队列里（取消旧 K 之后再查 K），那个回包就会
   被错误地结算给新调用。上限（`MAX_PENDING_SUGGESTS = 16`）因此只是「SDK 长期不回包」时的资源
   护栏，触发时**显式失败**，且旧记录保留到自己的回包到达为止。
-- **回调通道必须独占**（四轮复审 P2-2）：`Autocomplete` 只有一条 `onSearchComplete`，用户输入
-  触发的检索与程序化 `search()` 共用它，回包里没有「谁触发的」信息——所以**可输入的输入框上，
-  同关键词的原生回包与程序化回包无法区分**。`suggest()` 因此要求实例的输入框不可输入
-  （`readOnly` / `disabled` / `type="hidden"`），否则**前置拒绝**（`failed` +
-  `BMAP_SERVICE_FAILED`，消息给出替代方案）。这把「通道是否独占」变成调用方**可判定**的前置
-  条件，而不是 Driver 事后猜；`AutocompleteOptions.input` 的 JSDoc 与 `suggest()` 的类型文档
-  都写明了这条。
+- **回调通道必须独占**（四轮复审 P2-2，五轮复审 P2 补强）：`Autocomplete` 只有一条
+  `onSearchComplete`，用户输入触发的检索与程序化 `search()` 共用它，回包里没有「谁触发的」
+  信息——所以**可输入的输入框上，同关键词的原生回包与程序化回包无法区分**。`suggest()` 因此
+  要求实例的输入框不可输入（`readOnly` / `disabled` / `type="hidden"`），否则**前置拒绝**
+  （`failed` + `BMAP_SERVICE_FAILED`，消息给出替代方案）。
+  **判定看的是输入框的当前状态，而不是创建实例时的状态**：HTML 控件的可编辑性取决于当前的
+  `disabled` / `readonly` / `type`，构造之后随时可以变回可输入，所以校验发生在**每次
+  `suggest()` 与每次回包**（`exclusivityFailure`）；一旦观察到可输入，该实例被**永久**标记为
+  失去独占（`lostExclusivity`），不因为随后又变回只读而恢复资格（可编辑期间触发的原生请求可能
+  仍在等回包），在飞的程序化请求同时被**显式失败**。调用方需重建实例。
+  这把「通道是否独占」变成调用方**可判定、可复核**的前置条件，而不是 Driver 事后猜；
+  `AutocompleteOptions.input` 的 JSDoc 与 `suggest()` 的类型文档都写明了这条。
 
 **「每次请求一个独立实例 + 回调闭包」为什么不在本 issue 做**（唯一能彻底去掉顺序假设与前置拒绝
 的做法，也是三轮复审的首选建议）：真实 AK 实测给了三条结论——**脱离文档**的输入框构造即抛
@@ -543,6 +548,35 @@ Fake 为此加了 `flushOne(index)`（按索引触发单个回包）与 `include
 | **不带 `input`** | 构造 ok，但 **3s 内回包数 = 0** → 不能当「程序化专用通道」 |
 
 验证：`pnpm test:unit` **91 files / 972 tests**；typecheck / build / 边界扫描（含 `--src` 全树）/
+`check:public-dts` / 能力矩阵 / manifest 全绿；真实 AK smoke **27/27**。
+
+## 外部评审第五轮（PR #63，基线 `f37b2a7`）
+
+只留 1 项 P2：**「通道独占」被缓存成构造时的状态**，而输入框之后可以恢复可编辑（HTML 控件的
+可编辑性看**当前**的 `disabled` / `readonly` / `type`），保护因此失效。四个反例都属于同一根因：
+
+| 状态变化 | `f37b2a7` 上的实际结果（红） |
+| --- | --- |
+| 构造时 `disabled=true`，之后取消 `disabled` 再 `suggest()` | 放行，程序化调用收到用户输入那次的结果 |
+| 构造时 `readOnly=true`，之后取消 `readOnly` 再 `suggest()` | 同上 |
+| 构造时 `type="hidden"`，之后改为 `"text"` 再 `suggest()` | 同上 |
+| `suggest()` 等待回包期间输入框恢复可编辑 | 原生同关键词回包抢先结算该调用 |
+
+处置（按复审给的口径，**不做「变回只读就恢复资格」的不完整修法**）：
+
+- **调用时校验当前状态**：`exclusivityFailure(raw)` 在每次 `suggest()` 与**每次回包**时重新读
+  `boundInput`（构造时保存的输入框引用），不再读构造期标记；
+- **观察到即永久失效**：一旦发现可输入，实例进 `lostExclusivity` 并**清空队列、把在飞的程序化
+  请求显式失败**（那些回包可能来自用户输入，宁可失败也不猜）；此后 `suggest()` 一律拒绝并提示
+  重建实例，input 再变回只读也不恢复；
+- 新增 5 条回归用例（三种状态变化 / 等待期间失去独占 / 永久失效），在 `f37b2a7` 上全部为红
+  （`expected 'success' to be 'failed'`）。
+
+**残留（显式接受）**：只在「`suggest()` / 回包」这两个 Driver 能执行代码的时刻观察输入框状态，
+因此「窗口内短暂可输入、到观察点又变回只读」无法被察觉。要彻底消除，需要监听输入框属性变化
+（`MutationObserver`）或真正隔离的程序化实例——两者都要求新的资源与释放路径，归 M7（#38 / #41）。
+
+验证：`pnpm test:unit` **91 files / 977 tests**；typecheck / build / 边界扫描（含 `--src` 全树）/
 `check:public-dts` / 能力矩阵 / manifest 全绿；真实 AK smoke **27/27**。
 
 ## 参考

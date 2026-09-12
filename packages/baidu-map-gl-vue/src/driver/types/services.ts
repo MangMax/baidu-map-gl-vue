@@ -17,10 +17,12 @@ export interface AutocompleteOptions {
   /**
    * 绑定到 SDK 实例的输入框。
    *
-   * **要使用 `suggest()`（程序化检索），这个输入框必须不可输入**
+   * **要使用 `suggest()`（程序化检索），这个输入框在调用时刻必须不可输入**
    * （`readOnly` / `disabled` / `type="hidden"`）：`Autocomplete` 只有一条
    * `onSearchComplete`，可输入的输入框上用户打字触发的检索与程序化检索共用它，关键词相同时
-   * 回包无法区分——Driver 会因此拒绝 `suggest()`。只用输入框的联想 UI 时不受此限制。
+   * 回包无法区分——Driver 会因此拒绝 `suggest()`（且在调用时与每次回包时都重新校验输入框的
+   * **当前**状态；一旦观察到可输入，该实例就永久失去独占资格，需要重建）。只用输入框的联想 UI
+   * 时不受此限制。
    */
   input: HTMLInputElement;
   location?: unknown;
@@ -230,15 +232,18 @@ export interface ServiceInvocationDriver {
   /**
    * 输入提示（`Autocomplete#search` + `onSearchComplete`）。
    *
-   * 两条件缺一即**拒绝**（`status: "failed"` + `BMAP_SERVICE_FAILED`），因为都不满足时回包
-   * 归属无法确定（`Autocomplete` 的回包不带请求身份，只有可选的 `keyword`）：
+   * 以下条件不满足时**拒绝**（`status: "failed"` + `BMAP_SERVICE_FAILED`），因为那时回包归属
+   * 无法确定（`Autocomplete` 的回包不带请求身份，只有可选的 `keyword`）：
    *
-   * 1. **回调通道独占**：实例绑定的输入框必须不可输入（`readOnly` / `disabled` /
-   *    `type="hidden"`）——可输入的输入框上，用户打字触发的同关键词回包与程序化回包无法区分；
+   * 1. **回调通道独占**：实例绑定的输入框在**调用时刻**必须不可输入（`readOnly` / `disabled` /
+   *    `type="hidden"`）——HTML 控件的可编辑性随时可变，所以这是**每次调用都重新校验**的，
+   *    而不是创建实例时定死；一旦观察到可输入，该实例会被**永久**标记为失去独占（不因为随后
+   *    又变回只读而恢复，因为可编辑期间触发的原生请求可能仍在等回包），需要重建实例。
+   *    等待回包期间失去独占时，在飞的调用也会被**显式失败**，不会接受可能来自用户输入的结果；
    * 2. **同关键词互斥**：该实例上不能已有同关键词的未完成请求，等它结算（或改用不同关键词）
    *    之后再调用。
    *
-   * 彻底去掉第 2 条（以及顺序假设）需要「每次请求一个独立实例 + 回调闭包」，属 M7（#38 / #41）。
+   * 彻底去掉这些限制需要「每次请求一个独立实例 + 回调闭包」，属 M7（#38 / #41）。
    */
   suggest(
     handle: ServiceHandle<"service:autocomplete">,

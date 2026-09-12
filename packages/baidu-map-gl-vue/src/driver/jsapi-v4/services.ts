@@ -313,18 +313,25 @@ export function createJsapiV4ServiceDriver(
     (pendingSuggest.get(raw) ?? []).some((entry) => entry.keyword === keyword);
 
   /**
-   * 回调通道**独占**的实例：输入框不可输入（`readOnly` / `disabled` / `type="hidden"`）。
+   * 回调通道**独占**的判定（五轮复审 P2 之后）。
    *
    * `Autocomplete` 只有一条 `onSearchComplete`，用户输入触发的检索与程序化 `search()` 共用它，
    * 而回包里没有任何「这次是谁触发的」信息——因此**可输入的实例上，同关键词的原生回包与程序化
-   * 回包无法区分**（PR #63 四轮复审 P2-2）。`suggest()` 因此只在独占通道上放行。
+   * 回包无法区分**。判定必须看输入框的**当前**状态（HTML 控件的可编辑性取决于当前的
+   * `disabled` / `readonly` / `type`，构造之后随时可能变回可输入），所以：
+   *
+   * - `boundInput`：保留输入框引用，在**每次 `suggest()` 与每次回包**时重新校验；
+   * - `lostExclusivity`：一旦观察到可输入就**永久失效**（不因为随后又变回只读而恢复资格——
+   *   可编辑期间触发的旧请求可能仍在等回包），此后的 `suggest()` 与回包都明确失败/忽略，
+   *   调用方需重建实例。
    *
    * 为什么不直接建一个「程序化专用实例」：真实 4.0 里不带 `input` 的实例**能构造但 `search()`
-   * 不回包**（2026-09-12 smoke 实测：`no-input` / `input: undefined` 两种都是「构造 ok；3s 内
-   * 回包数=0」），而挂到文档的输入框才是 `search()` 能回包的前提——所以独占通道只能由调用方用
-   * 「不可输入的输入框」表达，Driver 不替它造 DOM（DOM 所有权与释放路径都留在调用方一侧）。
+   * 不回包**（smoke 实测：`no-input` / `input: undefined` 都是「构造 ok；3s 内回包数=0」），
+   * 而挂到文档的输入框才是 `search()` 能回包的前提——所以独占通道只能由调用方用「不可输入的
+   * 输入框」表达，Driver 不替它造 DOM（DOM 所有权与释放路径都留在调用方一侧）。
    */
-  const exclusiveChannel = new WeakSet<object>();
+  const boundInput = new WeakMap<object, unknown>();
+  const lostExclusivity = new WeakSet<object>();
 
   /** 输入框是否可被用户输入（决定回调通道是否独占）。缺输入框时按「不独占」处理。 */
   const isTypableInput = (input: unknown): boolean => {
@@ -332,6 +339,39 @@ export function createJsapiV4ServiceDriver(
     const el = input as { readOnly?: unknown; disabled?: unknown; type?: unknown };
     if (el.readOnly === true || el.disabled === true) return false;
     return el.type !== "hidden";
+  };
+
+  const EXCLUSIVITY_LOST_HINT = "请重建 Autocomplete 实例（用不可输入的输入框）后再做程序化检索";
+
+  /**
+   * 标记实例失去独占，并把在飞的程序化请求**显式失败**：那些回包可能来自用户输入，不能再被当成
+   * 程序化检索的结果（宁可失败也不猜）。永久生效，见 `lostExclusivity`。
+   */
+  const loseExclusivity = (raw: Record<string, unknown>, reason: string): void => {
+    if (lostExclusivity.has(raw)) return;
+    lostExclusivity.add(raw);
+    const queue = pendingSuggest.get(raw) ?? [];
+    pendingSuggest.delete(raw);
+    for (const entry of queue) {
+      entry.settle.failed({ code: "BMAP_SERVICE_FAILED", message: reason });
+    }
+  };
+
+  /** 每次调用 / 每次回包都要跑的独占校验；返回失败原因（null 表示仍然独占）。 */
+  const exclusivityFailure = (raw: Record<string, unknown>): string | null => {
+    if (lostExclusivity.has(raw)) {
+      return `该 Autocomplete 实例已失去回调通道独占（输入框曾被观察到可输入）：${EXCLUSIVITY_LOST_HINT}`;
+    }
+    if (isTypableInput(boundInput.get(raw))) {
+      const message =
+        "该 Autocomplete 实例绑定的输入框当前可输入：用户输入触发的检索与程序化检索共用同一条 " +
+        "onSearchComplete，关键词相同时回包无法区分（可能把用户那次的结果当成程序化调用的结果）。" +
+        `请用不可输入的输入框（readOnly / disabled / type="hidden"）创建程序化检索实例，` +
+        `或改用该实例的 onSearchComplete 回调；${EXCLUSIVITY_LOST_HINT}`;
+      loseExclusivity(raw, message);
+      return message;
+    }
+    return null;
   };
 
   /** 空结果还是失败：`null` 回包 + JSONP 注册表里的错误码 ⇒ 失败。 */
@@ -446,8 +486,13 @@ export function createJsapiV4ServiceDriver(
           input: options.input,
           types: options.types,
           onSearchComplete: (results: RawAutocompleteResult) => {
-            // 先按回包自带的 keyword 关联（乱序也能对上），没有 keyword 时退化为 FIFO 队首
-            const settle = raw ? shiftPending(raw, results) : null;
+            let settle: ServiceCallSettle<PlaceSuggestion[]> | null = null;
+            if (raw) {
+              // 独占在**每次回包**时重新校验：等待期间输入框变回可输入 ⇒ 这个回包可能来自用户输入，
+              // 一律不接受（把在飞的程序化请求显式失败，并让实例永久失效）
+              if (exclusivityFailure(raw) !== null) settle = null;
+              else settle = shiftPending(raw, results);
+            }
             if (settle) {
               const suggestions = readSuggestions(results);
               if (suggestions.length > 0) settle.success(suggestions);
@@ -458,8 +503,8 @@ export function createJsapiV4ServiceDriver(
         }),
       );
       raw = instance as unknown as Record<string, unknown>;
-      // 记下「这条回包通道是否独占」：只在输入框不可输入时独占（见 `exclusiveChannel`）
-      if (!isTypableInput(options.input)) exclusiveChannel.add(raw);
+      // 记下输入框**引用**：独占判定在每次 `suggest()` 与每次回包时重新校验（见 `boundInput`）
+      boundInput.set(raw, options.input);
       return registry.adopt("service:autocomplete", instance);
     },
 
@@ -736,16 +781,11 @@ export function createJsapiV4ServiceDriver(
       }
       const raw = resolve<Record<string, unknown>>(handle, "ServiceDriver.suggest");
 
-      // 前置拒绝 1（通道独占）：实例绑定了**可输入**的输入框时，用户输入触发的检索会走同一条
-      // `onSearchComplete`，同关键词的回包与程序化的无法区分（PR #63 四轮复审 P2-2）。
-      if (!exclusiveChannel.has(raw)) {
-        return serviceFailedCall<PlaceSuggestion[]>(
-          "Autocomplete.search",
-          "该 Autocomplete 实例绑定了可输入的输入框：用户输入触发的检索与程序化检索共用同一条 " +
-            "onSearchComplete，关键词相同时回包无法区分（可能把用户那次的结果当成程序化调用的结果）。" +
-            '请用不可输入的输入框（readOnly / disabled / type="hidden"）创建程序化检索实例，' +
-            "或改用该实例的 onSearchComplete 回调",
-        );
+      // 前置拒绝 1（通道独占）：在**调用时**校验输入框的当前状态，而不是只信构造时的标记——
+      // HTML 控件的可编辑性随时可变，构造后恢复可输入同样会让两类回包无法区分（五轮复审 P2）。
+      const exclusivity = exclusivityFailure(raw);
+      if (exclusivity !== null) {
+        return serviceFailedCall<PlaceSuggestion[]>("Autocomplete.search", exclusivity);
       }
 
       // 前置拒绝 2（同关键词互斥）：`Autocomplete` 的回包不带请求身份，两次同名请求的回包互相

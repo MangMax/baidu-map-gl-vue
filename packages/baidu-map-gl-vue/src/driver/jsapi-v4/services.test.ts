@@ -459,6 +459,74 @@ describe("v4 Service Facet：Autocomplete 的回包归属（PR #63 复审 P2-1�
     expect(fake.createdAutocompletes[0].callLog).toContain("search:天安门");
   });
 
+  // 五轮复审 P2：独占判定不能只信构造时的状态——HTML 控件的可编辑性取决于**当前**的
+  // disabled / readonly / type，构造之后随时可以变回可输入。
+  const HIDDEN = (el: HTMLInputElement): void => {
+    el.type = "hidden";
+  };
+  const DISABLED = (el: HTMLInputElement): void => {
+    el.disabled = true;
+  };
+  const READONLY = (el: HTMLInputElement): void => {
+    el.readOnly = true;
+  };
+
+  it.each([
+    ["disabled 被取消", DISABLED, (el: HTMLInputElement) => (el.disabled = false)],
+    ["readOnly 被取消", READONLY, (el: HTMLInputElement) => (el.readOnly = false)],
+    ["type 从 hidden 改为 text", HIDDEN, (el: HTMLInputElement) => (el.type = "text")],
+  ])("构造后输入框恢复可输入（%s）⇒ suggest() 必须拒绝", async (_name, makeExclusive, makeTypable) => {
+    const el = document.createElement("input");
+    makeExclusive(el);
+    document.body.appendChild(el);
+    const handle = services.createAutocomplete({ input: el });
+
+    makeTypable(el);
+
+    const result = await services.suggest(handle, "K").result;
+    expect(result.status).toBe("failed");
+    expect(fake.createdAutocompletes[0].callLog).not.toContain("search:K");
+  });
+
+  it("等待回包期间输入框恢复可输入 ⇒ 该调用必须显式失败（不能接受可能来自用户输入的回包）", async () => {
+    const el = document.createElement("input");
+    el.readOnly = true;
+    document.body.appendChild(el);
+    const handle = services.createAutocomplete({ input: el });
+    const autocomplete = fake.createdAutocompletes[0];
+    autocomplete.queue.auto = false;
+
+    autocomplete.pois = [{ business: "NEW", province: "北京市" }];
+    const call = services.suggest(handle, "K");
+
+    // 等待期间用户把输入框变回可输入，然后键入同关键词 → 原生检索的回包（TYPED）到达
+    el.readOnly = false;
+    autocomplete.pois = [{ business: "TYPED", province: "上海市" }];
+    const raw = autocomplete as unknown as { search(keyword: string): void };
+    raw.search("K");
+    autocomplete.queue.flush();
+
+    const result = await call.result;
+    expect(result.status).toBe("failed");
+    expect(result.data).toBeNull();
+  });
+
+  it("一旦观察到失去独占（可编辑期间已可能产生原生请求），即使又变回只读也不恢复资格", async () => {
+    const el = document.createElement("input");
+    el.readOnly = true;
+    document.body.appendChild(el);
+    const handle = services.createAutocomplete({ input: el });
+
+    // 观察到失去独占：可编辑期间调用被拒绝（同时实例被永久标记）
+    el.readOnly = false;
+    expect((await services.suggest(handle, "K").result).status).toBe("failed");
+
+    el.readOnly = true; // 又变回只读 —— 不能因此恢复
+    const result = await services.suggest(handle, "K").result;
+    expect(result.status).toBe("failed");
+    expect(result.error?.message).toContain("重建");
+  });
+
   it("取消 A 之后 A 的迟到回包不得结算 B", async () => {
     const handle = services.createAutocomplete({ input: input() });
     const autocomplete = fake.createdAutocompletes[0];
