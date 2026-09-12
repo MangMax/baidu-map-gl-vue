@@ -16,6 +16,7 @@ import {
   withMigrationDriver,
 } from "./migration";
 import { createBMapClient } from "./createBMapClient";
+import { createFakeBMapV4 } from "../../../test-utils";
 import { createLoadedJsapiV4 } from "../core/loader/providers";
 import { LIBRARY_VERSION } from "../version";
 import type { LoadedSdk } from "../core/loader/loaded";
@@ -28,7 +29,7 @@ const legacyNamespace = {
   VERSION: "1.0",
 };
 
-const v4Namespace = { Map: class {}, Point: class {}, Marker: class {} };
+const v4Namespace = createFakeBMapV4().namespace;
 
 function loadedV4(): LoadedSdk {
   return createLoadedJsapiV4({
@@ -125,11 +126,13 @@ describe("withMigrationDriver（组件默认路径归一）", () => {
       provider: { load: async () => loadedV4() },
       loadOptions: { ak: "test-ak-1234" },
     });
-    // v4 Facet Driver 本体属 M3A.2；此处验证「已分派到 v4 路径」而不是被当 legacy 处理
-    await expect(createBMapClient(definition)).rejects.toMatchObject({
-      code: "BMAP_CAPABILITY_UNSUPPORTED",
-      message: expect.stringContaining("M3A.2"),
-    });
+    // 断言「已分派到 v4 路径」而不是被当 legacy 处理。
+    // M3A2-SERVICES-NATIVE（#23）之前这里靠「v4 工厂抛 BMAP_CAPABILITY_UNSUPPORTED」间接证明；
+    // 装配完成后改为**正向**证明：v4 Provider 经组件默认路径能装出可用的 v4 Client。
+    const client = await createBMapClient(definition);
+    expect(client.engine).toBe("jsapi-v4");
+    expect(client.driver.engine).toBe("jsapi-v4");
+    expect(client.driver.capabilities.supports("overlay.marker")).toBe(true);
   });
 
   it("显式声明 driver 时不被覆盖（双实现测试的前提）", async () => {

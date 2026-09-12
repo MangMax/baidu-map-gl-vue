@@ -609,6 +609,45 @@
       "description": "聚合图层；优先使用 SDK 原生能力，缺失时由项目提供 fallback 聚类"
     },
     {
+      "id": "layer.point",
+      "family": "layer",
+      "status": "experimental",
+      "runtimeOnly": true,
+      "engines": [
+        "jsapi-v4"
+      ],
+      "rawMembers": [
+        "PointLayer"
+      ],
+      "description": "原生点图层（PointLayer）；支持形状或图标，属扩展 API"
+    },
+    {
+      "id": "layer.heatmap",
+      "family": "layer",
+      "status": "experimental",
+      "runtimeOnly": true,
+      "engines": [
+        "jsapi-v4"
+      ],
+      "rawMembers": [
+        "Heatmap"
+      ],
+      "description": "热力图（Heatmap）；按权重渲染点密度，属扩展 API"
+    },
+    {
+      "id": "layer.track-line",
+      "family": "layer",
+      "status": "experimental",
+      "runtimeOnly": true,
+      "engines": [
+        "jsapi-v4"
+      ],
+      "rawMembers": [
+        "TrackLine"
+      ],
+      "description": "轨迹线（TrackLine）；数据的绘制/播放/跟随，属扩展 API；播放控制与迁移结论见 M8（#43）"
+    },
+    {
       "id": "service.local-search",
       "family": "service",
       "status": "native",

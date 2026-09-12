@@ -2,7 +2,8 @@
  * Fake BMap v4 namespace
  *
  * JSAPI 4.0（`v=4.0`，全局 `BMap`）的最小可观察替身：几何构造器、Map、`MapTypeId`
- * 常量、核心与高级覆盖物、右键菜单与图标、控件（#22）与图层（#22），以及统一的监听器统计。
+ * 常量、核心与高级覆盖物、右键菜单与图标、控件（#22）、图层（#22）、六个基础服务与
+ * JSONP 注册表（#23），以及统一的监听器统计。
  * 它位于 raw SDK 边界之外（`packages/test-utils` 不在 `check-raw-sdk` 扫描范围内），
  * 是 v4 Driver 的 Fake 边界。
  *
@@ -55,6 +56,29 @@ import {
   FakeV4Prism,
   FakeV4Rectangle,
 } from './objects.ts'
+import {
+  createFakeV4JsonpRegistry,
+  FakeV4Autocomplete,
+  FakeV4AutocompleteResult,
+  FakeV4Boundary,
+  FakeV4CallbackQueue,
+  FakeV4Convertor,
+  FakeV4Geocoder,
+  FakeV4Geolocation,
+  FakeV4LocalCity,
+  type FakeV4JsonpRegistry,
+} from './services.ts'
+import {
+  FakeV4ClusterLayer,
+  FakeV4FillLayer,
+  FakeV4Heatmap,
+  FakeV4LineLayer,
+  FakeV4PointIconLayer,
+  FakeV4PointLayer,
+  FakeV4PointShapeLayer,
+  FakeV4TrackLine,
+} from './native-layers.ts'
+import { FakeV4Panorama, FakeV4PanoramaService } from './panorama.ts'
 
 export { FakeV4EventStats, FakeV4EventTarget } from './event-target.ts'
 export {
@@ -95,6 +119,31 @@ export {
   FakeV4Prism,
   FakeV4Rectangle,
 } from './objects.ts'
+export {
+  createFakeV4JsonpRegistry,
+  FakeV4Autocomplete,
+  FakeV4AutocompleteResult,
+  FakeV4Boundary,
+  FakeV4CallbackQueue,
+  FakeV4Convertor,
+  FakeV4Geocoder,
+  FakeV4Geolocation,
+  FakeV4LocalCity,
+} from './services.ts'
+export type { FakeV4JsonpRegistry, FakeV4PointLike } from './services.ts'
+export {
+  FakeV4ClusterLayer,
+  FakeV4FillLayer,
+  FakeV4Heatmap,
+  FakeV4LineLayer,
+  FakeV4NativeLayerBase,
+  FakeV4PointIconLayer,
+  FakeV4PointLayer,
+  FakeV4PointShapeLayer,
+  FakeV4RuntimeLayer,
+  FakeV4TrackLine,
+} from './native-layers.ts'
+export { FakeV4Panorama, FakeV4PanoramaService } from './panorama.ts'
 
 export interface FakeBMapV4Namespace {
   Map: new (container: string | HTMLElement, options?: Record<string, unknown>) => FakeV4Map
@@ -160,6 +209,31 @@ export interface FakeBMapV4Namespace {
   TileLayer: new (options?: Record<string, unknown>) => FakeV4TileLayer
   /** 官方 4.0 运行时公开、但 4.0.4 类型包未声明类声明的成员。 */
   PanoramaCoverageLayer: new () => FakeV4PanoramaCoverageLayer
+  /* -------------------------------------------------- 服务（#23） */
+  Geocoder: new (opts?: Record<string, unknown>) => FakeV4Geocoder
+  Convertor: new () => FakeV4Convertor
+  Boundary: new () => FakeV4Boundary
+  Geolocation: new (options?: Record<string, unknown>) => FakeV4Geolocation
+  LocalCity: new (options?: Record<string, unknown>) => FakeV4LocalCity
+  Autocomplete: new (options?: Record<string, unknown>) => FakeV4Autocomplete
+  /* ---------------------------------------------- 原生数据图层（#23） */
+  PointIconLayer: new (options?: Record<string, unknown>) => FakeV4PointIconLayer
+  PointShapeLayer: new (options?: Record<string, unknown>) => FakeV4PointShapeLayer
+  LineLayer: new (options?: Record<string, unknown>) => FakeV4LineLayer
+  FillLayer: new (options?: Record<string, unknown>) => FakeV4FillLayer
+  /** 4.0 运行时公开、4.0.4 类型包未声明类声明的扩展 API。 */
+  PointLayer: new (options?: Record<string, unknown>) => FakeV4PointLayer
+  ClusterLayer: new (options?: Record<string, unknown>) => FakeV4ClusterLayer
+  Heatmap: new (options?: Record<string, unknown>) => FakeV4Heatmap
+  TrackLine: new (options?: Record<string, unknown>) => FakeV4TrackLine
+  /* -------------------------------------------------- 全景（#23） */
+  Panorama: new (
+    container: string | HTMLElement,
+    options?: Record<string, unknown>,
+  ) => FakeV4Panorama
+  PanoramaService: new () => FakeV4PanoramaService
+  /** JSONP 回调注册表：服务失败时错误码只在这里出现（Facet 的嗅探入口）。 */
+  _rd: Record<string, unknown>
   VERSION: string
 }
 
@@ -174,6 +248,20 @@ export interface FakeBMapV4 {
   createdControls: FakeV4Control[]
   /** 测试辅助：记录已创建的图层实例（#22） */
   createdLayers: FakeV4Layer[]
+  /** 测试辅助：记录已创建的服务实例（#23） */
+  createdGeocoders: FakeV4Geocoder[]
+  createdConvertors: FakeV4Convertor[]
+  createdBoundaries: FakeV4Boundary[]
+  createdGeolocations: FakeV4Geolocation[]
+  createdLocalCities: FakeV4LocalCity[]
+  createdAutocompletes: FakeV4Autocomplete[]
+  /** 测试辅助：记录已创建的原生数据图层实例（#23） */
+  createdNativeLayers: FakeV4Layer[]
+  /** 测试辅助：记录已创建的全景查看器 / 检索实例（#23） */
+  createdPanoramas: FakeV4Panorama[]
+  createdPanoramaServices: FakeV4PanoramaService[]
+  /** 测试辅助：JSONP 注册表（造「失败只回 null」的服务端错误） */
+  jsonp: FakeV4JsonpRegistry
 }
 
 export function createFakeBMapV4(version = '4.0'): FakeBMapV4 {
@@ -182,6 +270,16 @@ export function createFakeBMapV4(version = '4.0'): FakeBMapV4 {
   const createdOverlays: unknown[] = []
   const createdControls: FakeV4Control[] = []
   const createdLayers: FakeV4Layer[] = []
+  const jsonp = createFakeV4JsonpRegistry()
+  const createdGeocoders: FakeV4Geocoder[] = []
+  const createdConvertors: FakeV4Convertor[] = []
+  const createdBoundaries: FakeV4Boundary[] = []
+  const createdGeolocations: FakeV4Geolocation[] = []
+  const createdLocalCities: FakeV4LocalCity[] = []
+  const createdAutocompletes: FakeV4Autocomplete[] = []
+  const createdNativeLayers: FakeV4Layer[] = []
+  const createdPanoramas: FakeV4Panorama[] = []
+  const createdPanoramaServices: FakeV4PanoramaService[] = []
 
   class MapClass extends FakeV4Map {
     constructor(container: string | HTMLElement, options?: Record<string, unknown>) {
@@ -357,6 +455,111 @@ export function createFakeBMapV4(version = '4.0'): FakeBMapV4 {
     }
   }
 
+  /* ---------------------------------------------------- 服务（#23） */
+
+  class GeocoderClass extends FakeV4Geocoder {
+    constructor() {
+      super(jsonp)
+      createdGeocoders.push(this)
+    }
+  }
+  class ConvertorClass extends FakeV4Convertor {
+    constructor() {
+      super()
+      createdConvertors.push(this)
+    }
+  }
+  class BoundaryClass extends FakeV4Boundary {
+    constructor() {
+      super(jsonp)
+      createdBoundaries.push(this)
+    }
+  }
+  class GeolocationClass extends FakeV4Geolocation {
+    constructor(options?: Record<string, unknown>) {
+      super(options ?? {})
+      createdGeolocations.push(this)
+    }
+  }
+  class LocalCityClass extends FakeV4LocalCity {
+    constructor(options?: Record<string, unknown>) {
+      super(jsonp, options ?? {})
+      createdLocalCities.push(this)
+    }
+  }
+  class AutocompleteClass extends FakeV4Autocomplete {
+    constructor(options?: Record<string, unknown>) {
+      super(options ?? {}, stats)
+      createdAutocompletes.push(this)
+    }
+  }
+
+  /* ---------------------------------------------- 原生数据图层（#23） */
+
+  class PointIconLayerClass extends FakeV4PointIconLayer {
+    constructor(options?: Record<string, unknown>) {
+      super(options ?? {}, stats)
+      createdNativeLayers.push(this)
+    }
+  }
+  class PointShapeLayerClass extends FakeV4PointShapeLayer {
+    constructor(options?: Record<string, unknown>) {
+      super(options ?? {}, stats)
+      createdNativeLayers.push(this)
+    }
+  }
+  class LineLayerClass extends FakeV4LineLayer {
+    constructor(options?: Record<string, unknown>) {
+      super(options ?? {}, stats)
+      createdNativeLayers.push(this)
+    }
+  }
+  class FillLayerClass extends FakeV4FillLayer {
+    constructor(options?: Record<string, unknown>) {
+      super(options ?? {}, stats)
+      createdNativeLayers.push(this)
+    }
+  }
+  class PointLayerClass extends FakeV4PointLayer {
+    constructor(options?: Record<string, unknown>) {
+      super(options ?? {}, stats)
+      createdNativeLayers.push(this)
+    }
+  }
+  class ClusterLayerClass extends FakeV4ClusterLayer {
+    constructor(options?: Record<string, unknown>) {
+      super(options ?? {}, stats)
+      createdNativeLayers.push(this)
+    }
+  }
+  class HeatmapClass extends FakeV4Heatmap {
+    constructor(options?: Record<string, unknown>) {
+      super(options ?? {}, stats)
+      createdNativeLayers.push(this)
+    }
+  }
+  class TrackLineClass extends FakeV4TrackLine {
+    constructor(options?: Record<string, unknown>) {
+      super(options ?? {}, stats)
+      createdNativeLayers.push(this)
+    }
+  }
+
+  /* ---------------------------------------------------- 全景（#23） */
+
+  class PanoramaClass extends FakeV4Panorama {
+    constructor(container: string | HTMLElement, options?: Record<string, unknown>) {
+      super(container, options ?? {}, stats)
+      createdPanoramas.push(this)
+    }
+  }
+  class PanoramaServiceClass extends FakeV4PanoramaService {
+    constructor() {
+      super()
+      createdPanoramaServices.push(this)
+    }
+  }
+
   const namespace: FakeBMapV4Namespace = {
     Map: MapClass,
     Point: FakeV4Point,
@@ -393,8 +596,42 @@ export function createFakeBMapV4(version = '4.0'): FakeBMapV4 {
     DistrictLayer: DistrictLayerClass,
     TileLayer: TileLayerClass,
     PanoramaCoverageLayer: PanoramaCoverageLayerClass,
+    Geocoder: GeocoderClass,
+    Convertor: ConvertorClass,
+    Boundary: BoundaryClass,
+    Geolocation: GeolocationClass,
+    LocalCity: LocalCityClass,
+    Autocomplete: AutocompleteClass,
+    PointIconLayer: PointIconLayerClass,
+    PointShapeLayer: PointShapeLayerClass,
+    LineLayer: LineLayerClass,
+    FillLayer: FillLayerClass,
+    PointLayer: PointLayerClass,
+    ClusterLayer: ClusterLayerClass,
+    Heatmap: HeatmapClass,
+    TrackLine: TrackLineClass,
+    Panorama: PanoramaClass,
+    PanoramaService: PanoramaServiceClass,
+    _rd: jsonp.registry,
     VERSION: version,
   }
 
-  return { namespace, stats, createdMaps, createdOverlays, createdControls, createdLayers }
+  return {
+    namespace,
+    stats,
+    createdMaps,
+    createdOverlays,
+    createdControls,
+    createdLayers,
+    createdGeocoders,
+    createdConvertors,
+    createdBoundaries,
+    createdGeolocations,
+    createdLocalCities,
+    createdAutocompletes,
+    createdNativeLayers,
+    createdPanoramas,
+    createdPanoramaServices,
+    jsonp,
+  }
 }

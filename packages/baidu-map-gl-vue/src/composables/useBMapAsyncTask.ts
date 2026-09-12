@@ -11,9 +11,15 @@
  */
 import { shallowRef, onScopeDispose, type ShallowRef } from "vue";
 import { BMapError } from "../core/errors/BMapError";
+import { SERVICE_CALL_TIMEOUT_MS } from "../driver/normalize/serviceCall";
 
-/** 百度 callback 风格服务默认超时:SDK 失败时可能永不回掉,超时后转为明确错误 */
-export const SERVICE_TIMEOUT_MS = 15000;
+/**
+ * 百度 callback 风格服务默认超时:SDK 失败时可能永不回掉,超时后转为明确错误。
+ *
+ * 单一事实源在 Driver 侧的服务调用适配器（`SERVICE_CALL_TIMEOUT_MS`）——composable 与
+ * Facet 必须用同一个超时值，否则「谁先超时」会变成两份真相。
+ */
+export const SERVICE_TIMEOUT_MS = SERVICE_CALL_TIMEOUT_MS;
 
 /**
  * 把 callback 风格的 SDK 调用包装为 Promise,附带超时保护。

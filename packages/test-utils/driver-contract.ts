@@ -26,11 +26,48 @@ import type { MapHandle } from "../baidu-map-gl-vue/src/driver/types/handles";
 import type { LayerKind } from "../baidu-map-gl-vue/src/driver/types/layers";
 import type { MapInteraction } from "../baidu-map-gl-vue/src/driver/types/map";
 import type {
+  NativeLayerDriver,
+  NativeLayerKind,
+} from "../baidu-map-gl-vue/src/driver/types/native-layers";
+import type {
   OverlayDriver,
   OverlayHandle,
   OverlayTarget,
 } from "../baidu-map-gl-vue/src/driver/types/overlays";
+import type { PanoramaViewerDriver } from "../baidu-map-gl-vue/src/driver/types/panorama";
+import type {
+  JsapiV4ServiceDriver,
+  ServiceCallStatus,
+  ServiceResult,
+} from "../baidu-map-gl-vue/src/driver/types/services";
 import type { Point } from "../baidu-map-gl-vue/src/driver/types/geometry";
+import {
+  DEFAULT_SERVICE_FACET_FIXTURE,
+  probeNativeLayerFacet,
+  probePanoramaFacet,
+  probeServiceFacet,
+} from "./facet-probes";
+
+/**
+ * 探针（`./facet-probes`）是本文件与真实 AK smoke 共用的那一半：这里再导出一次，
+ * 让「契约」这个入口同时提供纯探针与 vitest 断言，调用方不必知道文件怎么切。
+ */
+export {
+  DEFAULT_SERVICE_FACET_FIXTURE,
+  NATIVE_LAYER_FACET_KINDS,
+  NATIVE_LAYER_FACET_OPERATIONS,
+  callNativeLayerOperation,
+  probeNativeLayerFacet,
+  probePanoramaFacet,
+  probeServiceFacet,
+} from "./facet-probes";
+export type {
+  NativeLayerFacetProbeOptions,
+  NativeLayerRoundTrip,
+  PanoramaFacetProbes,
+  ServiceFacetFixture,
+  ServiceFacetProbes,
+} from "./facet-probes";
 
 export interface DriverHarness {
   client(): BMapClient;
@@ -505,4 +542,201 @@ export function runLayerFacetContract(createHarness: () => LayerFacetHarness) {
 
 export function expectMapHandle(map: unknown): asserts map is MapHandle {
   expect(typeof (map as MapHandle).raw).not.toBe("undefined");
+}
+
+/* -------------------------------------------------------------------------- */
+/* Service / Native Layer / Panorama facet 契约（M3A2-SERVICES-NATIVE / #23）     */
+/* -------------------------------------------------------------------------- */
+
+/**
+ * 这一层与前三个 facet 契约的**结构差别**值得先说明：
+ *
+ * 前者是「两个引擎都必须满足」的跨引擎契约；Service / Native Layer / Panorama 是 v4
+ * 独有的面（webgl-v1 没有原生数据图层，也没有归一化服务调用面），因此契约的消费者是
+ * **v4 Fake** 与 **真实 AK smoke 子集**（issue #23 实施步骤 5）。
+ *
+ * 为了「同一套 Harness 两边都能跑」，每个 facet 拆成两半：
+ * - `./facet-probes` 的 `probeXxxFacet`：纯函数，只做调用与结构化记录，**不 import vitest**
+ *   （浏览器里的 smoke 直接用它）；
+ * - 本文件的 `runXxxFacetContract`：用 vitest 断言探针的结果。
+ *
+ * Fake 侧另有一档 `expectation: "fixture" | "live"`：Fake 环境要求「命中 fixture」，
+ * 真实环境只要求「结算且形状自洽」——配额、网络与 Referer 都不受本库控制，
+ * 把「真实环境必须成功」写进契约只会得到一个不稳定的门禁。
+ */
+
+const SERVICE_CALL_STATUSES: readonly ServiceCallStatus[] = [
+  "success",
+  "empty",
+  "failed",
+  "timeout",
+  "canceled",
+];
+
+/** `ServiceResult` 的形状不变式：三个终态各自的可观测契约。 */
+export function assertServiceResultShape<T>(label: string, result: ServiceResult<T>): void {
+  expect(SERVICE_CALL_STATUSES, `${label}: 未知的 status`).toContain(result.status);
+  if (result.status === "success") {
+    expect(result.data, `${label}: success 必须带 data`).not.toBeNull();
+    expect(result.error, `${label}: success 不应带 error`).toBeNull();
+    return;
+  }
+  expect(result.data, `${label}: ${result.status} 不应带 data`).toBeNull();
+  if (result.status === "failed" || result.status === "timeout") {
+    expect(result.error, `${label}: ${result.status} 必须带 error`).not.toBeNull();
+  } else {
+    expect(result.error, `${label}: ${result.status} 不应带 error`).toBeNull();
+  }
+}
+
+export interface ServiceFacetHarness {
+  services(): JsapiV4ServiceDriver;
+  fixture?: Parameters<typeof probeServiceFacet>[1];
+  /**
+   * `fixture`（默认）：Fake 环境，要求每个调用都真的命中 fixture；
+   * `live`：真实 SDK/网络，只要求「结算且形状自洽」。
+   */
+  expectation?: "fixture" | "live";
+}
+
+export function runServiceFacetContract(createHarness: () => ServiceFacetHarness) {
+  describe("Service facet contract", () => {
+    it("七个归一化调用都结算，且每个 ServiceResult 形状自洽", async () => {
+      const harness = createHarness();
+      const probes = await probeServiceFacet(
+        harness.services(),
+        harness.fixture ?? DEFAULT_SERVICE_FACET_FIXTURE,
+      );
+
+      const entries: ReadonlyArray<readonly [string, ServiceResult<unknown>]> = [
+        ["geocode", probes.geocode],
+        ["reverseGeocode", probes.reverseGeocode],
+        ["convert", probes.convert],
+        ["boundary", probes.boundary],
+        ["locate", probes.locate],
+        ["locateCity", probes.locateCity],
+        ["suggest", probes.suggest],
+        ["canceled", probes.canceled],
+      ];
+      for (const [label, result] of entries) assertServiceResultShape(label, result);
+    });
+
+    it("取消立即以 canceled 结算，且不回写数据（迟到回调不复活）", async () => {
+      const harness = createHarness();
+      const probes = await probeServiceFacet(harness.services(), harness.fixture);
+      expect(probes.canceled.status).toBe("canceled");
+      expect(probes.canceled.data).toBeNull();
+      expect(probes.canceled.error).toBeNull();
+    });
+
+    it("fixture 环境下每个基础服务都命中结果", async () => {
+      const harness = createHarness();
+      if ((harness.expectation ?? "fixture") !== "fixture") return;
+      const probes = await probeServiceFacet(harness.services(), harness.fixture);
+
+      const entries: ReadonlyArray<readonly [string, ServiceResult<unknown>]> = [
+        ["geocode", probes.geocode],
+        ["reverseGeocode", probes.reverseGeocode],
+        ["convert", probes.convert],
+        ["boundary", probes.boundary],
+        ["locate", probes.locate],
+        ["locateCity", probes.locateCity],
+        ["suggest", probes.suggest],
+      ];
+      for (const [label, result] of entries) {
+        expect(result.status, `${label} 未命中 fixture`).toBe("success");
+      }
+    });
+  });
+}
+
+export interface NativeLayerFacetHarness {
+  nativeLayers(): NativeLayerDriver;
+  mapHandle(): MapHandle;
+  /** Fake 环境的挂载计数；真实 smoke 省略 */
+  attachedCount?: () => number;
+  kinds?: readonly NativeLayerKind[];
+}
+
+export function runNativeLayerFacetContract(createHarness: () => NativeLayerFacetHarness) {
+  describe("Native Layer facet contract", () => {
+    it("每种图层的挂载往返：重复 add 只挂一次、remove 归零、remove 后可重挂", () => {
+      const harness = createHarness();
+      const roundTrips = probeNativeLayerFacet(harness.nativeLayers(), {
+        target: { kind: "map", handle: harness.mapHandle() },
+        attachedCount: harness.attachedCount,
+        kinds: harness.kinds,
+      });
+
+      for (const trip of roundTrips) {
+        if (trip.attached === null) continue;
+        expect(trip.attached, `${trip.kind}: add 之后应挂 1 个`).toBe(1);
+        expect(trip.attachedAfterDuplicateAdd, `${trip.kind}: 重复 add 只挂一次`).toBe(1);
+        expect(trip.attachedAfterRemove, `${trip.kind}: remove 之后计数归零`).toBe(0);
+        expect(trip.attachedAfterRemount, `${trip.kind}: remove 之后可以重挂`).toBe(1);
+      }
+    });
+
+    it("supports() 与实现一致：不支持的操作必须显式失败", () => {
+      const harness = createHarness();
+      const roundTrips = probeNativeLayerFacet(harness.nativeLayers(), {
+        target: { kind: "map", handle: harness.mapHandle() },
+        attachedCount: harness.attachedCount,
+        kinds: harness.kinds,
+      });
+
+      for (const trip of roundTrips) {
+        expect(
+          trip.rejectedWhenUnsupported,
+          `${trip.kind}: 有操作声明不支持却静默成功（${trip.unsupported.join(", ")}）`,
+        ).toBe(true);
+      }
+    });
+
+    it("非 Map 目标必须失败（不静默 no-op）", () => {
+      const harness = createHarness();
+      const driver = harness.nativeLayers();
+      const layer = driver.create(harness.kinds?.[0] ?? "line");
+      expect(() => driver.add({ kind: "overlay", handle: harness.mapHandle() }, layer)).toThrow();
+    });
+  });
+}
+
+export interface PanoramaFacetHarness {
+  panorama(): PanoramaViewerDriver;
+  container(): HTMLElement;
+  expectation?: "fixture" | "live";
+}
+
+export function runPanoramaFacetContract(createHarness: () => PanoramaFacetHarness) {
+  describe("Panorama facet contract", () => {
+    it("supported / 视角 / 生命周期：destroy 幂等，检索调用结算且形状自洽", async () => {
+      const harness = createHarness();
+      const probes = await probePanoramaFacet(harness.panorama(), harness.container());
+
+      expect(probes.supported).toBe(true);
+      // 幂等只在「第一次销毁成功」时可断言：失败会释放记账以便重试（真实 4.0 在未加载
+      // 场景的实例上 destroy 会抛 TypeError，见 ADR 的 smoke 记录），此时第二次仍会打到 SDK。
+      if (probes.destroyStatus === "ok") {
+        expect(
+          probes.destroyIdempotent,
+          "首次销毁成功，重复销毁必须是短路（不再次打到 SDK）",
+        ).toBe(true);
+      }
+      if ((harness.expectation ?? "fixture") === "fixture") {
+        expect(probes.destroyStatus, `destroy 失败：${probes.destroyError ?? ""}`).toBe("ok");
+      }
+      assertServiceResultShape("panorama.byId", probes.byId);
+      assertServiceResultShape("panorama.byLocation", probes.byLocation);
+    });
+
+    it("fixture 环境下两个检索都命中结果", async () => {
+      const harness = createHarness();
+      if ((harness.expectation ?? "fixture") !== "fixture") return;
+      const probes = await probePanoramaFacet(harness.panorama(), harness.container());
+
+      expect(probes.byId.status).toBe("success");
+      expect(probes.byLocation.status).toBe("success");
+    });
+  });
 }

@@ -119,7 +119,13 @@ export type {
   OverlayDriver,
   ControlDriver,
   LayerDriver,
+  NativeLayerDriver,
+  NativeLayerKind,
+  NativeLayerOperation,
   ServiceDriver,
+  ServiceResult,
+  ServiceCall,
+  JsapiV4Driver,
   EventDriver,
   PanoramaDriver,
 } from "./driver";
