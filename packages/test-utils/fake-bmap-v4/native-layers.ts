@@ -17,7 +17,7 @@
  * 所有替身都继承 `FakeV4Layer`：`FakeV4Map.addLayer/removeLayer` 的容器只认它，
  * 这也让「先摘子资源再 destroy 地图」的不变式在原生图层上同样可断言。
  */
-import type { FakeV4EventStats } from './event-target.ts'
+import type { FakeV4Diagnostics } from './diagnostics.ts'
 import { FakeV4Layer } from './controls-layers.ts'
 
 /* -------------------------------------------------- 专页批量图层（声明的四类） */
@@ -145,7 +145,7 @@ export class FakeV4FillLayer extends FakeV4NativeLayerBase {
 export class FakeV4RuntimeLayer extends FakeV4Layer {
   data: unknown = null
 
-  constructor(options: Record<string, unknown> = {}, stats: FakeV4EventStats) {
+  constructor(options: Record<string, unknown> = {}, stats: FakeV4Diagnostics) {
     super(options, stats)
   }
 

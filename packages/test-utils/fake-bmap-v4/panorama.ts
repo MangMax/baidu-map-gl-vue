@@ -12,7 +12,7 @@
  * - **`destroy()` 重复调用不保证安全**：Fake 记录调用次数但不做幂等，让「Driver 自己记账」
  *   这条设计可断言（重复 `destroy(viewer)` 时 SDK 侧计数必须仍是 1）。
  */
-import type { FakeV4EventStats } from './event-target.ts'
+import type { FakeV4Diagnostics } from './diagnostics.ts'
 import { FakeV4EventTarget } from './event-target.ts'
 import { FakeV4CallbackQueue } from './services.ts'
 
@@ -40,11 +40,12 @@ export class FakeV4Panorama extends FakeV4EventTarget {
   constructor(
     container: string | HTMLElement,
     options: Record<string, unknown> = {},
-    stats: FakeV4EventStats,
+    stats: FakeV4Diagnostics,
   ) {
     super(stats)
     this.container = container
     this.options = options
+    this.stats.resourceCreated('panorama', this)
   }
 
   setPosition(position: { lng: number; lat: number }): void {
@@ -118,12 +119,16 @@ export class FakeV4Panorama extends FakeV4EventTarget {
       throw error
     }
     this.destroyCalls += 1
+    // 失败路径**不**销账：诊断因此能表达「销毁没成功、账还挂着、可以重试」。
+    // 传实例：本 Fake 刻意保留「重复 destroy 每次都真的打到 SDK」的语义（`destroyCalls` 记数），
+    // 诊断必须按实例去重，否则重复销毁一个实例会抵消另一个实例的泄漏（PR #66 复审 P2-1）。
+    this.stats.resourceReleased('panorama', this)
   }
 }
 
 export class FakeV4PanoramaService {
   readonly callLog: string[] = []
-  readonly queue = new FakeV4CallbackQueue()
+  readonly queue: FakeV4CallbackQueue
   /** `getPanoramaById` 的回包；`null` = 查不到 */
   byId: Record<string, unknown> | null = {
     id: 'pano-1',
@@ -135,6 +140,13 @@ export class FakeV4PanoramaService {
     id: 'pano-2',
     description: '附近全景',
     position: { lng: 116.41, lat: 39.92 },
+  }
+
+  /** `diagnostics` 省略时回包不进诊断（独立构造检索实例的场景）。 */
+  constructor(diagnostics?: FakeV4Diagnostics) {
+    this.queue = new FakeV4CallbackQueue(diagnostics)
+    // 全景检索与基础服务同族：官方没有销毁入口，因此只进活动口径（不进泄漏门禁）
+    diagnostics?.serviceInstanceCreated()
   }
 
   getPanoramaById(id: string, callback: (data: Record<string, unknown> | null) => void): void {

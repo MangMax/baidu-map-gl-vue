@@ -1,5 +1,18 @@
 export { createFakeBMapGl, default as fakeBMapGl } from './fake-bmapgl'
 export {
+  createFakeV4Client,
+  createJsapiV4MatrixEngine,
+  createLegacyMatrixEngine,
+  createMigrationMatrixEngines,
+  expectSameDomainResult,
+  runDriverMatrix,
+} from './driver-matrix'
+export type {
+  DriverMatrixContext,
+  DriverMatrixEngine,
+  DriverMatrixResourceKind,
+} from './driver-matrix'
+export {
   FakeEventTarget,
   FakeMap,
   FakeMarker,
@@ -43,7 +56,7 @@ export {
   FakeV4ContextMenu,
   FakeV4Convertor,
   FakeV4CustomOverlay,
-  FakeV4EventStats,
+  FakeV4Diagnostics,
   FakeV4EventTarget,
   FakeV4FillLayer,
   FakeV4Geocoder,
@@ -71,15 +84,24 @@ export {
   FakeV4Polyline,
   FakeV4Prism,
   FakeV4Rectangle,
+  FakeV4RuntimeExtensions,
   FakeV4Size,
   FakeV4TrackLine,
   FakeV4ViewAnimation,
+  FAKE_V4_RUNTIME_INJECTED_MEMBERS,
 } from './fake-bmap-v4'
 export type {
   FakeBMapV4,
   FakeBMapV4Namespace,
+  FakeV4ActivityCounters,
   FakeV4AnimationOptions,
+  FakeV4AttachmentKind,
+  FakeV4DiagnosticsSnapshot,
   FakeV4Interaction,
   FakeV4JsonpRegistry,
+  FakeV4LeakCounters,
+  FakeV4LifecycleKind,
   FakeV4PointLike,
+  FakeV4ResourceKind,
+  FakeV4RuntimeInjectedMember,
 } from './fake-bmap-v4'
