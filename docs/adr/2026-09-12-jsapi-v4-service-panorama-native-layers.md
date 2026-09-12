@@ -151,6 +151,12 @@ options.onSearchComplete?.(results);            // 原样转发业务自己的�
   `suggest()` 与每次回包**（`exclusivityFailure`）；一旦观察到可输入，该实例被**永久**标记为
   失去独占（`lostExclusivity`），不因为随后又变回只读而恢复资格（可编辑期间触发的原生请求可能
   仍在等回包），在飞的程序化请求同时被**显式失败**。调用方需重建实例。
+  **只看当前状态还不够**（六轮复审 P2）：`解除只读 → 用户输入发出原生检索 → 恢复只读` 之后两道
+  检查看到的都是只读，那段窗口完全没有记录。因此 Driver 在创建实例时对绑定输入框挂一个
+  `MutationObserver`（`attributeFilter: ["readonly","disabled","type"]`），**按属性变化记录**
+  判定（回调里逐条看 `attributeName`，而不是重读「当前」值——否则解除→恢复会看起来没变过；
+  也刻意不依赖 `attributeOldValue`，本仓库测试环境 happy-dom 未实现它），一旦相关属性变过就按
+  失去独占处理。观察器有明确**释放路径**：实例进入终态（`loseExclusivity`）时立即 `disconnect()`。
   这把「通道是否独占」变成调用方**可判定、可复核**的前置条件，而不是 Driver 事后猜；
   `AutocompleteOptions.input` 的 JSDoc 与 `suggest()` 的类型文档都写明了这条。
 
@@ -578,6 +584,38 @@ Fake 为此加了 `flushOne(index)`（按索引触发单个回包）与 `include
 
 验证：`pnpm test:unit` **91 files / 977 tests**；typecheck / build / 边界扫描（含 `--src` 全树）/
 `check:public-dts` / 能力矩阵 / manifest 全绿；真实 AK smoke **27/27**。
+
+## 外部评审第六轮（PR #63，基线 `240b65b`）
+
+同一项 P2 未完全关闭：五轮改成「调用时 / 回包时检查**当前**状态」后，**检查间隔内的翻转**仍然
+无记录——`解除只读 → 用户输入发出原生检索 → 恢复只读` 之后，两道检查看到的都是只读：
+
+| 场景 | `240b65b` 上的实际结果（红） |
+| --- | --- |
+| 翻转窗口之后调用 `suggest()` | `expected 'success' to be 'failed'`（程序化调用拿到原生那次的 `TYPED`） |
+| `suggest()` 等待期间翻转 | 同上（`TYPED` 结算了程序化调用） |
+
+处置（按复审给的观察器方向）：
+
+- 创建实例时对绑定输入框挂 `MutationObserver`（`attributeFilter: ["readonly","disabled","type"]`），
+  **按属性变化记录**判定：回调里逐条看 `attributeName`，**不重读当前值**——否则「解除→恢复」
+  在同一批记录里看起来从未变过；也刻意不依赖 `attributeOldValue`（本仓库测试环境 happy-dom
+  未实现它，只判「相关属性变过」就足够，调用方要用 `suggest()` 就不该在使用期间动这些属性）。
+- 观察到变化 ⇒ `loseExclusivity`：永久失效 + 清空队列 + 把在飞的程序化请求显式失败；
+  **观察器在终态立即 `disconnect()`**（复审明确要求补齐释放路径）。
+- 观察器不可用时（非 DOM 环境）静默退化为「每次检查当前状态」，即五轮的行为。
+
+**试过但撤回的方案**：把「不属于任何程序化请求的回包」也当作失去独占。它会让上一轮已被接受的
+行为失效（不匹配回包不消费槽位、后续程序化调用仍各归其位），而观察器已覆盖同一场景，属于
+多余的严格化；因此只保留「不消费槽位」这一条。
+
+**残留（显式接受）**：① 观察器回调是**异步**的，所以「同一个同步块内 解除 → 直接用**裸实例**
+`search()` → 恢复」这种顺序仍可能漏——真实用户输入必然跨任务，而调用方绕过 `suggest()` 直接操作
+裸实例已在本契约之外；② 非 DOM 环境没有观察器，退化为调用时校验。彻底消除仍是 M7（#38 / #41）
+的隔离实例。
+
+验证：`pnpm test:unit` **91 files / 980 tests**；typecheck / build / 边界扫描（含 `--src` 全树）/
+`check:public-dts` / 能力矩阵 / manifest 全绿；真实 AK smoke **28/28**。
 
 ## 参考
 

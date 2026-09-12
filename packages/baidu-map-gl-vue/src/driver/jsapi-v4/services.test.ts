@@ -527,6 +527,76 @@ describe("v4 Service Facet：Autocomplete 的回包归属（PR #63 复审 P2-1�
     expect(result.error?.message).toContain("重建");
   });
 
+  // 六轮复审 P2：只看「检查时」的当前状态发现不了检查间隔内的翻转——
+  // 解除只读 → 用户输入发出原生检索 → 又恢复只读，两道检查看到的都是只读。
+  const flushObservers = () => new Promise((resolve) => setTimeout(resolve, 0));
+
+  it("未观察到的翻转窗口（解除只读 → 原生检索 → 恢复只读）之后 suggest() 必须拒绝", async () => {
+    const el = document.createElement("input");
+    el.readOnly = true;
+    document.body.appendChild(el);
+    const handle = services.createAutocomplete({ input: el });
+    const autocomplete = fake.createdAutocompletes[0];
+    autocomplete.queue.auto = false;
+
+    el.readOnly = false; // 用户可输入——没有任何 Driver 检查在这个时刻运行
+    autocomplete.pois = [{ business: "TYPED", province: "北京市" }];
+    (autocomplete as unknown as { search(keyword: string): void }).search("K"); // 原生检索已发出
+    el.readOnly = true; // 恢复只读
+    await flushObservers(); // 属性变化记录异步到达
+
+    const call = services.suggest(handle, "K");
+    autocomplete.queue.flush(); // 原生回包（TYPED）到达
+    const result = await call.result;
+    expect(result.status).toBe("failed");
+    expect(result.data).toBeNull();
+  });
+
+  it("等待回包期间的未观察翻转窗口：程序化调用不得被原生回包结算", async () => {
+    const el = document.createElement("input");
+    el.readOnly = true;
+    document.body.appendChild(el);
+    const handle = services.createAutocomplete({ input: el });
+    const autocomplete = fake.createdAutocompletes[0];
+    autocomplete.queue.auto = false;
+
+    autocomplete.pois = [{ business: "NEW", province: "北京市" }];
+    const call = services.suggest(handle, "K");
+
+    el.readOnly = false;
+    autocomplete.pois = [{ business: "TYPED", province: "上海市" }];
+    (autocomplete as unknown as { search(keyword: string): void }).search("K");
+    el.readOnly = true;
+    await flushObservers();
+
+    autocomplete.queue.flush(); // 原生回包到达
+    const result = await call.result;
+    expect(result.status).toBe("failed");
+    expect(result.data).toBeNull();
+  });
+
+  it("收到不属于任何程序化请求的回包（用户在输入框里打字）不会污染后续调用（也不消费槽位）", async () => {
+    const el = document.createElement("input");
+    el.readOnly = true;
+    document.body.appendChild(el);
+    const handle = services.createAutocomplete({ input: el });
+    const autocomplete = fake.createdAutocompletes[0];
+    autocomplete.queue.auto = false;
+
+    // 原生检索（不经 suggest 登记）的回包先到：它不属于任何程序化请求
+    autocomplete.pois = [{ business: "TYPED", province: "北京市" }];
+    (autocomplete as unknown as { search(keyword: string): void }).search("typed-by-user");
+    autocomplete.queue.flush();
+
+    // 后续程序化调用仍然各归其位（隔离性由「通道独占 + 关键字关联」保证）
+    autocomplete.pois = [{ business: "NEW", province: "上海市" }];
+    const call = services.suggest(handle, "K");
+    autocomplete.queue.flush();
+    const result = await call.result;
+    expect(result.status).toBe("success");
+    expect(result.data?.[0]?.title).toBe("NEW");
+  });
+
   it("取消 A 之后 A 的迟到回包不得结算 B", async () => {
     const handle = services.createAutocomplete({ input: input() });
     const autocomplete = fake.createdAutocompletes[0];

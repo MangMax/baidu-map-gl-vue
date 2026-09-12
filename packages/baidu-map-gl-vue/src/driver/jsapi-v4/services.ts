@@ -332,6 +332,19 @@ export function createJsapiV4ServiceDriver(
    */
   const boundInput = new WeakMap<object, unknown>();
   const lostExclusivity = new WeakSet<object>();
+  /**
+   * 输入框「独占相关属性」的观察器。
+   *
+   * **只看当前状态不够**（六轮复审 P2）：`解除只读 → 用户输入发出原生检索 → 恢复只读` 之后，
+   * 两道检查看到的都是「只读」，但那段窗口里已经产生了原生请求。属性变化记录是唯一能在事后发现
+   * 它的信号——观察器**异步**触发，所以只要在回调里发现相关属性变过就按失去独占处理。
+   *
+   * 刻意**不看** `attributeOldValue`（也不在回调里重读当前值）：本仓库的测试环境
+   * （happy-dom）未实现 `attributeOldValue`，而「相关属性变过」这一条本身就足以判定——
+   * 调用方若要使用 `suggest()`，就不该在使用期间改动绑定输入框的这些属性。
+   */
+  const observers = new WeakMap<object, MutationObserver>();
+  const EXCLUSIVE_ATTRIBUTES = new Set(["readonly", "disabled", "type"]);
 
   /** 输入框是否可被用户输入（决定回调通道是否独占）。缺输入框时按「不独占」处理。 */
   const isTypableInput = (input: unknown): boolean => {
@@ -350,6 +363,10 @@ export function createJsapiV4ServiceDriver(
   const loseExclusivity = (raw: Record<string, unknown>, reason: string): void => {
     if (lostExclusivity.has(raw)) return;
     lostExclusivity.add(raw);
+    // 释放路径：观察器只在「实例可能被用于程序化检索」期间需要，终止态一定断开，
+    // 不留下持有输入框与闭包的活观察器。
+    observers.get(raw)?.disconnect();
+    observers.delete(raw);
     const queue = pendingSuggest.get(raw) ?? [];
     pendingSuggest.delete(raw);
     for (const entry of queue) {
@@ -357,10 +374,43 @@ export function createJsapiV4ServiceDriver(
     }
   };
 
+  /**
+   * 开始观察输入框的独占相关属性（`readonly` / `disabled` / `type`）。
+   *
+   * 失败时静默退化为「每次检查当前状态」（四轮行为）——观察能力缺失不应让实例不可用。
+   */
+  const watchExclusiveInput = (raw: Record<string, unknown>, input: unknown): void => {
+    if (typeof MutationObserver !== "function") return;
+    if (typeof input !== "object" || input === null) return;
+    try {
+      const observer = new MutationObserver((records) => {
+        // 逐条看 attributeName，而不是在回调里重读「当前」值：解除→恢复同一批记录里，
+        // 当前值看起来仍是只读，但属性确实变过（这正是六轮复审要覆盖的窗口）。
+        const changed = records.some(
+          (record) => record.attributeName !== null && EXCLUSIVE_ATTRIBUTES.has(record.attributeName),
+        );
+        if (!changed) return;
+        loseExclusivity(
+          raw,
+          "该 Autocomplete 实例绑定的输入框在实例使用期间改动过 readonly / disabled / type：" +
+            "期间可能已产生用户输入触发的原生检索，其回包与程序化检索无法区分；" +
+            EXCLUSIVITY_LOST_HINT,
+        );
+      });
+      observer.observe(input as Node, {
+        attributes: true,
+        attributeFilter: [...EXCLUSIVE_ATTRIBUTES],
+      });
+      observers.set(raw, observer);
+    } catch {
+      /* 观察器不可用（非 DOM 环境等）：退化为每次检查当前状态 */
+    }
+  };
+
   /** 每次调用 / 每次回包都要跑的独占校验；返回失败原因（null 表示仍然独占）。 */
   const exclusivityFailure = (raw: Record<string, unknown>): string | null => {
     if (lostExclusivity.has(raw)) {
-      return `该 Autocomplete 实例已失去回调通道独占（输入框曾被观察到可输入）：${EXCLUSIVITY_LOST_HINT}`;
+      return `该 Autocomplete 实例已失去回调通道独占（输入框曾被观察到可输入、或其属性被改动过）：${EXCLUSIVITY_LOST_HINT}`;
     }
     if (isTypableInput(boundInput.get(raw))) {
       const message =
@@ -490,8 +540,7 @@ export function createJsapiV4ServiceDriver(
             if (raw) {
               // 独占在**每次回包**时重新校验：等待期间输入框变回可输入 ⇒ 这个回包可能来自用户输入，
               // 一律不接受（把在飞的程序化请求显式失败，并让实例永久失效）
-              if (exclusivityFailure(raw) !== null) settle = null;
-              else settle = shiftPending(raw, results);
+              if (exclusivityFailure(raw) === null) settle = shiftPending(raw, results);
             }
             if (settle) {
               const suggestions = readSuggestions(results);
@@ -503,8 +552,10 @@ export function createJsapiV4ServiceDriver(
         }),
       );
       raw = instance as unknown as Record<string, unknown>;
-      // 记下输入框**引用**：独占判定在每次 `suggest()` 与每次回包时重新校验（见 `boundInput`）
+      // 记下输入框**引用**：独占判定在每次 `suggest()` 与每次回包时重新校验（见 `boundInput`）；
+      // 另外观察它的独占相关属性——只看当前状态发现不了「检查间隔内发生过的翻转」（见 `observers`）
       boundInput.set(raw, options.input);
+      watchExclusiveInput(raw, options.input);
       return registry.adopt("service:autocomplete", instance);
     },
 
