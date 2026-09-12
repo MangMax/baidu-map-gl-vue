@@ -63,7 +63,7 @@ app.use(createBMapPlugin({ ak: '百度地图ak' }))
 
 > 迁移期说明：显式传入的 Provider 仍按**加载结果的 engine** 分派 Driver，所以
 > `createBMapPlugin({ provider: baiduCdnProvider() })` 依旧落在旧引擎上。这条分派随
-> [#26](https://github.com/MangMax/baidu-map-gl-vue/issues/26) 删除 `webgl-v1` 时一并收敛，
+> [#26](https://github.com/Mang-X/bmap-vue/issues/26) 删除 `webgl-v1` 时一并收敛，
 > 决策见 `docs/adr/2026-09-12-jsapi-v4-default-cutover.md`。
 
 ## 配置方式
@@ -78,7 +78,7 @@ app.use(createBMapPlugin({ ak: '百度地图ak' }))
 - `jsapi-v4`（Stable 基线，**默认**）：全部 Facet 已装配，可用；
 - `webgl-v1`（迁移期 legacy）：只有显式传入 legacy Provider（`baiduCdnProvider()` /
   `existingGlobalProvider()` / `customScriptProvider()`）或显式声明 `engine: "webgl-v1"` 时会走到，
-  随 [#26](https://github.com/MangMax/baidu-map-gl-vue/issues/26) 删除。
+  随 [#26](https://github.com/Mang-X/bmap-vue/issues/26) 删除。
 
 ### 1。通过全局注册配置 ak 与插件
 

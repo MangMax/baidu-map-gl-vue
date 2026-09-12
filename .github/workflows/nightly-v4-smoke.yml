@@ -14,16 +14,18 @@ permissions:
 
 jobs:
   live-smoke:
-    # fork 上没有 secret，跑了只会天天红；上游仓库自己跑
-    if: github.repository_owner == 'MangMax'
+    # fork / 镜像上没有 secret，跑了只会天天红；只在正式仓库跑。
+    # 注意这里必须写完整的 `owner/repo`：仓库迁到 Mang-X 组织后
+    # `github.repository_owner` 已不是个人账号，用 owner 判断会让本 job 被永久跳过。
+    if: github.repository == 'Mang-X/bmap-vue'
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
-      - uses: pnpm/action-setup@v4
+      - uses: pnpm/action-setup@v6
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7
         with:
           node-version: '24'
           cache: pnpm
@@ -54,7 +56,7 @@ jobs:
       # 报告落成 artifact，便于区分「外部波动」与「库回归」（报告里带原因码与观察值）
       - name: Upload smoke report
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: v4-smoke-report
           path: ${{ runner.temp }}/v4-smoke.log

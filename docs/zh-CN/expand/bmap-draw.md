@@ -15,7 +15,7 @@ import('bmap-draw').then(({ DrawScene }) => {
 ```
 
 另外，`bmap-draw` 依赖 GL 时代的绘制实现，**未在 JSAPI 4.0 上验证**（结论记 `未验证`，后续动作见
-[#43](https://github.com/MangMax/baidu-map-gl-vue/issues/43)）。示例里的
+[#43](https://github.com/Mang-X/bmap-vue/issues/43)）。示例里的
 `client.rawSdk` 是 `./advanced` 逃生口，普通业务请优先使用 `driver`。
 :::
 

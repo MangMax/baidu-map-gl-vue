@@ -80,7 +80,7 @@ SMOKE_BROWSER=/path/to/chromium pnpm smoke:v4:fixture
 `driver.overlays.add(map, iw)`，而 v4 OverlayDriver 明确拒绝（`BMAP_INVALID_ARGUMENT`：
 气泡是地图级 API）。smoke 用 `infowindow-component-gap` 把这个现状**钉成断言**（连原因码一起
 断言），而不是从场景里悄悄拿掉——否则「smoke 覆盖了 InfoWindow」会变成一句假话。重构属
-[#32](https://github.com/MangMax/baidu-map-gl-vue/issues/32)（M5）。
+[#32](https://github.com/Mang-X/bmap-vue/issues/32)（M5）。
 Driver 层的气泡 API（`createInfoWindow` / `openInfoWindow` / `closeInfoWindow`）是通的，
 由 `overlay-infowindow-driver` 在真实 SDK 上验证。
 

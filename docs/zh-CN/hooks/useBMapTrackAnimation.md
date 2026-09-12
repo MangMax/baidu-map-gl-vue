@@ -10,7 +10,7 @@ import { useBMapTrackAnimation } from 'baidu-map-gl-vue'
 真实 4.0 + 有效 AK 的浏览器 smoke 里，`TrackAnimation` 插件脚本**加载成功后运行时抛错**
 （`Cannot read properties of undefined (reading 'language')`；跨域脚本取不到堆栈）。
 结论见 [插件兼容 inventory](../guide/config#扩展插件-plugins)，后续动作属
-[#43](https://github.com/MangMax/baidu-map-gl-vue/issues/43)。
+[#43](https://github.com/Mang-X/bmap-vue/issues/43)。
 :::
 
 ::: warning 注意
