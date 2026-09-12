@@ -364,3 +364,104 @@ describe("控件句柄品牌", () => {
     expect(custom[HANDLE_BRAND]).toBe("control:custom");
   });
 });
+
+/* -------------------------------------------------------------------------- */
+/* 8. 外部评审 P2：定位跟踪清理 / 挂载失败回滚                                   */
+/* -------------------------------------------------------------------------- */
+
+describe("[P2] 移除 location 控件要先停止持续定位跟踪", () => {
+  it("stopLocationTrace 发生在 removeControl 之前", () => {
+    const target = ctx.mapTarget();
+    const control = ctx.controls.create("location");
+    ctx.controls.add(target, control);
+
+    // 跨对象顺序：控件自己的 callLog 与 Map 的 callLog 是两本书，必须在同一条时间线上记录
+    const sequence: string[] = [];
+    const raw = ctx.rawOf(control);
+    const stopTrace = raw.stopLocationTrace as () => void;
+    raw.stopLocationTrace = () => {
+      sequence.push("stopLocationTrace");
+      stopTrace.call(raw);
+    };
+    const rawMap = ctx.rawMap as unknown as Record<string, unknown>;
+    const removeControl = rawMap.removeControl as (control: unknown) => void;
+    rawMap.removeControl = (control: unknown) => {
+      sequence.push("removeControl");
+      removeControl.call(rawMap, control);
+    };
+
+    ctx.controls.remove(target, control);
+
+    // 官方 Skill：控件自身的 remove() 不会停止 watchPosition，只有 stopLocationTrace 会清除它
+    expect(sequence).toEqual(["stopLocationTrace", "removeControl"]);
+    expect(ctx.rawMap.controls).toHaveLength(0);
+  });
+
+  it("重复移除安全：停止跟踪是无条件调用（幂等 no-op），不因记账状态跳过", () => {
+    const target = ctx.mapTarget();
+    const control = ctx.controls.create("location");
+    ctx.controls.add(target, control);
+
+    ctx.controls.remove(target, control);
+    expect(() => ctx.controls.remove(target, control)).not.toThrow();
+
+    const log = ctx.rawOf(control).callLog as string[];
+    expect(log.filter((call) => call === "stopLocationTrace")).toHaveLength(2);
+  });
+
+  it("其他 kind 不受影响（不会误调定位清理）", () => {
+    const target = ctx.mapTarget();
+    const control = ctx.controls.create("zoom");
+    ctx.controls.add(target, control);
+    ctx.controls.remove(target, control);
+
+    const log = ctx.rawOf(control).callLog as string[];
+    expect(log.filter((call) => call.startsWith("stop"))).toEqual([]);
+  });
+});
+
+describe("[P2] 挂载失败后记账必须回滚，否则重试会被静默跳过", () => {
+  it("自定义控件首次挂载失败（render 抛错）→ 第二次 add 能成功", () => {
+    const target = ctx.mapTarget();
+    let boom = true;
+    const control = ctx.controls.createCustomControl({
+      render: () => {
+        if (boom) throw new Error("render 首次失败");
+        return document.createElement("button");
+      },
+    });
+
+    expect(() => ctx.controls.add(target, control)).toThrowError(
+      expect.objectContaining({ code: "BMAP_SDK_CALL_FAILED" }),
+    );
+    expect(ctx.rawMap.controls).toHaveLength(0);
+
+    boom = false;
+    ctx.controls.add(target, control);
+    expect(ctx.rawMap.controls).toHaveLength(1);
+  });
+
+  it("SDK 直接拒绝 addControl（故障注入）→ 同上，第二次 add 能成功", () => {
+    const target = ctx.mapTarget();
+    const control = ctx.controls.create("zoom");
+    ctx.rawMap.failNextAddControl = new Error("SDK 拒绝挂载");
+
+    expect(() => ctx.controls.add(target, control)).toThrowError(
+      expect.objectContaining({ code: "BMAP_SDK_CALL_FAILED" }),
+    );
+    expect(ctx.rawMap.controls).toHaveLength(0);
+
+    ctx.controls.add(target, control);
+    expect(ctx.rawMap.controls).toHaveLength(1);
+  });
+
+  it("挂载失败之后 remove 仍然到达 SDK（清理入口不依赖记账）", () => {
+    const target = ctx.mapTarget();
+    const control = ctx.controls.create("zoom");
+    ctx.rawMap.failNextAddControl = new Error("boom");
+
+    expect(() => ctx.controls.add(target, control)).toThrowError();
+    expect(() => ctx.controls.remove(target, control)).not.toThrow();
+    expect(ctx.rawMap.callLog.filter((call) => call === "removeControl")).toHaveLength(1);
+  });
+});

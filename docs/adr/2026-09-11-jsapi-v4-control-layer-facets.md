@@ -304,6 +304,8 @@ kind**：
 | `layer.panorama-coverage` 能力 | 新增（`WEBGL_V4`、runtimeOnly） | 能力矩阵与 docs 的 catalog JSON 已重生成 |
 | `enableTraffic` 在 v4 | 仍然无效果（warn 一次）；本次**不**承接 `TrafficLayer` | 见 §12；需要路况走 raw SDK 或等 #23/#25 |
 | `useControlResource` / `useLayerResource` 的卸载顺序 | 组件卸载时**先解绑业务事件**（scope 里的 SDK 监听 / watch / timer）再由 Map 移除资源 | 组件侧无需改动；`scope` 提前 dispose 不影响 `adapter.remove`（它不读 scope） |
+| 移除定位控件（v4） | 现在会先 `stopLocationTrace()` 再 `removeControl()`（官方 Skill：控件的 `remove()` 不会清除 `watchPosition`） | 无需调用方改动。一次性 `getCurrentPosition` 仍**没有**取消入口（官方也没有），本库不声称取消它；**webgl-v1 的 `LocationControl` 在本地类型存根里没有该成员**，故 v1 下移除定位控件不会停止跟踪（迁移期差异，随 #26 消失） |
+| 挂载失败后重试（控件 / 图层） | 失败会回滚记账并抛出原错误，同一句柄可重试；若 SDK 其实已部分挂载，`remove` 仍能清理（它不读记账） | 无需调用方改动 |
 | 图层可见性 | v4 的图层没有 `show`/`hide`：**可见 = 已挂载**，切换走 add/remove（`BDistrictLayer` 的 `visible` watcher 就是这样） | 组件侧无需改动；契约用挂载计数断言，v1 的组件级 visible 切换由既有 `v3-bdistrict-layer` / `v3-bpanorama-coverage` / `v3-controls` 覆盖 |
 
 ## 非目标
@@ -374,6 +376,12 @@ smoke 顺带确认（并已回写到决策里）的运行时事实：
   行为未实测。组件路径保证 `destroy` 是最后一步（`plugins → controls → layers → overlays →
   map.destroy`），#25 接通 v4 组件路径后应补一条顺序断言。
 - **`map.addControl` 的重复挂载**：见上（防御未在真实 SDK 上单独实测）。
+- **行政区图层的官方清理建议与动态增删有张力**：官方 Skill 的「资源清理」写的是
+  「解绑事件 → `map.removeLayer(districtLayer)`；**因迟到挂载边界，把它与 Map 同生命周期**」。
+  本库的组件路径会按 `visible` 动态增删图层（`BDistrictLayer`），因此「迟到回调」是官方已知风险。
+  我们做到的：业务事件**先**解绑（§6），所以迟到事件不会打到已拆解的回调；smoke 的 3 秒观察窗口内
+  也没有观察到迟到回调改视野。但「与 Map 同生命周期」这条建议本身与动态增删的语义不同，
+  登记在此而不是假装已解决；#25 接通 v4 组件路径后应在真机上看一次快速 `visible` 抖动。
 
 ## 提交前的双轴自审（Standards / Spec，各一个子代理）
 
@@ -398,6 +406,23 @@ smoke 顺带确认（并已回写到决策里）的运行时事实：
 | 「Layer add/remove/**visible**/options 测试」没有 visible 断言 | v4 图层的 visible 语义就是 add/remove（没有 `show`/`hide`），已在「迁移影响」写清覆盖位置（契约的挂载计数 + 既有组件测试） |
 | ADR 过度承诺：能力守卫「避免孤儿实例」只在 `throw` 策略下成立 | 收窄表述：`warn`/`silent` 下按设计继续构造，并用测试固定三种策略的语义 |
 | 疑似 scope creep：`ControlHandle` 放宽、webgl-v1 行为修正、catalog 两条、`listCopyrights` 回读 `bounds` | 正文各自登记了理由与迁移影响（§3 / §8 / §9 / §11），属 issue 目标「统一 add/remove、options、visible、target 与 Catalog 一致」的直接推论 |
+
+## 外部评审轮次记录（PR #62，基线 `f0b55b9`）
+
+评审提出 3 个 P2。逐条在仓库内先写**会红**的用例（同一次运行里 6 条断言红）再修：
+
+| 发现 | 复现结果 | 处置 |
+| --- | --- | --- |
+| P2-1 移除 `location` 控件时没有停止持续定位跟踪（`watchPosition` 仍在跑） | **确认**：跨对象顺序记录得到 `["removeControl"]`（没有 `stopLocationTrace`）；重复移除时该方法的调用数为 **0** | `remove` 对 `location` 先**无条件** `stopLocationTrace()` 再 `removeControl`（该调用对自己没启动过的跟踪是 no-op，且**不**读挂载记账——记账只服务去重，不能当清理的前置条件）；补 3 条用例：顺序、重复移除安全、其他 kind 不受影响。**不**声称能取消一次性 `getCurrentPosition`（官方也没有取消入口） |
+| P2-2 挂载失败后记账没有回滚，用同一句柄重试会被静默跳过 | **确认**：自定义控件首次 `render` 抛错后再 `add`，`addControl` **不再被调用**、`map.controls` 仍为 0（图层侧同形）；只有显式 `remove` 才会解除记录 | 两个 `add` 都在 SDK 抛错时 `release()` 记账并**重新抛出原错误**；补「首次失败 → 第二次成功」「失败后 remove 仍到达 SDK」用例。故障模型随修复一起进 Fake：`addControl` 改为**先 `initialize` 再登记**（`initialize` 抛错时控件确实没挂上），并新增 `failNextAddControl` / `failNextAddLayer` 注入开关（同 `FakeV4ViewAnimation.failNextCancel` 的口径） |
+| P2-3 `autoViewport: undefined` 会吞掉有效的 `viewport: true` | **确认**：两种书写顺序都得到 `{}`（目标键「存在但无值」按「键在」让位，历史键被跳过，而 `undefined` 本身又被忽略） | 别名让位的判据从「目标键在不在」改成「目标键有没有**有效取值**」（`source[target] !== undefined`）；保留「显式 `false`/`true` 优先」的用例，新增「`undefined` 不遮蔽历史键」的用例 |
+
+同轮顺手修：`callControl` 的缺成员告警文案原先写死「PanoramaControl 由全景模块提供」，现在它也服务于
+`stopLocationTrace` 这类**普通控件也该有**的成员，因此改成泛化表述（仍保留 PanoramaControl 这个具体原因）。
+
+两个「修复自身的边界」也核对过：`remove` 不读记账，所以**即使 SDK 部分挂载后抛错**，调用方仍能靠
+`remove` 清理（有用例）；而「先记账再调 SDK」保留下来是因为它挡的是**重入**（自定义控件的
+`initialize` 里再次 `add` 同一个句柄），删掉它会让重入真的挂两次。
 
 ## 参考
 

@@ -291,8 +291,8 @@ export function createJsapiV4ControlDriver(
     if (typeof fn !== "function") {
       warnOnce(
         `member:${method}`,
-        `ControlDriver: 当前控件实例没有 ${method}()（JSAPI 4.0 的 PanoramaControl 由全景模块` +
-          "提供，不保证 Control 基类成员），本次调用被忽略",
+        `ControlDriver: 当前控件实例没有 ${method}()（官方 4.0 的 PanoramaControl 由全景模块提供、` +
+          "不保证 `Control` 基类成员；个别运行时版本的控件也可能缺少某些成员），本次调用被忽略",
       );
       return false;
     }
@@ -358,12 +358,27 @@ export function createJsapiV4ControlDriver(
       const raw = registry.resolve<object>(control);
       // 一个实例只添加一次（SDK 不保证去重，见 `mounted` 的注释）
       if (!mounted.claim(rawMap, raw)) return;
-      sdkCall("map.addControl", () => callRequired(rawMap, "addControl", raw));
+      try {
+        sdkCall("map.addControl", () => callRequired(rawMap, "addControl", raw));
+      } catch (error) {
+        // 记账先于 SDK 调用（重入/重复调用都只挂一次），但**失败时必须回滚**：不释放记录的话，
+        // 调用方修好条件后用同一个句柄重试会被记成「已挂过」而静默跳过
+        // （`initialize()` 里的 DOM 工厂抛错就是这个形状）。
+        // 若 SDK 其实已经部分挂上，`remove` 仍能到达 `removeControl`——remove 不读记账（见下）。
+        mounted.release(rawMap, raw);
+        throw error;
+      }
     },
 
     remove(target, control) {
       const rawMap = requireMapTarget(target, "remove");
-      const raw = registry.resolve<object>(control);
+      const raw = registry.resolve<Record<string, unknown>>(control);
+      // 定位控件的持续跟踪不归 `removeControl` 管（官方 Skill：控件自身的 `remove()` 不会清除
+      // `watchPosition`，只有 `stopLocationTrace()` 会），因此先停跟踪再摘控件。
+      // 无条件调用：它对自己没启动过的跟踪是 no-op，**不**依赖记账状态（记账只服务去重，
+      // 不能反过来当清理的前置条件——复审 P2-2 的教训）。
+      // 注：一次性 `getCurrentPosition` 没有公开取消入口，本方法**不**声称取消它。
+      if (kindOfControl(control) === "location") callControl(raw, "stopLocationTrace");
       // remove 不做「是否挂过」的前置拒绝：SDK 的 removeControl 对未挂载控件是 no-op，
       // 而按记录拒绝会让「先移除再挂载」的调用方在记账漂移时永久挂不上。
       sdkCall("map.removeControl", () => callRequired(rawMap, "removeControl", raw));

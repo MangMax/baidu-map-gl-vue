@@ -135,7 +135,9 @@ export function createJsapiV4LayerDriver(input: CreateJsapiV4LayerDriverInput): 
    * 只做**改名**（`viewport` → `autoViewport`），不做键的过滤：项目 option 接口是
    * `Record<string, unknown>`，索引签名就是「4.0 自身构造选项」的逃生口
    * （`DistrictLayer` 的 `adcode` / `onComplete`、`TileLayer` 的 `tileUrlTemplate` 等）。
-   * 别名键与目标键**同时出现**时以显式写下的 v4 键为准（不因为历史名字覆盖新名字）。
+   * 别名键与目标键**同时出现**时以显式写下的 v4 键为准——判据是**目标键有没有有效取值**
+   * （`!== undefined`），不是「键在不在」：`{ viewport: true, autoViewport: undefined }`
+   * 这种「可选字段 / 对象展开」产物里目标键存在但没值，若按「键在」让位就会连历史键一起丢掉。
    *
    * 注：真实 4.0 运行时目前也接受 `viewport`（smoke 实测），所以改名不是「修静默失效」，
    * 而是不把未声明的别名当成契约（见文件头的依据说明）。
@@ -151,7 +153,7 @@ export function createJsapiV4LayerDriver(input: CreateJsapiV4LayerDriverInput): 
     for (const [key, value] of Object.entries(source)) {
       if (value === undefined) continue;
       const target = aliases[key];
-      if (target && target in source) continue;
+      if (target && source[target] !== undefined) continue;
       projected[target ?? key] = value;
     }
     return projected;
@@ -190,8 +192,15 @@ export function createJsapiV4LayerDriver(input: CreateJsapiV4LayerDriverInput): 
       const rawMap = requireMapTarget(target, "add");
       const raw = registry.resolve<object>(layer);
       if (!mounted.claim(rawMap, raw)) return;
-      // 统一入口：4.0 的 addDistrictLayer / addTileLayer 已 deprecated
-      sdkCall("map.addLayer", () => callRequired(rawMap, "addLayer", raw));
+      try {
+        // 统一入口：4.0 的 addDistrictLayer / addTileLayer 已 deprecated
+        sdkCall("map.addLayer", () => callRequired(rawMap, "addLayer", raw));
+      } catch (error) {
+        // 失败必须回滚记账（同 controls.add）：否则「用同一个句柄重试」会被记成已挂过而静默跳过。
+        // 若 SDK 其实已经部分挂上，`remove` 仍能到达 `removeLayer`——remove 不读记账。
+        mounted.release(rawMap, raw);
+        throw error;
+      }
     },
 
     remove(target, layer) {

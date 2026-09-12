@@ -328,3 +328,62 @@ describe("图层释放顺序", () => {
     expect(ctx.rawMap.destroyedWithLayers).toBe(1);
   });
 });
+
+/* -------------------------------------------------------------------------- */
+/* 5. 外部评审 P2：挂载失败回滚 / 别名与 undefined 的交互                        */
+/* -------------------------------------------------------------------------- */
+
+describe("[P2] 挂载失败后记账必须回滚，否则重试会被静默跳过", () => {
+  it("SDK 首次拒绝 addLayer → 第二次 add 能成功", () => {
+    const target = ctx.mapTarget();
+    const layer = ctx.layers.create("tile");
+    ctx.rawMap.failNextAddLayer = new Error("SDK 拒绝挂载");
+
+    expect(() => ctx.layers.add(target, layer)).toThrowError(
+      expect.objectContaining({ code: "BMAP_SDK_CALL_FAILED" }),
+    );
+    expect(ctx.rawMap.layers).toHaveLength(0);
+
+    ctx.layers.add(target, layer);
+    expect(ctx.rawMap.layers).toHaveLength(1);
+  });
+
+  it("挂载失败之后 remove 仍然到达 SDK（清理入口不依赖记账）", () => {
+    const target = ctx.mapTarget();
+    const layer = ctx.layers.create("tile");
+    ctx.rawMap.failNextAddLayer = new Error("boom");
+
+    expect(() => ctx.layers.add(target, layer)).toThrowError();
+    expect(() => ctx.layers.remove(target, layer)).not.toThrow();
+    expect(ctx.rawMap.callLog.filter((call) => call === "removeLayer")).toHaveLength(1);
+  });
+});
+
+describe("[P2] viewport → autoViewport 的别名优先级要按「有效取值」判断", () => {
+  it("autoViewport: undefined 不遮蔽 viewport: true（两种书写顺序）", () => {
+    // 这类对象会来自可选配置字段或对象展开合并：键在、值为 undefined
+    const orders = [
+      { viewport: true, autoViewport: undefined },
+      { autoViewport: undefined, viewport: true },
+    ];
+    for (const options of orders) {
+      const handle = ctx.layers.create("district", options as Record<string, unknown>);
+      expect(ctx.rawOf(handle).options.autoViewport).toBe(true);
+      expect(ctx.rawOf(handle).options.viewport).toBeUndefined();
+    }
+  });
+
+  it("显式 false / true 仍然优先于历史名字（只有 undefined 让位）", () => {
+    const explicitFalse = ctx.layers.create("district", {
+      viewport: true,
+      autoViewport: false,
+    });
+    expect(ctx.rawOf(explicitFalse).options.autoViewport).toBe(false);
+
+    const explicitTrue = ctx.layers.create("district", {
+      viewport: false,
+      autoViewport: true,
+    });
+    expect(ctx.rawOf(explicitTrue).options.autoViewport).toBe(true);
+  });
+});

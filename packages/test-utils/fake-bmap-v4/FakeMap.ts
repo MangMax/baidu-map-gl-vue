@@ -109,6 +109,15 @@ export class FakeV4Map extends FakeV4EventTarget {
   destroyedWithControls: number | null = null
   /** 同 `destroyedWithOverlays`：图层是否在销毁前被摘掉。 */
   destroyedWithLayers: number | null = null
+  /**
+   * 测试故障注入：让**下一次** `addControl` / `addLayer` 抛错（用后即清）。
+   *
+   * 用途是驱动侧的「挂载失败后记账必须回滚」这条路径——真实 SDK 会在 `addControl` 内部调用
+   * 业务控件的 `initialize()`，那一步抛错时资源并没有挂上（同 `FakeV4ViewAnimation.failNextCancel`
+   * 的口径：故障路径也要能被模型出来，否则回归测试无从下手）。
+   */
+  failNextAddControl: Error | null = null
+  failNextAddLayer: Error | null = null
 
   /* ------------------------------------------------------------------ 覆盖物 */
 
@@ -164,15 +173,23 @@ export class FakeV4Map extends FakeV4EventTarget {
   /**
    * 挂载控件。
    *
-   * 与官方一致：内部调用控件的 `initialize(map)` 取 DOM（自定义控件契约）；**不**去重
-   * ——「同一实例只添加一次」是调用方的责任（官方「常见错误」之一），Driver 侧据此自己
-   * 记账，Fake 若顺手去重就会把 Driver 的记账错误掩盖成「看起来对」。
+   * 与官方一致：内部调用控件的 `initialize(map)` 取 DOM（自定义控件契约），
+   * **成功之后才登记**（`initialize` 抛错时 DOM 都没建出来，控件并没有挂上——这条顺序是
+   * 「挂载失败后 Driver 必须回滚记账」那条路径的前提，见 `failNextAddControl`）。
+   *
+   * **不**去重：「同一实例只添加一次」是调用方的责任（官方「常见错误」之一），Driver 侧据此
+   * 自己记账；Fake 若顺手去重就会把 Driver 的记账错误掩盖成「看起来对」。
    */
   addControl(control: FakeV4Control): void {
     this.callLog.push('addControl')
+    if (this.failNextAddControl) {
+      const error = this.failNextAddControl
+      this.failNextAddControl = null
+      throw error
+    }
+    control.initialize?.(this)
     this.controls.push(control)
     control.attachedMap = this
-    control.initialize?.(this)
   }
 
   /** 官方 `removeControl`：移除容器，控件实例本身保留（可再次 `addControl`）。 */
@@ -194,6 +211,11 @@ export class FakeV4Map extends FakeV4EventTarget {
    */
   addLayer(layer: FakeV4Layer): void {
     this.callLog.push('addLayer')
+    if (this.failNextAddLayer) {
+      const error = this.failNextAddLayer
+      this.failNextAddLayer = null
+      throw error
+    }
     this.layers.push(layer)
     layer.attachedMap = this
   }
