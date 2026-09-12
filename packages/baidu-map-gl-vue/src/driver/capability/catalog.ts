@@ -60,6 +60,7 @@ export type Capability =
   | "layer.point-icon"
   | "layer.point-shape"
   | "layer.district"
+  | "layer.panorama-coverage"
   | "layer.line"
   | "layer.fill"
   | "layer.mvt"
@@ -437,9 +438,22 @@ export const CAPABILITY_CATALOG: Record<Capability, CapabilityDescriptor> = {
     family: "layer",
     description: "行政区划图层（DistrictLayer）",
     rawMembers: ["DistrictLayer"],
-    engines: V4_ONLY,
+    // M3A2-CONTROLS-LAYERS（#22）：`LayerDriver` 的共享契约要求两个引擎都能创建行政区图层，
+    // 而 webgl-v1 的驱动本就把 district 映射到 `BMapGL.DistrictLayer`（组件测试也一直在跑），
+    // 因此从 V4_ONLY 放宽为 WEBGL_V4，避免 catalog 与实际支持漂移
+    // （与 #20 对 `map.pixel-conversion` 的处理同源）。
+    engines: WEBGL_V4,
     status: "native",
     runtimeOnly: false,
+  },
+  "layer.panorama-coverage": {
+    id: "layer.panorama-coverage",
+    family: "layer",
+    description: "全景覆盖图层（PanoramaCoverageLayer）；官方 4.0.4 文档引用但未声明类型",
+    rawMembers: ["PanoramaCoverageLayer"],
+    engines: WEBGL_V4,
+    status: "native",
+    runtimeOnly: true,
   },
   "layer.line": {
     id: "layer.line",

@@ -23,6 +23,7 @@
  */
 import { FakeV4EventTarget, type FakeV4EventStats } from './event-target.ts'
 import { FakeV4Bounds, FakeV4Pixel, FakeV4Point, FakeV4Size } from './geometry.ts'
+import type { FakeV4Control, FakeV4Layer } from './controls-layers.ts'
 import type { FakeV4ContextMenu, FakeV4InfoWindow, FakeV4Overlay } from './objects.ts'
 
 /**
@@ -98,6 +99,26 @@ export class FakeV4Map extends FakeV4EventTarget {
    */
   destroyedWithOverlays: number | null = null
 
+  /* ------------------------------------------------------ 控件与图层容器（#22） */
+
+  /** 当前挂在地图上的控件（顺序即 `addControl` 顺序）。 */
+  readonly controls: FakeV4Control[] = []
+  /** 当前挂在地图上的图层（顺序即 `addLayer` 顺序）。 */
+  readonly layers: FakeV4Layer[] = []
+  /** 同 `destroyedWithOverlays`：控件是否在销毁前被摘掉。 */
+  destroyedWithControls: number | null = null
+  /** 同 `destroyedWithOverlays`：图层是否在销毁前被摘掉。 */
+  destroyedWithLayers: number | null = null
+  /**
+   * 测试故障注入：让**下一次** `addControl` / `addLayer` 抛错（用后即清）。
+   *
+   * 用途是驱动侧的「挂载失败后记账必须回滚」这条路径——真实 SDK 会在 `addControl` 内部调用
+   * 业务控件的 `initialize()`，那一步抛错时资源并没有挂上（同 `FakeV4ViewAnimation.failNextCancel`
+   * 的口径：故障路径也要能被模型出来，否则回归测试无从下手）。
+   */
+  failNextAddControl: Error | null = null
+  failNextAddLayer: Error | null = null
+
   /* ------------------------------------------------------------------ 覆盖物 */
 
   addOverlay(overlay: FakeV4Overlay): void {
@@ -147,6 +168,65 @@ export class FakeV4Map extends FakeV4EventTarget {
     if (index >= 0) this.contextMenus.splice(index, 1)
   }
 
+  /* ------------------------------------------------------------------ 控件 */
+
+  /**
+   * 挂载控件。
+   *
+   * 与官方一致：内部调用控件的 `initialize(map)` 取 DOM（自定义控件契约），
+   * **成功之后才登记**（`initialize` 抛错时 DOM 都没建出来，控件并没有挂上——这条顺序是
+   * 「挂载失败后 Driver 必须回滚记账」那条路径的前提，见 `failNextAddControl`）。
+   *
+   * **不**去重：「同一实例只添加一次」是调用方的责任（官方「常见错误」之一），Driver 侧据此
+   * 自己记账；Fake 若顺手去重就会把 Driver 的记账错误掩盖成「看起来对」。
+   */
+  addControl(control: FakeV4Control): void {
+    this.callLog.push('addControl')
+    if (this.failNextAddControl) {
+      const error = this.failNextAddControl
+      this.failNextAddControl = null
+      throw error
+    }
+    control.initialize?.(this)
+    this.controls.push(control)
+    control.attachedMap = this
+  }
+
+  /** 官方 `removeControl`：移除容器，控件实例本身保留（可再次 `addControl`）。 */
+  removeControl(control: FakeV4Control): void {
+    this.callLog.push('removeControl')
+    const index = this.controls.indexOf(control)
+    if (index >= 0) this.controls.splice(index, 1)
+    if (control.attachedMap === this) control.attachedMap = null
+  }
+
+  /* ------------------------------------------------------------------ 图层 */
+
+  /**
+   * 统一图层挂载入口（官方 4.0 的 `addLayer`；`addDistrictLayer` / `addTileLayer` 已 deprecated）。
+   *
+   * 与 `addControl` 一样**不**去重、也不按家族标志位分发：去重会把「Driver 是否自己记账」
+   * 这件事掩盖成「看起来对」，而按标志位分发会把「Driver 是否用了正确的统一入口」藏起来。
+   * 官方手册也把「同一图层重复添加」列为调用方的误用。
+   */
+  addLayer(layer: FakeV4Layer): void {
+    this.callLog.push('addLayer')
+    if (this.failNextAddLayer) {
+      const error = this.failNextAddLayer
+      this.failNextAddLayer = null
+      throw error
+    }
+    this.layers.push(layer)
+    layer.attachedMap = this
+  }
+
+  removeLayer(layer: FakeV4Layer): void {
+    this.callLog.push('removeLayer')
+    const index = this.layers.indexOf(layer)
+    if (index >= 0) this.layers.splice(index, 1)
+    if (layer.attachedMap === this) layer.attachedMap = null
+  }
+
   constructor(
     container: string | HTMLElement,
     options: Record<string, unknown> = {},
@@ -164,6 +244,14 @@ export class FakeV4Map extends FakeV4EventTarget {
 
   getSize(): FakeV4Size {
     return readContainerSize(this.container)
+  }
+
+  /**
+   * 官方 `Map#getContainer()`：自定义控件的 `initialize(map)` 通过它拿挂载容器
+   * （官方 Skill `references/controls-and-context-menu.md` 的自定义控件示例即如此）。
+   */
+  getContainer(): HTMLElement {
+    return this.container
   }
 
   checkResize(): void {
@@ -425,8 +513,10 @@ export class FakeV4Map extends FakeV4EventTarget {
     this.callLog.push('destroy')
     if (this.destroyed) return
     this.destroyed = true
-    // 记录销毁时仍挂着的覆盖物数量（跨 Facet 不变式，见字段注释）
+    // 记录销毁时仍挂着的子资源数量（跨 Facet 不变式，见字段注释）
     this.destroyedWithOverlays = this.overlays.length
+    this.destroyedWithControls = this.controls.length
+    this.destroyedWithLayers = this.layers.length
     // 官方语义：destroy 会清空 Map 自身残留监听器，但管不到子对象
     this.clearAllListeners()
   }

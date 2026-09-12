@@ -809,6 +809,23 @@ export class FakeScaleControl extends FakeControl {}
 export class FakeCityListControl extends FakeControl {}
 export class FakeLocationControl extends FakeControl {}
 export class FakeNavigationControl3D extends FakeControl {}
+/**
+ * 其他常用控件的替身（M3A2-CONTROLS-LAYERS / #22）。
+ *
+ * BMapGL 的 `NavigationControl` / `MapTypeControl` / `OverviewMapControl` 都是 `Control` 子类，
+ * 因此沿用 `FakeControl` 的停靠/显隐/监听器统计即可；`MapTypeControl` 额外有
+ * `showStreetLayer(isShow)`（v4 也有同名入口）。
+ */
+export class FakeNavigationControl extends FakeControl {}
+export class FakeMapTypeControl extends FakeControl {
+  streetLayer: boolean | null = null
+
+  showStreetLayer(isShow: boolean) {
+    this.callLog.push('showStreetLayer')
+    this.streetLayer = isShow
+  }
+}
+export class FakeOverviewMapControl extends FakeControl {}
 export class FakeCopyrightControl extends FakeControl {
   copyrights: { id: number; content: string; bounds?: unknown }[] = []
 
@@ -852,6 +869,20 @@ export class FakeAutocomplete extends FakeEventTarget {
 }
 
 export class FakeDistrictLayer {
+  options: Record<string, unknown>
+  callLog: string[] = []
+  constructor(options: Record<string, unknown> = {}) {
+    this.options = options
+  }
+}
+
+/**
+ * 瓦片图层替身（BMapGL 的 `TileLayer`，`PanoramaCoverageLayer` / `TrafficLayer` 是它的子类）。
+ *
+ * 只在共享的 Layer facet 契约里用到（#22）：构造 + `addTileLayer` / `removeTileLayer` 记账，
+ * 不实现取瓦片逻辑（Fake 不承担渲染行为）。
+ */
+export class FakeTileLayer {
   options: Record<string, unknown>
   callLog: string[] = []
   constructor(options: Record<string, unknown> = {}) {
@@ -1099,6 +1130,10 @@ export interface FakeBMapGlApi {
   CityListControl: typeof FakeCityListControl
   LocationControl: typeof FakeLocationControl
   NavigationControl3D: typeof FakeNavigationControl3D
+  /* 迁移期补的「其他常用控件」替身（M3A2-CONTROLS-LAYERS / #22 的共享契约要跑这两个 kind） */
+  NavigationControl: typeof FakeNavigationControl
+  MapTypeControl: typeof FakeMapTypeControl
+  OverviewMapControl: typeof FakeOverviewMapControl
   CopyrightControl: typeof FakeCopyrightControl
   PanoramaControl: typeof FakePanoramaControl
   Autocomplete: typeof FakeAutocomplete
@@ -1107,6 +1142,7 @@ export interface FakeBMapGlApi {
   Marker3D: typeof FakeMarker3D
   Control: typeof FakeControl
   DistrictLayer: typeof FakeDistrictLayer
+  TileLayer: typeof FakeTileLayer
   PanoramaCoverageLayer: typeof FakePanoramaCoverageLayer
   Prism: typeof FakePrism
   Label: typeof FakeLabel
@@ -1215,11 +1251,15 @@ export function createFakeBMapGl(): FakeBMapGlApi {
     CityListControl: FakeCityListControl,
     LocationControl: FakeLocationControl,
     NavigationControl3D: FakeNavigationControl3D,
+    NavigationControl: FakeNavigationControl,
+    MapTypeControl: FakeMapTypeControl,
+    OverviewMapControl: FakeOverviewMapControl,
     CopyrightControl: FakeCopyrightControl,
     PanoramaControl: FakePanoramaControl,
     Autocomplete: FakeAutocomplete,
     Control: FakeControl,
     DistrictLayer: FakeDistrictLayer,
+    TileLayer: FakeTileLayer,
     PanoramaCoverageLayer: FakePanoramaCoverageLayer,
     Prism: class extends FakePrism {
       constructor(path: FakePoint[], altitude: number, options: Record<string, unknown> = {}) {

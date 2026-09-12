@@ -1,17 +1,25 @@
 /**
  * webgl-v1 ControlDriver
+ *
+ * 句柄品牌与 v4 一致（`control:<kind>`）：品牌是「更新口径」的依据，
+ * 两个引擎用同一套品牌口径，共享契约才能在两个实现上跑同一批断言。
  */
+import { BMapError } from "../../core/errors/BMapError";
 import { createHandle } from "../types/handles";
 import type { ControlDriver, ControlKind } from "../types/controls";
 import type { GeometryDriver } from "../types/geometry";
+import type { OverlayTarget } from "../types/overlays";
 import { callOptional, sdkCall, sdkCtor } from "./internal";
 
 const CONTROL_CTORS: Record<Exclude<ControlKind, "custom">, string> = {
   zoom: "ZoomControl",
   scale: "ScaleControl",
+  navigation: "NavigationControl",
   "city-list": "CityListControl",
   location: "LocationControl",
   "navigation-3d": "NavigationControl3D",
+  "map-type": "MapTypeControl",
+  overview: "OverviewMapControl",
   copyright: "CopyrightControl",
   panorama: "PanoramaControl",
 };
@@ -30,6 +38,25 @@ export function createWebGlV1ControlDriver(input: WebGlV1ControlDriverInput): Co
     return (win[value] as string | undefined) ?? value;
   };
 
+  /**
+   * 控件只能挂到 Map。
+   *
+   * 显式拒绝而不是让 `callOptional` 把它变成静默 no-op：M3A2-CONTROLS-LAYERS（#22）
+   * 统一两个引擎的 target 语义——v4 侧抛 `BMAP_CAPABILITY_UNSUPPORTED`，这里抛
+   * `BMAP_SDK_CALL_FAILED`（同一个契约断言 `toThrow()`）。错误码差异属迁移期已知差异。
+   */
+  const requireMapTarget = (target: OverlayTarget, operation: string): Record<string, unknown> => {
+    if (target.kind !== "map") {
+      throw new BMapError(
+        "BMAP_SDK_CALL_FAILED",
+        `ControlDriver.${operation}: BMapGL 的控件只能挂到 Map（map.addControl / removeControl）；` +
+          `目标 kind="${target.kind}" 没有运行时入口`,
+        { engine: "webgl-v1" },
+      );
+    }
+    return target.handle.raw as Record<string, unknown>;
+  };
+
   return {
     create(kind, options = {}) {
       const ctorName = (CONTROL_CTORS as Record<string, string | undefined>)[kind];
@@ -43,7 +70,7 @@ export function createWebGlV1ControlDriver(input: WebGlV1ControlDriverInput): Co
       });
       opts.anchor = resolveAnchor(options.anchor);
       const control = sdkCall(ctorName, () => new ctor(opts));
-      return createHandle("control", control);
+      return createHandle(`control:${kind}`, control);
     },
 
     createCustomControl({ anchor, offset, render }) {
@@ -62,15 +89,15 @@ export function createWebGlV1ControlDriver(input: WebGlV1ControlDriverInput): Co
         const mapRaw = map as { getContainer: () => HTMLElement };
         return render(mapRaw.getContainer()) ?? mapRaw.getContainer();
       };
-      return createHandle("control", control);
+      return createHandle("control:custom", control);
     },
 
     add(target, control) {
-      callOptional(target.handle.raw, "addControl", control.raw);
+      callOptional(requireMapTarget(target, "add"), "addControl", control.raw);
     },
 
     remove(target, control) {
-      callOptional(target.handle.raw, "removeControl", control.raw);
+      callOptional(requireMapTarget(target, "remove"), "removeControl", control.raw);
     },
 
     show(control) {

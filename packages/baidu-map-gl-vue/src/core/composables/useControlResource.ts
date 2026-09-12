@@ -85,9 +85,16 @@ export function useControlResource<Props, Resource>(
   onUnmounted(() => {
     disposed = true;
     const current = resource.value;
+    // 释放顺序（M3A2-CONTROLS-LAYERS / issue #22 实施步骤 4）：**先解绑业务事件**，
+    // 再由 Map 移除 SDK 资源。`scope` 里放的是本控件注册的 SDK 事件监听、watch 与 timer；
+    // 反过来（先 removeControl 再 dispose）会让 SDK 在移除期间同步派发的事件打到已经开始
+    // 拆解的业务回调上——`BLocation` 的 locationSuccess/locationError 就是这种绑定。
+    //
+    // 提前 dispose 是安全的：`adapter.remove(resource, context)` 只吃资源与 context，
+    // 不读 scope（三个 Control 适配器都是直接调 driver）。
+    scope.dispose();
     if (current && readyCtx) adapter.remove(current, readyCtx);
     resource.value = null;
-    scope.dispose();
   });
 
   return { resource };
