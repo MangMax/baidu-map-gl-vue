@@ -21,7 +21,8 @@
  * 解析，`0` 表示零尺寸容器。这与「容器零尺寸时 create 不抛错、`checkResize()` 后按新尺寸重算」
  * 的验证目标一致。
  */
-import { FakeV4EventTarget, type FakeV4EventStats } from './event-target.ts'
+import { FakeV4EventTarget } from './event-target.ts'
+import type { FakeV4Diagnostics } from './diagnostics.ts'
 import { FakeV4Bounds, FakeV4Pixel, FakeV4Point, FakeV4Size } from './geometry.ts'
 import type { FakeV4Control, FakeV4Layer } from './controls-layers.ts'
 import type { FakeV4ContextMenu, FakeV4InfoWindow, FakeV4Overlay } from './objects.ts'
@@ -126,20 +127,29 @@ export class FakeV4Map extends FakeV4EventTarget {
     if (this.overlays.includes(overlay)) return
     this.overlays.push(overlay)
     overlay.attachedMap = this
+    this.stats.resourceCreated('overlay')
   }
 
   removeOverlay(overlay: FakeV4Overlay): void {
     this.callLog.push('removeOverlay')
     const index = this.overlays.indexOf(overlay)
-    if (index >= 0) this.overlays.splice(index, 1)
+    if (index >= 0) {
+      this.overlays.splice(index, 1)
+      this.stats.resourceReleased('overlay')
+    }
     if (overlay.attachedMap === this) overlay.attachedMap = null
   }
 
   openInfoWindow(infoWnd: FakeV4InfoWindow, point: FakeV4Point): void {
     this.callLog.push('openInfoWindow')
+    // 官方同一张地图只有一个气泡处于打开状态：换一个实例就先把上一个销账，
+    // 否则诊断会把「被顶掉的那个」永久记成泄漏（见 diagnostics 的 leaks.infoWindows 口径）
+    if (this.infoWindow && this.infoWindow !== infoWnd) this.stats.resourceReleased('infoWindow')
+    const isNew = this.infoWindow !== infoWnd
     this.infoWindow = infoWnd
     infoWnd.openedAt = point
     infoWnd.open = true
+    if (isNew) this.stats.resourceCreated('infoWindow')
     infoWnd.emit('open')
   }
 
@@ -149,6 +159,7 @@ export class FakeV4Map extends FakeV4EventTarget {
     const current = this.infoWindow
     this.infoWindow = null
     if (!current) return
+    this.stats.resourceReleased('infoWindow')
     current.open = false
     current.emit('close')
   }
@@ -159,13 +170,18 @@ export class FakeV4Map extends FakeV4EventTarget {
 
   addContextMenu(menu: FakeV4ContextMenu): void {
     this.callLog.push('addContextMenu')
-    if (!this.contextMenus.includes(menu)) this.contextMenus.push(menu)
+    if (this.contextMenus.includes(menu)) return
+    this.contextMenus.push(menu)
+    this.stats.resourceCreated('contextMenu')
   }
 
   removeContextMenu(menu: FakeV4ContextMenu): void {
     this.callLog.push('removeContextMenu')
     const index = this.contextMenus.indexOf(menu)
-    if (index >= 0) this.contextMenus.splice(index, 1)
+    if (index >= 0) {
+      this.contextMenus.splice(index, 1)
+      this.stats.resourceReleased('contextMenu')
+    }
   }
 
   /* ------------------------------------------------------------------ 控件 */
@@ -190,13 +206,17 @@ export class FakeV4Map extends FakeV4EventTarget {
     control.initialize?.(this)
     this.controls.push(control)
     control.attachedMap = this
+    this.stats.resourceCreated('control')
   }
 
   /** 官方 `removeControl`：移除容器，控件实例本身保留（可再次 `addControl`）。 */
   removeControl(control: FakeV4Control): void {
     this.callLog.push('removeControl')
     const index = this.controls.indexOf(control)
-    if (index >= 0) this.controls.splice(index, 1)
+    if (index >= 0) {
+      this.controls.splice(index, 1)
+      this.stats.resourceReleased('control')
+    }
     if (control.attachedMap === this) control.attachedMap = null
   }
 
@@ -218,19 +238,23 @@ export class FakeV4Map extends FakeV4EventTarget {
     }
     this.layers.push(layer)
     layer.attachedMap = this
+    this.stats.resourceCreated('layer')
   }
 
   removeLayer(layer: FakeV4Layer): void {
     this.callLog.push('removeLayer')
     const index = this.layers.indexOf(layer)
-    if (index >= 0) this.layers.splice(index, 1)
+    if (index >= 0) {
+      this.layers.splice(index, 1)
+      this.stats.resourceReleased('layer')
+    }
     if (layer.attachedMap === this) layer.attachedMap = null
   }
 
   constructor(
     container: string | HTMLElement,
     options: Record<string, unknown> = {},
-    stats: FakeV4EventStats,
+    stats: FakeV4Diagnostics,
   ) {
     super(stats)
     this.container =
@@ -238,6 +262,7 @@ export class FakeV4Map extends FakeV4EventTarget {
         ? document.getElementById(container) ?? document.createElement('div')
         : container
     this.options = options
+    this.stats.resourceCreated('map')
   }
 
   /* ---------------------------------------------------------------- 容器与尺寸 */
@@ -519,6 +544,9 @@ export class FakeV4Map extends FakeV4EventTarget {
     this.destroyedWithLayers = this.layers.length
     // 官方语义：destroy 会清空 Map 自身残留监听器，但管不到子对象
     this.clearAllListeners()
+    // 只有 Map 自己销账：子资源不会随 destroy 消失（漏摘的覆盖物/控件/图层会留在诊断里，
+    // 这正是「先摘子资源再销毁」那条不变式的门禁依据）
+    this.stats.resourceReleased('map')
   }
 }
 
@@ -570,7 +598,7 @@ export class FakeV4ViewAnimation extends FakeV4EventTarget {
   constructor(
     keyFrames: unknown[],
     options: FakeV4AnimationOptions = {},
-    stats: FakeV4EventStats,
+    stats: FakeV4Diagnostics,
   ) {
     super(stats)
     this.keyFrames = keyFrames
@@ -580,11 +608,15 @@ export class FakeV4ViewAnimation extends FakeV4EventTarget {
   /** 由 `Map.startViewAnimation` 调用：按 delay 异步启动（模拟官方内部 setTimeout，无公开句柄）。 */
   scheduleStart(): void {
     const delay = this.options.delay ?? 0
+    this.stats.timerScheduled()
     this.startTimer = setTimeout(() => this.startInternal(), delay)
   }
 
   private startInternal(): void {
     this.startTimer = null
+    // 定时器已经落地（无论动画是否已被取消）——诊断里 `timersPending` 因此回到 0，
+    // 让「有一个 start 定时器还挂着」成为可断言的状态
+    this.stats.timerFired()
     if (this.settled) return
     this.started = true
     // 官方顺序：先**同步**派发 animationstart（此时内部 Animation 还没建），再构造内部对象

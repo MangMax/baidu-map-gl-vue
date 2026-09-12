@@ -20,7 +20,8 @@
 
 /* ------------------------------------------------------------- 回包时序控制 */
 
-import { FakeV4EventStats, FakeV4EventTarget } from './event-target.ts'
+import { FakeV4Diagnostics } from './diagnostics.ts'
+import { FakeV4EventTarget } from './event-target.ts'
 
 /* -------------------------------------------------------------------------- */
 /* 回调队列与 JSONP 注册表                                                      */
@@ -29,18 +30,46 @@ import { FakeV4EventStats, FakeV4EventTarget } from './event-target.ts'
 export class FakeV4CallbackQueue {
   /** true（默认）：回包在下一个微任务自动触发；false：进入队列等 `flush()`。 */
   auto = true
+  /**
+   * 测试辅助：回包延迟（毫秒）。**不是**官方 API——真实 JSONP 的延迟由网络决定，这里把它变成
+   * 可控输入，用来固定「迟到回包」「慢网络下的超时窗口」这类顺序敏感的语义。
+   *
+   * `0`（默认）= 下一个微任务（真实 JSONP 的最短延迟）；`> 0` = `setTimeout`，并计入诊断的
+   * timer 口径（`activity.timersScheduled` / `timersPending`）。
+   */
+  delay = 0
   private queue: Array<() => void> = []
+  private readonly diagnostics: FakeV4Diagnostics | undefined
 
+  /** `diagnostics` 省略时回包不进诊断（独立构造服务实例的场景）。 */
+  constructor(diagnostics?: FakeV4Diagnostics) {
+    this.diagnostics = diagnostics
+  }
+
+  /** 手动模式（`auto === false`）下尚未触发的回包数。 */
   get pending(): number {
     return this.queue.length
   }
 
   dispatch(run: () => void): void {
-    if (this.auto) {
-      queueMicrotask(run)
+    this.diagnostics?.callbackQueued()
+    const settle = () => {
+      this.diagnostics?.callbackSettled()
+      run()
+    }
+    if (!this.auto) {
+      this.queue.push(settle)
       return
     }
-    this.queue.push(run)
+    if (this.delay > 0) {
+      this.diagnostics?.timerScheduled()
+      setTimeout(() => {
+        this.diagnostics?.timerFired()
+        settle()
+      }, this.delay)
+      return
+    }
+    queueMicrotask(settle)
   }
 
   /** 手动触发已排队的回包，返回触发数量。 */
@@ -112,7 +141,7 @@ export interface FakeV4PointLike {
 
 export class FakeV4Geocoder {
   readonly callLog: string[] = []
-  readonly queue = new FakeV4CallbackQueue()
+  readonly queue: FakeV4CallbackQueue
   /** `getPoint` 的回包；`null` = 服务失败（真实 SDK 的失败形态） */
   pointResult: FakeV4PointLike | null = { lng: 116.404, lat: 39.915 }
   /** `getLocation` 的回包；`null` = 服务失败 */
@@ -125,7 +154,14 @@ export class FakeV4Geocoder {
   /** 设为非空时，回包前先在 `_rd` 里注册一个带错误码的回调（模拟配额 302） */
   jsonpError: { code: number | string; message: string } | null = null
 
-  constructor(private readonly jsonp: FakeV4JsonpRegistry) {}
+  constructor(
+    private readonly jsonp: FakeV4JsonpRegistry,
+    diagnostics?: FakeV4Diagnostics,
+  ) {
+    this.queue = new FakeV4CallbackQueue(diagnostics)
+    // Geocoder 官方没有销毁入口 → 只进活动口径（见 diagnostics 的 leaks 说明）
+    diagnostics?.serviceInstanceCreated()
+  }
 
   getPoint(
     address: string,
@@ -166,12 +202,17 @@ export class FakeV4Geocoder {
 
 export class FakeV4Convertor {
   readonly callLog: string[] = []
-  readonly queue = new FakeV4CallbackQueue()
+  readonly queue: FakeV4CallbackQueue
   /** 回包状态码：0 = 成功 */
   status = 0
   /** 回包坐标；成功时官方只在 `status === 0` 提供 */
   points: FakeV4PointLike[] | null = [{ lng: 116.404, lat: 39.915 }]
   message: string | null = null
+
+  constructor(diagnostics?: FakeV4Diagnostics) {
+    this.queue = new FakeV4CallbackQueue(diagnostics)
+    diagnostics?.serviceInstanceCreated()
+  }
 
   translate(
     points: unknown[],
@@ -191,12 +232,18 @@ export class FakeV4Convertor {
 
 export class FakeV4Boundary {
   readonly callLog: string[] = []
-  readonly queue = new FakeV4CallbackQueue()
+  readonly queue: FakeV4CallbackQueue
   /** `boundaries` 为空数组 = 查无结果；`null` = 服务失败 */
   boundaries: string[] | null = ['116.30,39.90;116.31,39.91;116.30,39.90']
   jsonpError: { code: number | string; message: string } | null = null
 
-  constructor(private readonly jsonp: FakeV4JsonpRegistry) {}
+  constructor(
+    private readonly jsonp: FakeV4JsonpRegistry,
+    diagnostics?: FakeV4Diagnostics,
+  ) {
+    this.queue = new FakeV4CallbackQueue(diagnostics)
+    diagnostics?.serviceInstanceCreated()
+  }
 
   get(name: string, callback: (result: { boundaries: string[] } | null) => void): void {
     this.callLog.push(`get:${name}`)
@@ -215,7 +262,7 @@ export class FakeV4Boundary {
 
 export class FakeV4Geolocation {
   readonly callLog: string[] = []
-  readonly queue = new FakeV4CallbackQueue()
+  readonly queue: FakeV4CallbackQueue
   /** `getStatus()` 的回包；默认 0（BMAP_STATUS_SUCCESS） */
   status = 0
   /** `getCurrentPosition` 的回包；`null` = 无结果 */
@@ -225,7 +272,9 @@ export class FakeV4Geolocation {
     address: { city: '北京市', district: '东城区' },
   }
 
-  constructor(options: Record<string, unknown> = {}) {
+  constructor(options: Record<string, unknown> = {}, diagnostics?: FakeV4Diagnostics) {
+    this.queue = new FakeV4CallbackQueue(diagnostics)
+    diagnostics?.serviceInstanceCreated()
     this.callLog.push(`construct:${JSON.stringify(options)}`)
   }
 
@@ -247,7 +296,7 @@ export class FakeV4Geolocation {
 
 export class FakeV4LocalCity {
   readonly callLog: string[] = []
-  readonly queue = new FakeV4CallbackQueue()
+  readonly queue: FakeV4CallbackQueue
   result: Record<string, unknown> | null = {
     name: '北京市',
     center: { lng: 116.404, lat: 39.915 },
@@ -259,7 +308,10 @@ export class FakeV4LocalCity {
   constructor(
     private readonly jsonp: FakeV4JsonpRegistry,
     options: Record<string, unknown> = {},
+    diagnostics?: FakeV4Diagnostics,
   ) {
+    this.queue = new FakeV4CallbackQueue(diagnostics)
+    diagnostics?.serviceInstanceCreated()
     this.callLog.push(`construct:${JSON.stringify(options)}`)
   }
 
@@ -309,7 +361,7 @@ export class FakeV4AutocompleteResult {
  */
 export class FakeV4Autocomplete extends FakeV4EventTarget {
   readonly callLog: string[] = []
-  readonly queue = new FakeV4CallbackQueue()
+  readonly queue: FakeV4CallbackQueue
   /** 下一次 `search` 的结果条目 */
   pois: Array<Record<string, unknown>> = [
     { business: '天安门', province: '北京市', city: '北京市', district: '东城区' },
@@ -325,10 +377,17 @@ export class FakeV4Autocomplete extends FakeV4EventTarget {
 
   readonly options: Record<string, unknown>
 
-  constructor(options: Record<string, unknown> = {}, stats = new FakeV4EventStats()) {
-    super(stats)
+  /**
+   * `diagnostics` 省略时自带一份**私有**诊断：`super()` 需要一个事件计数宿主，而这份影子
+   * 对象不进任何 `createFakeBMapV4()` 的账（与其余服务「省略即不进诊断」的口径一致——
+   * 生产路径上 `createFakeBMapV4` 一定会传入共享的那一份）。
+   */
+  constructor(options: Record<string, unknown> = {}, diagnostics = new FakeV4Diagnostics()) {
+    super(diagnostics)
+    this.queue = new FakeV4CallbackQueue(diagnostics)
     this.options = options
     this.callLog.push('construct')
+    this.stats.resourceCreated('autocomplete')
   }
 
   search(keyword: string): void {
@@ -352,5 +411,7 @@ export class FakeV4Autocomplete extends FakeV4EventTarget {
     }
     // 真实 SDK 的销毁流程可能触发业务回调（本仓库的 Map / Panorama 都已按「可能重入」防护）
     reenter?.()
+    // 只有真的走完 dispose 才销账（失败路径保留账头，见 Panorama#destroy 同口径）
+    this.stats.resourceReleased('autocomplete')
   }
 }

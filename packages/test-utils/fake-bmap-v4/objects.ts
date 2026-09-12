@@ -11,7 +11,8 @@
  * 事件：全部继承 `FakeV4EventTarget`，因此 `show/hide` 造成的可见性变化、`remove` 等事件由测试
  * 自行 `emit`（真实 SDK 由渲染链派发），与 `fake-bmapgl` 口径一致。
  */
-import { FakeV4EventTarget, type FakeV4EventStats } from './event-target.ts'
+import { FakeV4EventTarget } from './event-target.ts'
+import type { FakeV4Diagnostics } from './diagnostics.ts'
 import { FakeV4Bounds, FakeV4Point, FakeV4Size } from './geometry.ts'
 import type { FakeV4Map } from './FakeMap.ts'
 
@@ -23,7 +24,7 @@ export class FakeV4Overlay extends FakeV4EventTarget {
   /** 由 `FakeV4Map.addOverlay` 写入；`removeOverlay` 时按实例清除。 */
   attachedMap: FakeV4Map | null = null
 
-  constructor(options: Record<string, unknown>, stats: FakeV4EventStats) {
+  constructor(options: Record<string, unknown>, stats: FakeV4Diagnostics) {
     super(stats)
     this.options = options
   }
@@ -120,7 +121,7 @@ class FakeV4Shape extends FakeV4Overlay {
 export class FakeV4Polyline extends FakeV4Shape {
   path: FakeV4Point[]
 
-  constructor(path: FakeV4Point[], options: Record<string, unknown>, stats: FakeV4EventStats) {
+  constructor(path: FakeV4Point[], options: Record<string, unknown>, stats: FakeV4Diagnostics) {
     super(options, stats)
     this.path = path
   }
@@ -136,7 +137,7 @@ export class FakeV4Polygon extends FakeV4Polyline {}
 export class FakeV4Rectangle extends FakeV4Shape {
   bounds: FakeV4Bounds
 
-  constructor(bounds: FakeV4Bounds, options: Record<string, unknown>, stats: FakeV4EventStats) {
+  constructor(bounds: FakeV4Bounds, options: Record<string, unknown>, stats: FakeV4Diagnostics) {
     super(options, stats)
     this.bounds = bounds
   }
@@ -155,7 +156,7 @@ export class FakeV4Circle extends FakeV4Shape {
     point: FakeV4Point,
     radius: number,
     options: Record<string, unknown>,
-    stats: FakeV4EventStats,
+    stats: FakeV4Diagnostics,
   ) {
     super(options, stats)
     this.center = point
@@ -184,7 +185,7 @@ export class FakeV4Label extends FakeV4Overlay {
   anchor: unknown = null
   massClear = true
 
-  constructor(content: string, options: Record<string, unknown>, stats: FakeV4EventStats) {
+  constructor(content: string, options: Record<string, unknown>, stats: FakeV4Diagnostics) {
     super(options, stats)
     this.content = content
   }
@@ -251,7 +252,7 @@ export class FakeV4Marker extends FakeV4Overlay {
   dragging = false
   massClear = true
 
-  constructor(point: FakeV4Point, options: Record<string, unknown>, stats: FakeV4EventStats) {
+  constructor(point: FakeV4Point, options: Record<string, unknown>, stats: FakeV4Diagnostics) {
     super(options, stats)
     this.position = point
   }
@@ -331,7 +332,7 @@ export class FakeV4InfoWindow extends FakeV4Overlay {
   constructor(
     content: string | HTMLElement,
     options: Record<string, unknown>,
-    stats: FakeV4EventStats,
+    stats: FakeV4Diagnostics,
   ) {
     super(options, stats)
     this.content = content
@@ -428,7 +429,7 @@ export class FakeV4GroundOverlay extends FakeV4Overlay {
   displayOnMaxLevel: number | null = null
   zIndex: number | null = null
 
-  constructor(bounds: FakeV4Bounds, options: Record<string, unknown>, stats: FakeV4EventStats) {
+  constructor(bounds: FakeV4Bounds, options: Record<string, unknown>, stats: FakeV4Diagnostics) {
     super(options, stats)
     this.bounds = bounds
   }
@@ -474,7 +475,7 @@ export class FakeV4Prism extends FakeV4Overlay {
     path: FakeV4Point[],
     altitude: number,
     options: Record<string, unknown>,
-    stats: FakeV4EventStats,
+    stats: FakeV4Diagnostics,
   ) {
     super(options, stats)
     this.path = path
@@ -524,7 +525,7 @@ export class FakeV4BezierCurve extends FakeV4Polyline {
     path: FakeV4Point[],
     controlPoints: FakeV4Point[][],
     options: Record<string, unknown>,
-    stats: FakeV4EventStats,
+    stats: FakeV4Diagnostics,
   ) {
     super(path, options, stats)
     this.controlPoints = controlPoints
@@ -548,7 +549,7 @@ export class FakeV4CustomOverlay extends FakeV4Overlay {
   constructor(
     domCreate: () => HTMLElement,
     options: Record<string, unknown>,
-    stats: FakeV4EventStats,
+    stats: FakeV4Diagnostics,
   ) {
     super(options, stats)
     this.domCreate = domCreate
@@ -603,7 +604,7 @@ export class FakeV4MenuItem {
 export class FakeV4ContextMenu extends FakeV4Overlay {
   readonly items: (FakeV4MenuItem | '-')[] = []
 
-  constructor(options: Record<string, unknown>, stats: FakeV4EventStats) {
+  constructor(options: Record<string, unknown>, stats: FakeV4Diagnostics) {
     super(options, stats)
   }
 

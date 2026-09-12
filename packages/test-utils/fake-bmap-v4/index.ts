@@ -3,7 +3,8 @@
  *
  * JSAPI 4.0（`v=4.0`，全局 `BMap`）的最小可观察替身：几何构造器、Map、`MapTypeId`
  * 常量、核心与高级覆盖物、右键菜单与图标、控件（#22）、图层（#22）、六个基础服务与
- * JSONP 注册表（#23），以及统一的监听器统计。
+ * JSONP 注册表（#23），以及统一的诊断计数（监听器 / 资源 / 定时器 / 回调，见 `diagnostics.ts`，
+ * #24）。
  * 它位于 raw SDK 边界之外（`packages/test-utils` 不在 `check-raw-sdk` 扫描范围内），
  * 是 v4 Driver 的 Fake 边界。
  *
@@ -17,9 +18,11 @@
  * 用法：
  *   const fake = createFakeBMapV4()
  *   const geometry = createJsapiV4GeometryDriver(fake.namespace)
- *   fake.stats.reset() // 每个用例开头重置
+ *   fake.diagnostics.reset() // 每个用例开头重置
+ *   fake.diagnostics.assertNoLeaks() // 卸载之后断言资源全部释放
  */
-import { FakeV4EventStats } from './event-target.ts'
+import { FakeV4Diagnostics } from './diagnostics.ts'
+import { FakeV4RuntimeExtensions } from './runtime-extensions.ts'
 import {
   FakeV4Map,
   FakeV4MapTypeId,
@@ -80,7 +83,19 @@ import {
 } from './native-layers.ts'
 import { FakeV4Panorama, FakeV4PanoramaService } from './panorama.ts'
 
-export { FakeV4EventStats, FakeV4EventTarget } from './event-target.ts'
+export { FakeV4Diagnostics } from './diagnostics.ts'
+export { FakeV4EventTarget } from './event-target.ts'
+export {
+  FAKE_V4_RUNTIME_INJECTED_MEMBERS,
+  FakeV4RuntimeExtensions,
+} from './runtime-extensions.ts'
+export type { FakeV4RuntimeInjectedMember } from './runtime-extensions.ts'
+export type {
+  FakeV4ActivityCounters,
+  FakeV4DiagnosticsSnapshot,
+  FakeV4LeakCounters,
+  FakeV4ResourceKind,
+} from './diagnostics.ts'
 export {
   FAKE_V4_INTERACTIONS,
   FakeV4Map,
@@ -239,7 +254,15 @@ export interface FakeBMapV4Namespace {
 
 export interface FakeBMapV4 {
   namespace: FakeBMapV4Namespace
-  stats: FakeV4EventStats
+  /**
+   * 诊断计数（泄漏门禁 + 活动口径）。
+   *
+   * `stats` 是同一对象的别名（#24 之前的名字只统计监听器）；新代码请用 `diagnostics`，
+   * 两者指向同一个实例，调用 `reset()` 任一即可清零。
+   */
+  diagnostics: FakeV4Diagnostics
+  /** @deprecated 诊断对象的历史别名，等价于 `diagnostics`。 */
+  stats: FakeV4Diagnostics
   /** 测试辅助：记录已创建的 Map 实例 */
   createdMaps: FakeV4Map[]
   /** 测试辅助：记录已创建的覆盖物实例（构造器调用计数，用于「重建一次」断言） */
@@ -262,10 +285,17 @@ export interface FakeBMapV4 {
   createdPanoramaServices: FakeV4PanoramaService[]
   /** 测试辅助：JSONP 注册表（造「失败只回 null」的服务端错误） */
   jsonp: FakeV4JsonpRegistry
+  /**
+   * 测试辅助：运行时注入成员的可控开关（卸下 / 装回扩展 API 的类）。
+   *
+   * 官方 4.0 的扩展成员是**异步注入**的，因此「注入前失败、注入后同一个 Driver 可用」是
+   * 真实语义；这个入口让测试能主动摆出那个时机，而不是各自 `delete namespace.X`。
+   */
+  runtimeExtensions: FakeV4RuntimeExtensions
 }
 
 export function createFakeBMapV4(version = '4.0'): FakeBMapV4 {
-  const stats = new FakeV4EventStats()
+  const stats = new FakeV4Diagnostics()
   const createdMaps: FakeV4Map[] = []
   const createdOverlays: unknown[] = []
   const createdControls: FakeV4Control[] = []
@@ -459,31 +489,31 @@ export function createFakeBMapV4(version = '4.0'): FakeBMapV4 {
 
   class GeocoderClass extends FakeV4Geocoder {
     constructor() {
-      super(jsonp)
+      super(jsonp, stats)
       createdGeocoders.push(this)
     }
   }
   class ConvertorClass extends FakeV4Convertor {
     constructor() {
-      super()
+      super(stats)
       createdConvertors.push(this)
     }
   }
   class BoundaryClass extends FakeV4Boundary {
     constructor() {
-      super(jsonp)
+      super(jsonp, stats)
       createdBoundaries.push(this)
     }
   }
   class GeolocationClass extends FakeV4Geolocation {
     constructor(options?: Record<string, unknown>) {
-      super(options ?? {})
+      super(options ?? {}, stats)
       createdGeolocations.push(this)
     }
   }
   class LocalCityClass extends FakeV4LocalCity {
     constructor(options?: Record<string, unknown>) {
-      super(jsonp, options ?? {})
+      super(jsonp, options ?? {}, stats)
       createdLocalCities.push(this)
     }
   }
@@ -555,7 +585,7 @@ export function createFakeBMapV4(version = '4.0'): FakeBMapV4 {
   }
   class PanoramaServiceClass extends FakeV4PanoramaService {
     constructor() {
-      super()
+      super(stats)
       createdPanoramaServices.push(this)
     }
   }
@@ -618,7 +648,9 @@ export function createFakeBMapV4(version = '4.0'): FakeBMapV4 {
 
   return {
     namespace,
+    diagnostics: stats,
     stats,
+    runtimeExtensions: new FakeV4RuntimeExtensions(namespace),
     createdMaps,
     createdOverlays,
     createdControls,

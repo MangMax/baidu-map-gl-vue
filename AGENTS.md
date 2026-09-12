@@ -50,3 +50,10 @@ raw SDK 白名单（相对 `packages/baidu-map-gl-vue/src`）：`driver/**`、`c
 Capability Catalog 是能力清单的单一事实源（`src/driver/capability/catalog.ts`），
 覆盖 Map / Overlay / Layer / Service / Panorama / Runtime，用 `status`（`native` / `extended` / `experimental` / `unsupported`）与 `runtimeOnly` 表达能力语义；
 能力矩阵由 `pnpm generate:capability-matrix` 生成，禁止手工编辑。
+
+## 测试基建（`packages/test-utils`）
+
+Fake SDK 在 raw SDK 扫描范围之外，是「组件/Facet 与 SDK 之间」的替身边界。两条约定：
+
+- **诊断分两个口径**：`fake.diagnostics.snapshot()` 返回 `leaks`（当前**未释放**的资源，门槛值恒为 0，`assertNoLeaks()` 逐项点名）与 `activity`（累计发生过什么，不要求归零）。定时器与回调是「在飞」而非「未释放」，**只进 `activity` 与 `pendingAsync()`**——需要断言「没有在飞窗口」时要显式写出来。新增资源种类必须同时登记进 `LeakCounters` 与 `LEAK_FIELD_BY_KIND`（后者穷尽，漏登记会编译失败）。
+- **跨引擎行为用 driver matrix**：`packages/test-utils/driver-matrix.ts` 的 `runDriverMatrix` / `expectSameDomainResult` 让同一份场景在多个引擎上跑并比较**领域结果**（不比较 raw SDK 调用序列）；引擎差异（Provider 形状、假账本位置、气泡活状态怎么读）一律收在引擎描述里。迁移期双跑只用于验证，不形成长期兼容承诺（见 ADR `2026-09-12-fake-v4-diagnostics-and-dual-driver-matrix`）。

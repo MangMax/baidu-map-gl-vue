@@ -1,0 +1,203 @@
+/**
+ * Fake BMap v4 诊断计数器（M3A3-FAKE-DUAL / issue #24）
+ *
+ * 这一层验证的是「诊断本身」：计数器是否真的跟着 Fake 的生命周期变化、`assertNoLeaks()`
+ * 会不会空转、`reset()` 是否可清零。**行为语义**的断言（迟到回调、失败重试、target 切换
+ * 之后的结算）放在 `v4-fake-async-lifecycle.test.ts`。
+ *
+ * 为什么值得单独一层：诊断计数一旦失真，后面所有「无泄漏」断言都会变成空转——
+ * 它自己也需要被反向验证（「忘记摘除时必须报泄漏」）。
+ */
+import { describe, it, expect } from "vitest";
+import { createFakeBMapV4, type FakeBMapV4 } from "../../packages/test-utils";
+import type { FakeV4LeakCounters } from "../../packages/test-utils/fake-bmap-v4";
+
+function container(): HTMLElement {
+  const el = document.createElement("div");
+  el.style.width = "320px";
+  el.style.height = "240px";
+  document.body.appendChild(el);
+  return el;
+}
+
+function zeroLeaks(): FakeV4LeakCounters {
+  return {
+    maps: 0,
+    overlays: 0,
+    infoWindows: 0,
+    contextMenus: 0,
+    controls: 0,
+    layers: 0,
+    panoramas: 0,
+    autocompletes: 0,
+    listeners: 0,
+  };
+}
+
+let fake: FakeBMapV4;
+
+describe("Fake v4 diagnostics：资源计数", () => {
+  fake = createFakeBMapV4();
+
+  it("创建即计数：Map / Overlay / Control / Layer 各自进自己的桶", () => {
+    const d = fake.diagnostics;
+    d.reset();
+
+    const map = new fake.namespace.Map(container());
+    expect(d.snapshot().leaks.maps).toBe(1);
+
+    const marker = new fake.namespace.Marker(new fake.namespace.Point(116.4, 39.9));
+    const zoom = new fake.namespace.ZoomControl();
+    const tile = new fake.namespace.TileLayer();
+
+    // 构造 ≠ 挂载：未挂载的实例不进 leaks（它们没有可断言的「释放路径」）
+    expect(d.snapshot().leaks.overlays).toBe(0);
+    expect(d.snapshot().leaks.controls).toBe(0);
+    expect(d.snapshot().leaks.layers).toBe(0);
+
+    map.addOverlay(marker);
+    map.addControl(zoom);
+    map.addLayer(tile);
+    expect(d.snapshot().leaks).toMatchObject({ overlays: 1, controls: 1, layers: 1 });
+    expect(d.snapshot().activity).toMatchObject({
+      overlaysAttached: 1,
+      controlsAttached: 1,
+      layersAttached: 1,
+    });
+
+    map.removeOverlay(marker);
+    map.removeControl(zoom);
+    map.removeLayer(tile);
+    expect(d.snapshot().leaks).toMatchObject({ overlays: 0, controls: 0, layers: 0 });
+    expect(d.snapshot().activity).toMatchObject({
+      overlaysDetached: 1,
+      controlsDetached: 1,
+      layersDetached: 1,
+    });
+
+    map.destroy();
+    expect(d.assertNoLeaks()).toEqual(zeroLeaks());
+  });
+
+  it("重复挂载按 SDK 事实计数（不去重）：一次摘除之后仍剩 1 —— 记账错误不会被掩盖", () => {
+    const d = fake.diagnostics;
+    d.reset();
+    const map = new fake.namespace.Map(container());
+    const control = new fake.namespace.ZoomControl();
+
+    // SDK 本身不去重（「同一实例只添加一次」是调用方的责任，见 FakeV4Map.addControl 注释）
+    map.addControl(control);
+    map.addControl(control);
+    expect(d.snapshot().leaks.controls).toBe(2);
+
+    map.removeControl(control);
+    expect(d.snapshot().leaks.controls).toBe(1);
+
+    map.removeControl(control);
+    expect(d.snapshot().leaks.controls).toBe(0);
+    // 多摘一次不该把计数打成负数
+    map.removeControl(control);
+    expect(d.snapshot().leaks.controls).toBe(0);
+  });
+
+  it("destroy 不代为摘除子资源：漏摘会被 assertNoLeaks 抓住（反证门禁不空转）", () => {
+    const d = fake.diagnostics;
+    d.reset();
+    const map = new fake.namespace.Map(container());
+    map.addOverlay(new fake.namespace.Marker(new fake.namespace.Point(116.4, 39.9)));
+    map.destroy();
+
+    expect(d.snapshot().leaks.maps, "map 已销毁").toBe(0);
+    expect(d.snapshot().leaks.overlays, "覆盖物没有随 map 一起消失").toBe(1);
+    expect(() => d.assertNoLeaks()).toThrow(/overlays=1/);
+  });
+
+  it("InfoWindow / ContextMenu 按「当前是否挂在地图上」计数", () => {
+    const d = fake.diagnostics;
+    d.reset();
+    const map = new fake.namespace.Map(container());
+    const iw = new fake.namespace.InfoWindow("content");
+    const menu = new fake.namespace.ContextMenu();
+
+    map.openInfoWindow(iw, new fake.namespace.Point(116.4, 39.9));
+    map.addContextMenu(menu);
+    expect(d.snapshot().leaks).toMatchObject({ infoWindows: 1, contextMenus: 1 });
+
+    map.closeInfoWindow();
+    map.removeContextMenu(menu);
+    expect(d.snapshot().leaks).toMatchObject({ infoWindows: 0, contextMenus: 0 });
+    expect(d.snapshot().activity).toMatchObject({
+      infoWindowsOpened: 1,
+      infoWindowsReleased: 1,
+      contextMenusAttached: 1,
+      contextMenusDetached: 1,
+    });
+  });
+
+  it("监听器存活数沿用事件统计口径，reset() 之后全部清零", () => {
+    const d = fake.diagnostics;
+    d.reset();
+    const map = new fake.namespace.Map(container());
+    const listener = () => {};
+    map.addEventListener("click", listener);
+
+    expect(d.snapshot().leaks.listeners).toBe(1);
+    expect(d.snapshot().activity).toMatchObject({ listenCalls: 1, unlistenCalls: 0 });
+
+    map.removeEventListener("click", listener);
+    expect(d.snapshot().leaks.listeners).toBe(0);
+
+    map.addEventListener("click", () => {});
+    map.destroy();
+    expect(d.assertNoLeaks()).toEqual(zeroLeaks());
+
+    // reset 之后累计口径也归零（「可清零的 diagnostics」）
+    d.reset();
+    expect(d.snapshot().activity).toMatchObject({ listenCalls: 0, unlistenCalls: 0 });
+    expect(d.snapshot().leaks).toEqual(zeroLeaks());
+  });
+});
+
+describe("Fake v4 diagnostics：服务与全景的资源口径", () => {
+  fake = createFakeBMapV4();
+
+  it("无销毁入口的基础服务只进 created 口径，不进泄漏门禁", () => {
+    const d = fake.diagnostics;
+    d.reset();
+    new fake.namespace.Geocoder();
+    new fake.namespace.Convertor();
+
+    const { leaks, activity } = d.snapshot();
+    expect(activity.servicesCreated).toBe(2);
+    // 官方 4.0 里 Geocoder / Convertor 没有 destroy/dispose —— 它们随 Client 由 GC 回收，
+    // 把「没有释放入口的对象」算进泄漏门禁会让门禁永远无法归零
+    expect(leaks).toEqual(zeroLeaks());
+  });
+
+  it("Autocomplete 与 Panorama 有释放入口，成功释放才销账", () => {
+    const d = fake.diagnostics;
+    d.reset();
+    document.body.innerHTML = "";
+    const input = document.createElement("input");
+    document.body.appendChild(input);
+
+    const autocomplete = new fake.namespace.Autocomplete({ input });
+    const panorama = new fake.namespace.Panorama(container());
+    expect(d.snapshot().leaks).toMatchObject({ autocompletes: 1, panoramas: 1 });
+
+    // 销毁失败必须保留记账户头，否则「失败不记账、可以重试」那条契约无法被诊断观测
+    panorama.failNextDestroy = new TypeError("destroy failed");
+    expect(() => panorama.destroy()).toThrow();
+    expect(d.snapshot().leaks.panoramas).toBe(1);
+
+    panorama.destroy();
+    autocomplete.dispose();
+    expect(d.assertNoLeaks()).toEqual(zeroLeaks());
+    expect(d.snapshot().activity).toMatchObject({
+      panoramasCreated: 1,
+      panoramasDestroyed: 1,
+      autocompletesCreated: 1,
+      autocompletesDisposed: 1,
+    });
+  });
+});

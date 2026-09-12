@@ -19,7 +19,8 @@
  * - `PanoramaCoverageLayer` 在 4.0.4 类型包里**没有类声明**，属运行时能力——Fake 提供它，
  *   以便覆盖「真实运行时存在」的创建路径；「运行时缺失」的分支由测试自己裁掉该构造器。
  */
-import { FakeV4EventTarget, type FakeV4EventStats } from './event-target.ts'
+import { FakeV4EventTarget } from './event-target.ts'
+import type { FakeV4Diagnostics } from './diagnostics.ts'
 import { FakeV4Size } from './geometry.ts'
 import type { FakeV4Map } from './FakeMap.ts'
 
@@ -44,7 +45,7 @@ export class FakeV4Control extends FakeV4EventTarget {
   /** 由 `FakeV4Map.addControl` 写入；`removeControl` 时按实例清除。 */
   attachedMap: FakeV4Map | null = null
 
-  constructor(options: Record<string, unknown>, stats: FakeV4EventStats) {
+  constructor(options: Record<string, unknown>, stats: FakeV4Diagnostics) {
     super(stats)
     this.options = options
     this.anchor = options.anchor ?? null
@@ -228,7 +229,7 @@ export class FakeV4Layer extends FakeV4EventTarget {
   /** 由 `FakeV4Map.addLayer` 写入；`removeLayer` 时清除。 */
   attachedMap: FakeV4Map | null = null
 
-  constructor(options: Record<string, unknown>, stats: FakeV4EventStats) {
+  constructor(options: Record<string, unknown>, stats: FakeV4Diagnostics) {
     super(stats)
     this.options = options
   }
@@ -244,7 +245,7 @@ export class FakeV4TileLayer extends FakeV4Layer {
   readonly isTileLayer = true
   zIndex: number | null = null
 
-  constructor(options: Record<string, unknown> = {}, stats: FakeV4EventStats) {
+  constructor(options: Record<string, unknown> = {}, stats: FakeV4Diagnostics) {
     super(options, stats)
   }
 
@@ -270,7 +271,7 @@ export class FakeV4TileLayer extends FakeV4Layer {
  * 用来覆盖「真实运行时存在」的创建路径。
  */
 export class FakeV4PanoramaCoverageLayer extends FakeV4Layer {
-  constructor(stats: FakeV4EventStats) {
+  constructor(stats: FakeV4Diagnostics) {
     super({}, stats)
   }
 }
