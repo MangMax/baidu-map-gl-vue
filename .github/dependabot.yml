@@ -1,0 +1,44 @@
+version: 2
+updates:
+  # pnpm workspace：依赖声明集中在根 package.json，从根目录扫描即可覆盖全部 workspace 包
+  - package-ecosystem: npm
+    directory: "/"
+    schedule:
+      interval: weekly
+      day: monday
+      time: "09:30"
+      timezone: Asia/Shanghai
+    open-pull-requests-limit: 5
+    commit-message:
+      prefix: "chore(deps)"
+      prefix-development: "chore(deps-dev)"
+    groups:
+      # minor + patch 合成一个 PR 降噪；major 单独开，便于逐个判断迁移成本
+      minor-and-patch:
+        applies-to: version-updates
+        update-types:
+          - minor
+          - patch
+    ignore:
+      # vue 是 peerDependency，typescript / vue-tsc 与根 package.json 里的
+      # pnpm.overrides（vue-tsc 3.3.11、@vue/language-core 2.2.0）强相关，
+      # 这三者的 major 由维护者手动评估后再升。安全更新不受此配置影响。
+      - dependency-name: vue
+        update-types: ["version-update:semver-major"]
+      - dependency-name: typescript
+        update-types: ["version-update:semver-major"]
+      - dependency-name: vue-tsc
+        update-types: ["version-update:semver-major"]
+
+  - package-ecosystem: github-actions
+    directory: "/"
+    schedule:
+      interval: weekly
+      day: monday
+      time: "09:30"
+      timezone: Asia/Shanghai
+    commit-message:
+      prefix: "chore(ci)"
+    groups:
+      actions:
+        patterns: ["*"]

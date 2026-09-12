@@ -1,22 +1,42 @@
 name: Close inactive issues
+
 on:
   schedule:
     - cron: "30 1 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  issues: write
 
 jobs:
   close-issues:
     runs-on: ubuntu-latest
-    permissions:
-      issues: write
-      pull-requests: write
     steps:
-      - uses: actions/stale@v5
+      - uses: actions/stale@v11
         with:
-          days-before-issue-stale: 14
-          days-before-issue-close: 7
+          # 采用「白名单」而不是「全量扫描」：只有被打上 needs info / question 的 issue
+          # 才会进入 stale 流程。本仓库的 open issue 基本是有意长期保留的路线图条目
+          # （#12、#23~#50，均无标签、无 milestone），用 any-of-issue-labels 可以把它们
+          # 一次性排除在外，避免路线图被自动关闭。
+          any-of-issue-labels: "needs info,question"
+          days-before-issue-stale: 90
+          days-before-issue-close: 30
           stale-issue-label: "stale"
-          stale-issue-message: "This issue is stale because it has been open for 30 days with no activity."
-          close-issue-message: "This issue was closed because it has been inactive for 14 days since being marked as stale."
+          close-issue-reason: "not_planned"
+
+          # 双保险：带 milestone，或带下列任一标签的 issue 一律豁免
+          exempt-all-issue-milestones: true
+          exempt-issue-labels: "roadmap,pinned,security,good first issue,help wanted"
+
+          stale-issue-message: |
+            这个 issue 已经 90 天没有回应了，将在 30 天后自动关闭。
+            如果问题依然存在，补充一下复现信息或留个言，我们就会把它保留下来。
+          close-issue-message: |
+            标记为 stale 后又过了 30 天没有回应，这个 issue 已自动关闭。
+            问题如果仍然存在，欢迎补充信息后重新打开，或另开一个 issue。
+
+          # 不自动清理 PR：在飞的 PR 由维护者逐个人工判断
           days-before-pr-stale: -1
           days-before-pr-close: -1
-          repo-token: ${{ secrets.GITHUB_TOKEN }}
+          operations-per-run: 100

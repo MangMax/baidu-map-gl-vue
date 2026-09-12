@@ -81,6 +81,10 @@ pnpm playground:dev
 pnpm docs:dev
 ```
 
+完整的贡献流程、分支与提交约定、本地门禁清单见 [CONTRIBUTING.md](./CONTRIBUTING.md)；
+用法讨论请走 [Discussions](https://github.com/MangMax/baidu-map-gl-vue/discussions)，
+安全问题请按 [SECURITY.md](./SECURITY.md) 私密上报。
+
 ## <img src="https://raw.githubusercontent.com/Tarikul-Islam-Anik/Animated-Fluent-Emojis/master/Emojis/Travel%20and%20places/Star.png" alt="Star" width="25" height="25" /> Star History
 
 [![Star History Chart](https://api.star-history.com/svg?repos=MangMax/baidu-map-gl-vue&type=Timeline)](https://star-history.com/#MangMax/baidu-map-gl-vue&Timeline)
