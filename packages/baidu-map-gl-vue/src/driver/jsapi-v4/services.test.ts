@@ -482,4 +482,39 @@ describe("v4 Service Facet：Autocomplete 的回包归属（PR #63 复审 P2-1�
     autocomplete.queue.flush();
     expect((await call.result).status).toBe("success");
   });
+
+  it("乱序回包（B 的先到）：按 keyword 关联，不串线", async () => {
+    const handle = services.createAutocomplete({ input: input() });
+    const autocomplete = fake.createdAutocompletes[0];
+    autocomplete.queue.auto = false;
+
+    autocomplete.pois = [{ business: "AAA", province: "北京市" }];
+    const a = services.suggest(handle, "A");
+    autocomplete.pois = [{ business: "BBB", province: "上海市" }];
+    const b = services.suggest(handle, "B");
+
+    // 乱序：B 的回包先到（官方 `AutocompleteResult.keyword` 是唯一的请求关联依据）
+    expect(autocomplete.queue.flushOne(1)).toBe(true);
+    expect((await b.result).data?.[0]?.title).toBe("BBB");
+
+    expect(autocomplete.queue.flushOne(0)).toBe(true);
+    expect((await a.result).data?.[0]?.title).toBe("AAA");
+  });
+
+  it("回包不带 keyword 时退化为 FIFO（顺序到达仍然正确）", async () => {
+    const handle = services.createAutocomplete({ input: input() });
+    const autocomplete = fake.createdAutocompletes[0];
+    autocomplete.queue.auto = false;
+    // 官方把 `keyword` 声明为可选，运行时不保证填充 → 这条路径必须仍然可用
+    autocomplete.includeKeyword = false;
+
+    autocomplete.pois = [{ business: "AAA", province: "北京市" }];
+    const a = services.suggest(handle, "A");
+    autocomplete.pois = [{ business: "BBB", province: "上海市" }];
+    const b = services.suggest(handle, "B");
+
+    autocomplete.queue.flush();
+    expect((await a.result).data?.[0]?.title).toBe("AAA");
+    expect((await b.result).data?.[0]?.title).toBe("BBB");
+  });
 });

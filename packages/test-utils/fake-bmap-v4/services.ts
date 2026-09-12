@@ -44,6 +44,14 @@ export class FakeV4CallbackQueue {
     for (const run of queued) run()
     return queued.length
   }
+
+  /** 只触发队列里指定的一个回包（「乱序回包」用例用）；索引越界返回 false。 */
+  flushOne(index: number): boolean {
+    if (index < 0 || index >= this.queue.length) return false
+    const [run] = this.queue.splice(index, 1)
+    if (run) run()
+    return true
+  }
 }
 
 /** `_rd` 注册表：JSONP 回调注册表（错误嗅探的唯一依据）。 */
@@ -266,12 +274,18 @@ export class FakeV4LocalCity {
 
 /* ---------------------------------------------------------------- Autocomplete */
 
-/** 官方 `AutocompleteResult`：只有 `getNumPois` / `getPoi` 两个读法。 */
+/** 官方 `AutocompleteResult`：只有 `getNumPois` / `getPoi` 两个读法（`keyword` 是可选的）。 */
 export class FakeV4AutocompleteResult {
+  /** 检索关键字；`includeKeyword: false` 时不填充——用来验证「没有 keyword」的退化路径 */
+  keyword?: string
+
   constructor(
     private readonly pois: Array<Record<string, unknown>>,
-    readonly keyword: string,
-  ) {}
+    keyword: string,
+    includeKeyword = true,
+  ) {
+    if (includeKeyword) this.keyword = keyword
+  }
 
   getNumPois(): number {
     return this.pois.length
@@ -291,6 +305,8 @@ export class FakeV4Autocomplete {
   ]
   /** `search()` 是否会回包（false = SDK 静默失败，用来验证超时 / 取消） */
   respond = true
+  /** 回包是否带 `AutocompleteResult.keyword`（官方声明为可选，运行时是否填充未承诺） */
+  includeKeyword = true
 
   readonly options: Record<string, unknown>
 
@@ -302,7 +318,7 @@ export class FakeV4Autocomplete {
   search(keyword: string): void {
     this.callLog.push(`search:${keyword}`)
     if (!this.respond) return
-    const results = new FakeV4AutocompleteResult(this.pois, keyword)
+    const results = new FakeV4AutocompleteResult(this.pois, keyword, this.includeKeyword)
     const onSearchComplete = this.options.onSearchComplete as
       | ((value: FakeV4AutocompleteResult) => void)
       | undefined

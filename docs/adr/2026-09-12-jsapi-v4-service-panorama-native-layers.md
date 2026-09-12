@@ -98,15 +98,17 @@ Fake 也把这条时序建模出来（回包走微任务），否则「嗅探没
 `const/StatusCodes.d.ts` 的一致性由文件末尾的类型断言钉死（同 `#22` 的锚点常量表口径）。
 `getStatus` 成员缺失或调用失败时返回 `null`，**不把缺成员伪装成状态 0**。
 
-### 5. `Autocomplete`：Driver 挂内部分发器 + **按 FIFO 判定回包归属**
+### 5. `Autocomplete`：Driver 挂内部分发器 + **两级回包归属（keyword → FIFO）**
 
 `Autocomplete#search()` 不带请求标识，表面上无法把回包对应回某次调用；但一次 `search()`
-**必定**换来恰好一次 `onSearchComplete`（用户在输入框里打字也走同一条路），因此 Driver 维护
-**每个实例一个 pending 结算队列**，回包取**队首**：
+**必定**换来恰好一次 `onSearchComplete`（用户在输入框里打字也走同一条路），而且官方
+`AutocompleteResult` 声明了 `keyword`——因此 Driver 维护**每个实例一个 pending 队列**，归属按两级判定：
 
 ```ts
 onSearchComplete: (results) => {
-  const settle = pendingSuggest.get(raw)?.shift() ?? null;   // 队首 = 本次回包的归属
+  // 1) 回包带 keyword ⇒ 按关键字关联（乱序到达也能落到正确的调用上）
+  // 2) 不带 keyword（运行时是否填充未承诺）⇒ 退化为 FIFO 队首
+  const settle = pendingSuggest.get(raw) · matchByKeyword(results.keyword) ?? shift() ?? null;
   if (settle) settle.success(readSuggestions(results)) / settle.empty();
   options.onSearchComplete?.(results);                       // 原样转发业务自己的监听
 }
@@ -122,6 +124,10 @@ onSearchComplete: (results) => {
 - **`search()` 同步抛错时回滚槽位**：请求没发出去就不会有回包，留着会永久错位一格；
   队列另有上界（`MAX_PENDING_SUGGESTS = 16`，超出丢最旧并告警一次）作为 SDK 长期丢回调时的
   自愈手段。
+
+`keyword` 关联是**目前唯一可用的请求标识**：官方类型把它标成可选，因此运行时可能不填充——
+那种情况下退化为顺序 FIFO（乱序回包会错位一格）；「真机是否填充 `keyword`、以及连发多次
+`search()` 的回包顺序」属 M3A.3（#25）的真机核对项。
 
 ### 6. `TrackAnimation` 显式失败，指向 `TrackLine`
 
@@ -360,7 +366,7 @@ smoke 顺带确认（并已回写进决策）的运行时事实：
 
 | 发现 | 复现结果（红） | 处置 |
 | --- | --- | --- |
-| P2-1 `Autocomplete` 的回包归属错位：`pendingSuggest` 只有一个槽位 —— (a) 取消 A 之后 A 的迟到回包会结算 B；(b) 取消 A 把 B 的槽位一起清掉、B 最终超时 | (a) `expected 'AAA' to be 'BBB'`（B 拿到 A 的结果）；(b) `expected 'timeout' to be 'success'` | 改为**每实例一个 FIFO 队列**、回包取队首；`cancel()` 不再动队列（槽位要吸收自己那次 search 的回包）；`search()` 同步抛错时回滚槽位；队列加上界 + 告警。补 3 条用例（锁定 / 取消 / 无 pending 回包） |
+| P2-1 `Autocomplete` 的回包归属错位：`pendingSuggest` 只有一个槽位 —— (a) 取消 A 之后 A 的迟到回包会结算 B；(b) 取消 A 把 B 的槽位一起清掉、B 最终超时 | (a) `expected 'AAA' to be 'BBB'`（B 拿到 A 的结果）；(b) `expected 'timeout' to be 'success'` | 改为**每实例一个 pending 队列**：回包**优先按 `keyword` 关联**（乱序也不串线）、不带 `keyword` 时退化为 FIFO 队首；`cancel()` 不再动队列（槽位要吸收自己那次 search 的回包）；`search()` 同步抛错时回滚槽位；队列加上界 + 告警。补 4 条用例（锁定 / 交叉取消 / 无 pending 回包 / **乱序回包**） |
 | P2-2 全景销毁没有释放 EventDriver 持有的订阅（`groups` 是强引用） | `expected 1 to be +0`（destroy 之后监听器仍在） | `destroy` 先 `events.release(viewer)` 再销毁 SDK 对象；三个状态分开记账（`disposing` / `released` / `destroyed`），重试只补做未完成的一步；解绑失败不阻断销毁但汇总抛出。Panorama Facet 因此新增 `events` 注入，装配点一并传入 |
 | P2-3 `locateCity` 没接 JSONP 探针：`_rd` 有错误码时仍返回 `empty` | `expected 'empty' to be 'failed'` | 与 Geocoder / Boundary 同源接入 `captureJsonpServiceError` + `settleNull`；补「有错误 ⇒ failed」「无错误 ⇒ 仍是 empty」两条用例；Fake 的 LocalCity 补 `jsonpError` 注入（同步注册 / 异步回包，与 Geocoder 同形） |
 | P2-4 `convert` 的非法坐标绕过结果封装、同步抛 `BMAP_INVALID_POINT` | `'BMapError: Point 非法…' was thrown`（连 `ServiceCall` 都没返回） | 进调用前逐项校验（NaN / Infinity / 缺分量 → `failed + BMAP_INVALID_ARGUMENT`，不触碰 SDK）；几何转换移进受保护流程兜底；补 3 类非法坐标用例 |
@@ -373,10 +379,16 @@ smoke 顺带确认（并已回写进决策）的运行时事实：
 public-dts / 能力矩阵全绿；真实 AK smoke **25/25**——`destroyError` 现在带上汇总消息且保留原始
 `TypeError` 文本，说明新的「解绑 → 销毁 → 汇总」路径在真机上确实走到了。
 
-**残留风险（显式接受）**：`Autocomplete` 的队列上界是「SDK 长期不回包」时的自愈手段，而不是精确
-归属——SDK 若丢了某个回包，后续回包会错位一格（上界保证不会无限累积，并以告警暴露）。真实
-Autocomplete 每次 `search()` 都有回包，因此这是防御性条款；「连发多次 search 的回包顺序 =
-调用顺序」的真机核对属 M3A.3（#25）。
+**残留风险（显式接受）**：当回包**不带** `keyword`（官方声明为可选，运行时是否填充未承诺）时，
+归属退化为顺序 FIFO——SDK 若乱序回包或丢了某个回包，后续回包会错位一格（上界保证不会无限累积，
+并以告警暴露）。真实 Autocomplete 每次 `search()` 都有回包，且我们优先按 `keyword` 关联，
+因此这是防御性条款；「真机是否填充 `keyword`、连发多次 `search()` 的回包顺序」属 M3A.3（#25）
+的真机核对项。
+
+**复审之后的补充加固（同一次复审 §1 的「乱序回包测试」要求）**：原实现只有 FIFO，乱序回包会
+串线。补上 `keyword` 关联后，「B 的回包先到」也能落到 B 上；用例 `乱序回包（B 的先到）` 在补之前
+是红的（`git stash` 该文件可复现），补之后转绿；另有 `回包不带 keyword 时退化为 FIFO` 固定退化路径。
+Fake 为此加了 `flushOne(index)`（按索引触发单个回包）与 `includeKeyword`（模拟运行时不填充 keyword）。
 
 ## 参考
 

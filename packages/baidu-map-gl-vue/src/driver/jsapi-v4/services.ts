@@ -101,6 +101,8 @@ interface RawAutocompletePoi {
 }
 
 interface RawAutocompleteResult {
+  /** 检索关键字（官方 `AutocompleteResult.keyword`；运行时不保证填充） */
+  keyword?: string;
   getNumPois?: () => number;
   getPoi?: (index: number) => RawAutocompletePoi | undefined;
 }
@@ -217,11 +219,15 @@ export function createJsapiV4ServiceDriver(
   const warnOnce = createWarnOnce();
 
   /**
-   * 同一 `Autocomplete` 实例的 pending 结算**队列**（先进先出）。
+   * 同一 `Autocomplete` 实例的 pending 结算**队列**。
    *
    * `Autocomplete#search()` 不带请求标识，表面上无法把回包对应回某次调用；但一次
    * `search()` **必定**换来恰好一次 `onSearchComplete`（用户在输入框里打字也走同一条路），
-   * 因此回包归属只能是**数量对齐的先进先出**：第 N 个回包属于第 N 次 `search()`。
+   * 而且官方 `AutocompleteResult` 声明了 `keyword`——因此归属按两级判定：
+   *
+   * 1. **有 `keyword` 时按关键字关联**（乱序回包也能落到正确的调用上）；
+   * 2. 回包不带 `keyword`（运行时是否填充未在文档中承诺）时退化为**先进先出**：第 N 个回包
+   *    属于第 N 次 `search()`。
    *
    * 两个直接推论（PR #63 复审 P2-1，两种错法都真的发生过）：
    * - **被取消的那次 `search()` 的回包仍会到达**（SDK 没有取消入口），所以 `cancel()` 不能
@@ -229,17 +235,21 @@ export function createJsapiV4ServiceDriver(
    * - 取消后的结算由适配器的「先到者胜」吸收（已结算的 `ServiceCall` 再收到 `success` 是
    *   no-op），队列只需要保证数量对齐。同理也能容纳「`suggest()` 超时之后才到的回包」。
    */
-  const pendingSuggest = new WeakMap<object, ServiceCallSettle<PlaceSuggestion[]>[]>();
+  const pendingSuggest = new WeakMap<
+    object,
+    Array<{ keyword: string; settle: ServiceCallSettle<PlaceSuggestion[]> }>
+  >();
 
   /** `search()` 数量与回包数量长期不匹配时的队列上界（自愈用，不是正常路径）。 */
   const MAX_PENDING_SUGGESTS = 16;
 
   const enqueueSuggest = (
     raw: Record<string, unknown>,
+    keyword: string,
     settle: ServiceCallSettle<PlaceSuggestion[]>,
   ): void => {
     const queue = pendingSuggest.get(raw) ?? [];
-    queue.push(settle);
+    queue.push({ keyword, settle });
     if (queue.length > MAX_PENDING_SUGGESTS) {
       queue.shift();
       warnOnce(
@@ -257,7 +267,29 @@ export function createJsapiV4ServiceDriver(
     settle: ServiceCallSettle<PlaceSuggestion[]>,
   ): void => {
     const queue = pendingSuggest.get(raw);
-    if (queue && queue[queue.length - 1] === settle) queue.pop();
+    if (!queue) return;
+    const index = queue.findIndex((entry) => entry.settle === settle);
+    if (index >= 0) queue.splice(index, 1);
+  };
+
+  /**
+   * 取出本次回包对应的 pending 结算（见 `pendingSuggest` 的两级判定）。
+   *
+   * 队列为空说明这次回包不属于任何 `suggest()`（用户在输入框里打字触发），返回 `null`。
+   */
+  const shiftPending = (
+    raw: Record<string, unknown>,
+    results: RawAutocompleteResult | null | undefined,
+  ): ServiceCallSettle<PlaceSuggestion[]> | null => {
+    const queue = pendingSuggest.get(raw);
+    if (!queue || queue.length === 0) return null;
+
+    const keyword = typeof results?.keyword === "string" ? results.keyword : null;
+    if (keyword !== null) {
+      const index = queue.findIndex((entry) => entry.keyword === keyword);
+      if (index >= 0) return queue.splice(index, 1)[0]!.settle;
+    }
+    return queue.shift()?.settle ?? null;
   };
 
   /** 空结果还是失败：`null` 回包 + JSONP 注册表里的错误码 ⇒ 失败。 */
@@ -362,9 +394,8 @@ export function createJsapiV4ServiceDriver(
           input: options.input,
           types: options.types,
           onSearchComplete: (results: RawAutocompleteResult) => {
-            // 取队首（最老的一次 search）：回包与 search 一一对应，因此队首就是本次回包的归属。
-            // 队列为空说明这次回包不属于任何 `suggest()`（用户在输入框里打字），直接转发给业务。
-            const settle = raw ? (pendingSuggest.get(raw)?.shift() ?? null) : null;
+            // 先按回包自带的 keyword 关联（乱序也能对上），没有 keyword 时退化为 FIFO 队首
+            const settle = raw ? shiftPending(raw, results) : null;
             if (settle) {
               const suggestions = readSuggestions(results);
               if (suggestions.length > 0) settle.success(suggestions);
@@ -654,7 +685,7 @@ export function createJsapiV4ServiceDriver(
       // `canceled`），队列槽位必须留在原处吸收那次 search 的回包——理由见 `pendingSuggest`。
       return createServiceCall<PlaceSuggestion[]>(
         (settle) => {
-          enqueueSuggest(raw, settle);
+          enqueueSuggest(raw, keyword, settle);
           try {
             callRequired(raw, "search", keyword);
           } catch (error) {
