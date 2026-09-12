@@ -148,4 +148,14 @@ describe("上游类型包大小写引用补丁（issue #50）", () => {
     expect(patch).toContain('-/// <reference path="core/displayOptions.d.ts" />');
     expect(patch).toContain('+/// <reference path="core/DisplayOptions.d.ts" />');
   });
+
+  it("补丁文件在任何平台都按 LF 检出（CRLF 会让 `pnpm patch` 失配）", () => {
+    // Windows 上 core.autocrlf=true 会把文本文件按 CRLF 检出，.patch 的上下文行带上 \r 后应用会
+    // 失配（2026-09-13 实测：不加这行时 .patch 首行为 `b'diff --git a/x b/x\r'`）。用 .gitattributes
+    // 把补丁钉成 LF，这条断言防止它被悄悄删掉。
+    const attributes = readFileSync(resolve(REPO_ROOT, ".gitattributes"), "utf8");
+    expect(attributes, ".gitattributes 应把 patches/*.patch 固定为 LF 检出").toMatch(
+      /^patches\/\*\.patch\s+text\s+eol=lf\s*$/m,
+    );
+  });
 });
