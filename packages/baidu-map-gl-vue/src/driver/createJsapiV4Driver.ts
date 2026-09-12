@@ -13,8 +13,8 @@
  * M3A2-SERVICES-NATIVE（issue #23）补齐最后三个面（Service / Panorama / Native Layer）
  * 并做**真正装配**：`#19`~`#22` 交付的 Map / Overlay / Control / Layer 与本次的三个面
  * 在这里合成一个 `JsapiV4Driver`。因此「v4 默认路径明确失败」的迁移期行为结束——用 v4
- * Provider 的组件路径从此可用（`client/migration.ts` 的 `migrationDriverFactory` 按 engine
- * 分派到本函数）；**默认 Provider / Playground / Docs 的切换仍是 M3A.3（#25）**。
+ * Provider 的组件路径从此可用；`#25` 起默认 Provider / Playground / Docs 也都指向 v4，
+ * 本函数就是默认路径实际拿到的 Driver。
  */
 import { createCapabilityRegistry } from "./capability/registry";
 import type { Capability } from "./capability/catalog";

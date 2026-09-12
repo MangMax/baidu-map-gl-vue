@@ -25,9 +25,9 @@ export interface BMapProviderProps {
   /**
    * 便捷 Provider 接口（与 `<BMap>` 的 `provider` prop 对称）。
    *
-   * M3A1-CLIENT（#18）：组件默认路径在迁移期走 `withMigrationDriver`——按**加载结果的
-   * engine** 分派 Driver（legacy / v4 都可用），默认 cutover 属 #25。需要固定某个
-   * Driver 实现时请直接传带 `driver` 的 `definition`。
+   * 显式传入的 `provider` 会按**加载结果的 engine** 分派 Driver（见 #25）。不传 provider
+   * 时走 `app.use(createBMapPlugin(...))` 的默认定义 —— 那份默认已经是 JSAPI 4.0。
+   * 需要固定某个 Driver 实现时请直接传带 `driver` 的 `definition`。
    */
   provider?: AnyBMapProviderLike;
   loadOptions?: BMapLoadOptions;

@@ -13,7 +13,8 @@ import {
   type BMapProvider,
   type BMapProps,
 } from 'baidu-map-gl-vue'
-// v4 Provider 家族从 `./core` 暴露（#17）：默认 cutover（#25）之前不提升到根入口
+// v4 Provider 家族：#25 起同时从根入口与 `./core` 暴露（这份 smoke 保留子路径用法，
+// 顺带验证子路径出口没被破坏）
 import {
   baiduJsapiV4Provider,
   existingGlobalV4Provider,

@@ -267,6 +267,10 @@ export const sidebarConfigZh: DefaultTheme.Sidebar = {
           text: "Capability Catalog 能力矩阵",
           link: "capability-matrix",
         },
+        {
+          text: "JSAPI 4.0 真实浏览器 Smoke",
+          link: "v4-browser-smoke",
+        },
       ],
     },
   ],

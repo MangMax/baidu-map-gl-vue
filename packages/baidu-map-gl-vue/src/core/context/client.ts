@@ -72,10 +72,10 @@ export function createClientContext(options: CreateClientContextOptions = {}): B
     }
     status.value = "loading";
     error.value = null;
-    // 迁移期默认（M3A1-CLIENT / #18）：未显式声明 `driver` 的 definition 在这里注入
-    // 迁移期 Driver 工厂（按加载结果的 engine 分派）。这是**唯一收口点**——`<BMap>` /
-    // `<BMapProvider>` / 插件默认 definition / `resolveMapContext` 全部经此创建 Client，
-    // 因此「同一份 definition 换一个入口就报 BMAP_SDK_ENGINE_MISMATCH」不会发生。
+    // 未显式声明 `driver` 的 definition 在这里归一（按加载结果的 engine 分派；默认 Provider
+    // 已是 JSAPI 4.0，见 #25）。这是**唯一收口点**——`<BMap>` / `<BMapProvider>` /
+    // 插件默认 definition / `resolveMapContext` 全部经此创建 Client，因此「同一份
+    // definition 换一个入口就报 BMAP_SDK_ENGINE_MISMATCH」不会发生。
     // 显式传入的 `driver` 优先，`createBMapClient` 自身的严格默认不受影响。
     const loaded = await createBMapClient(withMigrationDriver(definition), signal);
     if (signal?.aborted) {

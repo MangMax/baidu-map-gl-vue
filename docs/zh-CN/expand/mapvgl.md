@@ -4,6 +4,14 @@ MapVGL，是一款基于 WebGL 的地理信息可视化库，可以用来展示�
 
 本章节演示通过插件形式加载 MapVGL 资源，并展示几个官方图层示例。
 
+::: warning 在 JSAPI 4.0 上未经验证
+默认 SDK 已切到 4.0（`v=4.0`），而 MapVGL 自带一套 WebGL 图层栈，它与 4.0 的图层容器关系
+**没有运行时验证证据**，结论记 `未验证`（后续动作见
+[#43](https://github.com/MangMax/baidu-map-gl-vue/issues/43)）。大面积散点/线面请看原生数据
+图层方向（[#35](https://github.com/MangMax/baidu-map-gl-vue/issues/35) /
+[#36](https://github.com/MangMax/baidu-map-gl-vue/issues/36)）。
+:::
+
 ## 结合方式：
 
 使用 MapVGL 只需要注册 `Mapvgl` 插件：

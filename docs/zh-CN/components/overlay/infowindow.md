@@ -2,6 +2,15 @@
 
 使用 slot 模式渲染子节点向地图添加信息窗口，以及与地图相关的一些交互。
 
+::: danger JSAPI 4.0 上不可用（已知缺口）
+`:open` / `v-model:open` 驱动的显示路径在 v4 上**必然抛错**：组件仍把气泡当普通覆盖物
+`driver.overlays.add(map, infoWindow)`，而 4.0 的 OverlayDriver 明确拒绝这一用法
+（气泡的打开/关闭是**地图级** API）。重构属
+[#32](https://github.com/MangMax/baidu-map-gl-vue/issues/32)（M5），当前请用 Driver 层的
+`createInfoWindow` / `openInfoWindow` / `closeInfoWindow`。详见
+[JSAPI 4.0 真实浏览器 Smoke](../../contributing/v4-browser-smoke#已知缺口)。
+:::
+
 ```ts
 import { BInfoWindow } from 'baidu-map-gl-vue'
 ```

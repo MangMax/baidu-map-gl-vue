@@ -128,10 +128,10 @@ map/theme2
 | ----------------- | ------------------------------------------------ | ----------------------------------------------------------------------- | ------ | ---------------------- | ---------------------------------- |
 | ak                | 百度地图 [ak](../guide/quick-start#申请-ak-密钥) | `string`                                                                | -      | -                      | -                                  |
 | apiUrl            | 自建地图 api 资源地址（一般用于离线地图）        | `string`                                                                | -      | -                      | <Badge type="tip" text="^2.3.0" /> |
-| provider          | 自定义 SDK 加载器（默认百度 CDN）                | `BMapProviderLike`                                                      | -      | -                      | -                                  |
+| provider          | 自定义 SDK 加载器（默认 JSAPI 4.0 的 CDN Provider） | `BMapProviderLike`                                                      | -      | -                      | -                                  |
 | client            | 已创建好的 `BMapClient`（最高优先级）            | `BMapClient`                                                            | -      | -                      | -                                  |
 | definition        | 完整 Client 定义（覆盖 provider/ak 解析）        | `CreateBMapClientOptions`                                               | -      | -                      | -                                  |
-| allowExistingGlobal | 显式允许复用已存在的全局 `BMapGL`              | `boolean`                                                               | -      | -                      | -                                  |
+| allowExistingGlobal | 复用页面里已就绪的全局 `BMap`                  | `boolean`                                                               | -      | -                      | -                                  |
 | keepAliveBehavior | KeepAlive 下的行为：`suspend` 不销毁地图（激活后自动 `checkResize`），`dispose` 则销毁 | `'suspend' \| 'dispose'` | - | `'suspend'` | - |
 | minZoom           | 地图允许展示的最小级别                           | `number`                                                                | `0-21` | `0`                    | -                                  |
 | maxZoom           | 地图允许展示的最大级别                           | `number`                                                                | `0-21` | `21`                   | -                                  |

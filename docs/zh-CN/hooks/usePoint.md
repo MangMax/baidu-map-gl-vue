@@ -14,7 +14,7 @@ const point: Point = { lng: 116.297611, lat: 40.047363 }
 
 以下为 v2 文档，仅供迁移对照参考。
 
-通过该 hooks 可获取一个地图实例点 (BMapGL.Point)。
+通过该 hooks 可获取一个地图实例点（JSAPI 4.0 的 `BMap.Point`；组件库对外只暴露领域类型 `Point`）。
 
 ```ts
 import { usePoint } from 'baidu-map-gl-vue'

@@ -98,7 +98,8 @@ function handleInitd({
   map: { raw: unknown };
   client: BMapClient;
 }) {
-  const BMapGL = client.rawSdk as {
+  // 4.0 的全局命名空间是 `BMap`（组件库经 client.rawSdk 暴露，属 ./advanced 逃生口）
+  const sdk = client.rawSdk as {
     Icon: new (url: string, size: unknown, opts?: Record<string, unknown>) => unknown;
     Size: new (w: number, h: number) => unknown;
   };
@@ -123,10 +124,10 @@ function handleInitd({
         matchOverlay: {
           // 自定义吸附点样式
           type: "Marker",
-          icon: new BMapGL.Icon(
+          icon: new sdk.Icon(
             "http://maponline0.bdimg.com/sty/map_icons2x/MapRes/shenghui_1.png",
-            new BMapGL.Size(10, 10),
-            { offset: new BMapGL.Size(5, 5) },
+            new sdk.Size(10, 10),
+            { offset: new sdk.Size(5, 5) },
           ),
         },
       });
