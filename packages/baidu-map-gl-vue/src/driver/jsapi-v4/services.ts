@@ -223,11 +223,14 @@ export function createJsapiV4ServiceDriver(
    *
    * `Autocomplete#search()` 不带请求标识，表面上无法把回包对应回某次调用；但一次
    * `search()` **必定**换来恰好一次 `onSearchComplete`（用户在输入框里打字也走同一条路），
-   * 而且官方 `AutocompleteResult` 声明了 `keyword`——因此归属按两级判定：
+   * 而且官方 `AutocompleteResult` 声明了 `keyword`——因此归属按三级判定：
    *
-   * 1. **有 `keyword` 时按关键字关联**（乱序回包也能落到正确的调用上）；
-   * 2. 回包不带 `keyword`（运行时是否填充未在文档中承诺）时退化为**先进先出**：第 N 个回包
-   *    属于第 N 次 `search()`。
+   * 1. 回包**带 `keyword` 且队列里有同名项** ⇒ 取**最后一个**同名项（同关键词可被请求多次，
+   *    本次回包属于最近那次；乱序到达也能落到正确的调用上）；
+   * 2. 回包**带 `keyword` 但队列里没有同名项** ⇒ **不消费任何槽位**（不属于任何 `suggest()`，
+   *    或属于已被上界丢掉的旧请求）；
+   * 3. 回包**不带 `keyword`**（运行时是否填充未在文档中承诺）⇒ 退化为**先进先出**：第 N 个
+   *    回包属于第 N 次 `search()`。
    *
    * 两个直接推论（PR #63 复审 P2-1，两种错法都真的发生过）：
    * - **被取消的那次 `search()` 的回包仍会到达**（SDK 没有取消入口），所以 `cancel()` 不能
@@ -275,7 +278,10 @@ export function createJsapiV4ServiceDriver(
   /**
    * 取出本次回包对应的 pending 结算（见 `pendingSuggest` 的两级判定）。
    *
-   * 队列为空说明这次回包不属于任何 `suggest()`（用户在输入框里打字触发），返回 `null`。
+   * 队列为空、或**回包带了 keyword 但队列里没有同名项**时返回 `null`——后者是 PR #63 二轮
+   * 复审 P2-1 的核心：那种回包既不属于任何 `suggest()`（用户在输入框里打字会触发同一条
+   * `onSearchComplete`），也可能是已被队列上界丢掉的旧请求的迟到回包。落回 FIFO 会把它
+   * 结算给队列里的**下一个**调用（旧结果污染新请求），所以这里必须**不消费任何槽位**。
    */
   const shiftPending = (
     raw: Record<string, unknown>,
@@ -285,11 +291,17 @@ export function createJsapiV4ServiceDriver(
     if (!queue || queue.length === 0) return null;
 
     const keyword = typeof results?.keyword === "string" ? results.keyword : null;
-    if (keyword !== null) {
-      const index = queue.findIndex((entry) => entry.keyword === keyword);
-      if (index >= 0) return queue.splice(index, 1)[0]!.settle;
+    if (keyword === null) {
+      // 回包不带 keyword（官方只承诺「可选」）⇒ 只能按顺序退化到队首
+      return queue.shift()?.settle ?? null;
     }
-    return queue.shift()?.settle ?? null;
+    // 带 keyword ⇒ 取**最后一个**同名项：同一个关键词可以被请求多次（重试 / 分页 / 取消后重查），
+    // 本次回包属于最近那次，而更早的同名项留给它自己的（迟到的）回包去吸收。
+    for (let index = queue.length - 1; index >= 0; index -= 1) {
+      const entry = queue[index];
+      if (entry && entry.keyword === keyword) return queue.splice(index, 1)[0]!.settle;
+    }
+    return null;
   };
 
   /** 空结果还是失败：`null` 回包 + JSONP 注册表里的错误码 ⇒ 失败。 */

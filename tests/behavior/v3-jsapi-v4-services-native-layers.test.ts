@@ -147,4 +147,24 @@ describe("v4 装配后的跨 facet 不变式（#23）", () => {
     // 已销毁的 raw 对象与业务回调，反复建/销全景会持续累积
     expect(raw.getListenerCount(), "destroy 之后 Driver 侧订阅必须已释放").toBe(0);
   });
+
+  it("销毁失败后重新订阅：重试成功时必须再次释放订阅（不能因「曾经释放过」而跳过）", () => {
+    const container = document.createElement("div");
+    const viewer = driver.panorama.create(container);
+    const raw = fake.createdPanoramas[0];
+
+    driver.events.on(viewer, "position_changed", vi.fn());
+    raw.failNextDestroy = new TypeError("Cannot read properties of undefined (reading 'START')");
+    expect(() => driver.panorama.destroy(viewer)).toThrow();
+
+    // 查看器**尚未成功销毁** → 业务可以重新订阅（等待就绪 / 恢复）
+    driver.events.on(viewer, "position_changed", vi.fn());
+    expect(raw.getListenerCount()).toBe(1);
+
+    driver.panorama.destroy(viewer);
+    expect(
+      raw.getListenerCount(),
+      "重试成功之后 Driver 侧订阅必须已释放（否则新订阅会随查看器一起泄漏）",
+    ).toBe(0);
+  });
 });

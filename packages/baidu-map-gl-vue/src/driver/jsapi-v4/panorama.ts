@@ -79,17 +79,20 @@ export function createJsapiV4PanoramaDriver(
   const namespace: JsapiV4Namespace = assertJsapiV4Namespace(rawSdk);
 
   /**
-   * 销毁的三个状态**分开记账**（PR #63 复审 P2-2 之后）。
+   * 销毁的两个状态（PR #63 二轮复审 P2-3 之后）。
    *
    * 一个 `destroyed` 布尔同时表达「不要再做任何事」和「已经清干净了」会同时踩两个坑：
    * - 把它当重入保护用，就得在调 SDK **之前**写 —— 于是销毁失败也被记成「已销毁」，重试入口消失；
    * - 把它当完成标记用，就得在调 SDK **之后**写 —— 于是 teardown 期间的重入会真的销毁两次。
    *
-   * 因此拆成：`disposing`（在飞，重入短路）/ `released`（Driver 侧订阅已释放）/
-   * `destroyed`（SDK 对象已销毁）。重试只补做**尚未完成**的那一步，绝不会重复销毁同一个底层对象。
+   * 因此拆成 `disposing`（在飞，重入短路）与 `destroyed`（SDK 对象已销毁，重试时跳过这一步）。
+   *
+   * **订阅释放不记账**：`events.release()` 在没有分组时本来就是 no-op，而「曾经释放过」这个
+   * 记忆是错的——SDK 销毁失败后查看器并没有销毁，业务可以重新订阅（等待就绪 / 恢复），
+   * 此时不该因为上一轮释放过就跳过释放，否则新订阅会随查看器一起泄漏。所以每次销毁尝试都
+   * 先释放当前订阅。
    */
   const disposing = new WeakSet<object>();
-  const released = new WeakSet<object>();
   const destroyed = new WeakSet<object>();
 
   const viewerOf = (viewer: PanoramaHandle): Record<string, unknown> =>
@@ -149,10 +152,10 @@ export function createJsapiV4PanoramaDriver(
         // EventDriver 的 groups 是强引用（Map<rawTarget, …>），不主动 release 就会长期持有
         // 已销毁的 raw 对象与业务回调；解绑失败**不阻断** SDK 销毁（`events.release` 的契约
         // 是「其余项已尽力释放」），但两者都要汇总抛出，由调用方决定是否重试。
-        if (!released.has(raw)) {
-          events.release(viewer);
-          released.add(raw);
-        }
+        //
+        // 每次尝试都释放（不记账「曾经释放过」）：上一次尝试可能只失败在 SDK 销毁那一步，
+        // 而期间业务可能又订阅了；`release()` 无分组时是 no-op，重复调用没有代价。
+        events.release(viewer);
       } catch (error) {
         failures.push(error);
       }

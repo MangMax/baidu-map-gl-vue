@@ -517,4 +517,86 @@ describe("v4 Service Facet：Autocomplete 的回包归属（PR #63 复审 P2-1�
     expect((await a.result).data?.[0]?.title).toBe("AAA");
     expect((await b.result).data?.[0]?.title).toBe("BBB");
   });
+
+  it("回包带 keyword 但与任何 pending 都不匹配时，不得结算 queue 里的下一个调用", async () => {
+    const handle = services.createAutocomplete({ input: input() });
+    const autocomplete = fake.createdAutocompletes[0];
+    autocomplete.queue.auto = false;
+
+    // 先让一个 suggest 处于 pending（回包还没到）
+    autocomplete.pois = [{ business: "BBB", province: "上海市" }];
+    const b = services.suggest(handle, "B");
+
+    // 用户在输入框里打字触发的搜索（不经过 suggest）：它的回包带自己的 keyword
+    autocomplete.pois = [{ business: "TYPED", province: "北京市" }];
+    const raw = autocomplete as unknown as { search(keyword: string): void };
+    raw.search("typed-by-user");
+
+    // 用户输入那次的回包先到（index 1）——它不属于任何 pending
+    expect(autocomplete.queue.flushOne(1)).toBe(true);
+    // B 自己的回包随后到达
+    expect(autocomplete.queue.flushOne(0)).toBe(true);
+
+    const result = await b.result;
+    expect(result.status).toBe("success");
+    expect(result.data?.[0]?.title).toBe("BBB");
+  });
+
+  it("同关键词超时后重试：新请求必须由新回包结算，不被旧的已超时项吞掉", async () => {
+    vi.useFakeTimers();
+    const handle = services.createAutocomplete({ input: input() });
+    const autocomplete = fake.createdAutocompletes[0];
+    autocomplete.queue.auto = false;
+
+    autocomplete.pois = [{ business: "K-OLD", province: "北京市" }];
+    const first = services.suggest(handle, "K");
+    vi.advanceTimersByTime(15000);
+    expect((await first.result).status).toBe("timeout");
+
+    // 同一个关键词再查一次（分页/重试都会这么做）
+    autocomplete.pois = [{ business: "K-NEW", province: "上海市" }];
+    const second = services.suggest(handle, "K");
+    expect(autocomplete.queue.flushOne(1)).toBe(true);
+    vi.advanceTimersByTime(15000);
+
+    const result = await second.result;
+    expect(result.status).toBe("success");
+    expect(result.data?.[0]?.title).toBe("K-NEW");
+  });
+
+  it("同关键词取消后乱序回包：新请求拿到自己的结果，而不是被已取消项吸收", async () => {
+    const handle = services.createAutocomplete({ input: input() });
+    const autocomplete = fake.createdAutocompletes[0];
+    autocomplete.queue.auto = false;
+
+    autocomplete.pois = [{ business: "K-OLD", province: "北京市" }];
+    const oldCall = services.suggest(handle, "K");
+    oldCall.cancel();
+
+    autocomplete.pois = [{ business: "K-NEW", province: "上海市" }];
+    const newCall = services.suggest(handle, "K");
+
+    // 新请求的回包先到（index 1）
+    expect(autocomplete.queue.flushOne(1)).toBe(true);
+    expect((await newCall.result).status).toBe("success");
+    expect((await newCall.result).data?.[0]?.title).toBe("K-NEW");
+  });
+
+  it("被队列上界丢弃的旧请求，其迟到回包不得结算队列里的其它调用", async () => {
+    const handle = services.createAutocomplete({ input: input() });
+    const autocomplete = fake.createdAutocompletes[0];
+    autocomplete.queue.auto = false;
+
+    // 17 次 suggest：第 1 次会被上界（16）挤掉，它的回包随后才到
+    const calls: Array<ReturnType<typeof services.suggest>> = [];
+    for (let index = 0; index < 17; index += 1) {
+      autocomplete.pois = [{ business: `N${index}`, province: "北京市" }];
+      calls.push(services.suggest(handle, `K${index}`));
+    }
+
+    autocomplete.queue.flush();
+    // K0 已被丢弃：它的回包不能把 K1 的结果顶替掉
+    expect((await calls[1]!.result).data?.[0]?.title).toBe("N1");
+    expect((await calls[16]!.result).data?.[0]?.title).toBe("N16");
+  });
 });

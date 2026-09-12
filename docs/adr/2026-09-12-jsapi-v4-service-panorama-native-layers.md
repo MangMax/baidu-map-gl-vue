@@ -98,36 +98,48 @@ Fake 也把这条时序建模出来（回包走微任务），否则「嗅探没
 `const/StatusCodes.d.ts` 的一致性由文件末尾的类型断言钉死（同 `#22` 的锚点常量表口径）。
 `getStatus` 成员缺失或调用失败时返回 `null`，**不把缺成员伪装成状态 0**。
 
-### 5. `Autocomplete`：Driver 挂内部分发器 + **两级回包归属（keyword → FIFO）**
+### 5. `Autocomplete`：Driver 挂内部分发器 + **三级回包归属（keyword 末位匹配 → 不匹配即弃 → FIFO 退化）**
 
 `Autocomplete#search()` 不带请求标识，表面上无法把回包对应回某次调用；但一次 `search()`
 **必定**换来恰好一次 `onSearchComplete`（用户在输入框里打字也走同一条路），而且官方
-`AutocompleteResult` 声明了 `keyword`——因此 Driver 维护**每个实例一个 pending 队列**，归属按两级判定：
+`AutocompleteResult` 声明了 `keyword`——因此 Driver 维护**每个实例一个 pending 队列**，归属按三级判定：
 
 ```ts
 onSearchComplete: (results) => {
-  // 1) 回包带 keyword ⇒ 按关键字关联（乱序到达也能落到正确的调用上）
-  // 2) 不带 keyword（运行时是否填充未承诺）⇒ 退化为 FIFO 队首
-  const settle = pendingSuggest.get(raw) · matchByKeyword(results.keyword) ?? shift() ?? null;
+  // 1) 带 keyword 且队列有同名项 ⇒ 取「最后一个」同名项（同关键词可被请求多次）
+  // 2) 带 keyword 但无同名项         ⇒ 不消费任何槽位（不属于任何 suggest()，或被上界丢掉的旧请求）
+  // 3) 不带 keyword                  ⇒ 退化为 FIFO 队首
+  const settle = resolvePending(raw, results.keyword);
   if (settle) settle.success(readSuggestions(results)) / settle.empty();
   options.onSearchComplete?.(results);                       // 原样转发业务自己的监听
 }
 ```
 
-三个要点：
+四个要点：
 
 - **不吞掉业务监听**（`BAutoComplete.vue` 一直在用 `onSearchComplete`）；
 - **`cancel()` 不动队列**：被取消的 `search()` 的回包仍会到达（SDK 没有取消入口），它的槽位
   必须留在原处吸收那个回包；取消本身由适配器的「先到者胜」表达成 `canceled`。若在取消时清空
   队列，迟到回包就会去结算**下一个**调用（旧结果污染新请求），或者把新调用的槽位一起清掉
-  （新调用无回包可用而超时）——两种错法都在 PR #63 的复审里被复现过（见「外部评审轮次记录」）；
+  （新调用无回包可用而超时）——两种错法都在 PR #63 的一轮复审里被复现过；
+- **「带 keyword 但不匹配」不能落回 FIFO**（PR #63 二轮复审 P2-1）：用户输入触发的回包、
+  以及被队列上界丢掉的旧请求的迟到回包，都属于「带 keyword 却不匹配」——落回 FIFO 会把它们
+  结算给队列里的下一个调用。这一条比「缺 keyword 时退化」重要得多：后者是文档里写明的可选字段，
+  前者是**任何**非 `suggest()` 来源的回包；
+- **同名项取最后一个**（P2-2）：同一个关键词可以被请求多次（重试 / 分页 / 取消后重查），
+  `findIndex` 会永远命中最早那个，于是「新的回包被旧的已超时/已取消项吸收、新调用反过来超时」。
+  取末位后，新的回包归新的调用，旧的回包由旧项自己吸收（同关键词的两次响应内容等价，
+  因此这里不存在「拿到别人的数据」问题）；
 - **`search()` 同步抛错时回滚槽位**：请求没发出去就不会有回包，留着会永久错位一格；
   队列另有上界（`MAX_PENDING_SUGGESTS = 16`，超出丢最旧并告警一次）作为 SDK 长期丢回调时的
   自愈手段。
 
-`keyword` 关联是**目前唯一可用的请求标识**：官方类型把它标成可选，因此运行时可能不填充——
-那种情况下退化为顺序 FIFO（乱序回包会错位一格）；「真机是否填充 `keyword`、以及连发多次
-`search()` 的回包顺序」属 M3A.3（#25）的真机核对项。
+`keyword` 关联是**目前唯一可用的请求标识**（它不是唯一 ID，只是检索关键词）。官方类型把它标成
+可选，因此运行时可能不填充——那种情况下退化为顺序 FIFO，乱序回包会错位一格；「真机是否填充
+`keyword`、以及连发多次 `search()` 的回包顺序」属 M3A.3（#25）的真机核对项。另一条已登记的
+取舍：若运行时填充的 `keyword` 与请求参数**不同形**（例如被归一化过），匹配会失败——本实现选择
+**明确超时**而不是「猜一个 pending 塞进去」，因为把结果给错调用比超时更难排查（同二轮复审
+「无法确认归属时应明确失败」的主张）。
 
 ### 6. `TrackAnimation` 显式失败，指向 `TrackLine`
 
@@ -173,15 +185,17 @@ v4 的 `createTrackAnimation` 抛出带 `capability: "service.track-animation"` 
 
 - `supported` 实现成每次读取都重新探测 `namespace.Panorama` 的 getter（同 §8 的理由）。
 - `create` / `createService` 走能力守卫 + `namespaceCtor`，实例经 `registry.adopt` 成句柄。
-- `destroy()` 把**三个状态分开记账**（PR #63 复审 P2-2 之后）：`disposing`（清理在飞，重入
-  短路）/ `released`（Driver 侧订阅已释放）/ `destroyed`（SDK 对象已销毁）。用一个布尔同时表达
-  「不要再做任何事」和「已经清干净了」会同时踩两个坑：当重入保护用就得在调 SDK **之前**写，
-  于是失败也被记成「已销毁」、重试入口消失；当完成标记用就得在调 SDK **之后**写，于是清理期间
-  的重入会真的销毁两次。分开之后，重试只补做**尚未完成**的那一步，绝不重复销毁同一个底层对象。
-- **销毁时先释放 Driver 侧的订阅**：`events.release(viewer)`（EventDriver 的 `groups` 是强引用
-  `Map<rawTarget, …>`，不主动释放就会长期持有已销毁的 raw 对象与业务回调）。顺序与 Map Facet
-  一致（业务事件先下线、再销毁 SDK 对象）；解绑失败**不阻断** SDK 销毁（`release` 的契约是
-  「其余项已尽力释放」），但两者都汇总抛出，由调用方决定是否重试。
+- `destroy()` 拆成**两个状态**：`disposing`（清理在飞，重入短路）/ `destroyed`（SDK 对象已销毁，
+  重试时跳过这一步）。用一个布尔同时表达「不要再做任何事」和「已经清干净了」会同时踩两个坑：
+  当重入保护用就得在调 SDK **之前**写，于是失败也被记成「已销毁」、重试入口消失；当完成标记用
+  就得在调 SDK **之后**写，于是清理期间的重入会真的销毁两次。
+- **销毁时先释放 Driver 侧的订阅，且不记账「曾经释放过」**：`events.release(viewer)`（EventDriver
+  的 `groups` 是强引用 `Map<rawTarget, …>`，不主动释放就会长期持有已销毁的 raw 对象与业务回调）。
+  顺序与 Map Facet 一致（业务事件先下线、再销毁 SDK 对象）；解绑失败**不阻断** SDK 销毁
+  （`release` 的契约是「其余项已尽力释放」），但两者都汇总抛出，由调用方决定是否重试。
+  **每次销毁尝试都重新释放**：`release()` 无分组时是 no-op，而「曾经释放过」这个记忆是错的——
+  SDK 销毁失败后查看器并没有销毁，业务可以重新订阅（等待就绪 / 恢复），此时跳过释放会让新订阅
+  随查看器一起泄漏（PR #63 二轮复审 P2-3）。
 - 真实 4.0 在**未加载场景**的实例上 `destroy()` 会抛 `TypeError`（见 smoke 记录）——归一后是
   `BMAP_SDK_CALL_FAILED`，消息里保留原始错误文本，并说明「再次 destroy 只会补做未完成的那一步」。
 - 检索归一化用 `retrieve()`：`getPanoramaById` / `getPanoramaByLocation` 都是
@@ -306,6 +320,10 @@ smoke 顺带确认（并已回写进决策）的运行时事实：
 - **`suggest` 在真实环境下返回 `failed`**：headless 页面里没有真实的输入框交互（`search()`
   发起的请求结果形态与用户输入路径不同）。契约的 live 档只要求「结算且形状自洽」，
   「输入提示端到端」留给 M7 #41 / M3A.3 #25。
+- **`Autocomplete` 的回包归属依赖 SDK 填充 `keyword`**：官方把它声明为可选且不承诺填充。
+  不填充时退化为顺序 FIFO（乱序回包会错位一格）；填充但与请求参数不同形（例如被归一化）时，
+  匹配失败会让该次 `suggest()` 走到 `timeout`——这是**刻意**的取舍（宁可超时也不把结果塞给
+  不匹配的调用）。两条都属 M3A.3（#25）的真机核对项。
 - **`locate` 需要浏览器定位授权**：headless 下必然失败（`BMAP_STATUS_PERMISSION_DENIED`）。
   这里验证的是「状态码 → 归一化 `failed` + 可读原因」，不是「能拿到坐标」。
 - **`Panorama` 的真实场景渲染未覆盖**：smoke 只做构造 / 视角 / 显隐 / 销毁 / 检索；真实全景图块
@@ -389,6 +407,25 @@ public-dts / 能力矩阵全绿；真实 AK smoke **25/25**——`destroyError` 
 串线。补上 `keyword` 关联后，「B 的回包先到」也能落到 B 上；用例 `乱序回包（B 的先到）` 在补之前
 是红的（`git stash` 该文件可复现），补之后转绿；另有 `回包不带 keyword 时退化为 FIFO` 固定退化路径。
 Fake 为此加了 `flushOne(index)`（按索引触发单个回包）与 `includeKeyword`（模拟运行时不填充 keyword）。
+
+## 外部评审第二轮（PR #63，基线 `5ccadb7`）
+
+二轮复审确认 3 项 P2（上一轮的 `locateCity` / `convert` 已关闭；Autocomplete 与 Panorama 被判
+「还没完全解决」）。同样先在仓库内写红用例（同一次运行 5 条断言红）再修：
+
+| 发现 | 复现结果（红） | 处置 |
+| --- | --- | --- |
+| P2-1 「带 `keyword` 但不匹配」还会落回 FIFO：用户输入触发的回包、或被队列上界丢掉的旧请求的迟到回包，都会被结算给队列里的下一个调用 | `expected 'TYPED' to be 'BBB'`；上界场景 `expected 'N0' to be 'N1'` | `shiftPending` 改为**三级判定**：不匹配 ⇒ **返回 `null`、不消费任何槽位**；补 2 条用例 |
+| P2-2 `keyword` 不是唯一标识：同名项取第一个 ⇒ 同关键词「超时后重试」与「取消后乱序」都被旧项吞掉 | 重试场景 `expected 'timeout' to be 'success'`；取消+乱序场景新调用 5s 内拿不到结果（挂起） | 同名项取**最后一个**（新回包归新调用，旧回包由旧项自己吸收）；补 2 条用例 |
+| P2-3 全景 `released` 记账：SDK 销毁失败后重新订阅，重试会跳过释放 | `expected 1 to be +0`（重试成功后 EventDriver 仍持有订阅） | 删掉 `released`，**每次销毁尝试都释放当前订阅**（`release()` 无分组是 no-op）；`disposing` / `destroyed` 两态保留；补 1 条「销毁失败 → 重新订阅 → 重试成功」用例 |
+
+二轮的另一条主张是「无法确认归属时应明确失败，而不是成功返回可能属于旧请求的数据」——本实现按
+这条收口：**带 `keyword` 但不匹配时不再猜测**（宁可让该次调用走到 `timeout`，也不把结果塞给
+不匹配的调用）。代价（上游若归一化 `keyword`，匹配会失败 → 该次 `suggest()` 超时）登记在
+「已知限制」里，并留作 M3A.3（#25）的真机核对项。
+
+验证：`pnpm test:unit` **91 files / 966 tests**（+5 回归用例）；typecheck / build / 边界扫描（含
+`--src` 全树）/ `check:public-dts` / 能力矩阵 / manifest 全绿；真实 AK smoke 25/25。
 
 ## 参考
 
