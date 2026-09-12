@@ -16,6 +16,7 @@
  * - 与 Map / Layer 不同，**Panorama 不挂到 Map 上**（它的容器是独立 DOM），因此本 Facet
  *   没有 `add/remove`，也没有挂在 Map 上的资源需要摘。
  */
+import { BMapError } from "../../core/errors/BMapError";
 import type { Capability } from "../capability/catalog";
 import type { CapabilityRegistry } from "../capability/registry";
 import { createServiceCall } from "../normalize/serviceCall";
@@ -36,6 +37,7 @@ import {
   sdkCall,
   type JsapiV4Namespace,
 } from "./internal";
+import type { JsapiV4EventDriver } from "./events";
 import type { JsapiV4HandleRegistry } from "./registry";
 
 export interface CreateJsapiV4PanoramaDriverInput {
@@ -44,6 +46,8 @@ export interface CreateJsapiV4PanoramaDriverInput {
   geometry: GeometryDriver;
   capabilities: CapabilityRegistry;
   registry: JsapiV4HandleRegistry;
+  /** 同 Client 的 v4 EventDriver：`destroy` 需要它的 target 释放入口。 */
+  events: JsapiV4EventDriver;
 }
 
 /** 全景归一化调用用到的 Catalog 能力（能力清单是单一事实源）。 */
@@ -71,10 +75,21 @@ function toDataInfo(raw: unknown): PanoramaDataInfo | null {
 export function createJsapiV4PanoramaDriver(
   input: CreateJsapiV4PanoramaDriverInput,
 ): PanoramaViewerDriver {
-  const { rawSdk, geometry, capabilities, registry } = input;
+  const { rawSdk, geometry, capabilities, registry, events } = input;
   const namespace: JsapiV4Namespace = assertJsapiV4Namespace(rawSdk);
 
-  /** 已销毁的查看器：`destroy()` 幂等（重复销毁短路，不依赖 SDK 的行为）。 */
+  /**
+   * 销毁的三个状态**分开记账**（PR #63 复审 P2-2 之后）。
+   *
+   * 一个 `destroyed` 布尔同时表达「不要再做任何事」和「已经清干净了」会同时踩两个坑：
+   * - 把它当重入保护用，就得在调 SDK **之前**写 —— 于是销毁失败也被记成「已销毁」，重试入口消失；
+   * - 把它当完成标记用，就得在调 SDK **之后**写 —— 于是 teardown 期间的重入会真的销毁两次。
+   *
+   * 因此拆成：`disposing`（在飞，重入短路）/ `released`（Driver 侧订阅已释放）/
+   * `destroyed`（SDK 对象已销毁）。重试只补做**尚未完成**的那一步，绝不会重复销毁同一个底层对象。
+   */
+  const disposing = new WeakSet<object>();
+  const released = new WeakSet<object>();
   const destroyed = new WeakSet<object>();
 
   const viewerOf = (viewer: PanoramaHandle): Record<string, unknown> =>
@@ -124,17 +139,42 @@ export function createJsapiV4PanoramaDriver(
 
     destroy(viewer) {
       const raw = viewerOf(viewer);
-      if (destroyed.has(raw)) return;
-      // 口径与 Control / Layer Facet 一致：**先 `claim` 再调 SDK，失败时 `release`**。
-      // 先 claim 挡的是重入（业务在 SDK 的销毁回调里再次 destroy）；失败时 release 保证
-      // 「销毁失败」不会被记账伪装成「已销毁」——真实 4.0 在**未加载场景**的实例上
-      // `destroy()` 会抛 `TypeError`（见 ADR 的 smoke 记录），那时必须能重试。
-      destroyed.add(raw);
+      // 已完成 / 正在清理：直接短路（重入保护，避免同一个底层对象被销毁两次）
+      if (destroyed.has(raw) || disposing.has(raw)) return;
+      disposing.add(raw);
+
+      const failures: unknown[] = [];
+      try {
+        // 顺序与 Map Facet 一致：**先解绑 Driver 侧的业务事件，再销毁 SDK 对象**。
+        // EventDriver 的 groups 是强引用（Map<rawTarget, …>），不主动 release 就会长期持有
+        // 已销毁的 raw 对象与业务回调；解绑失败**不阻断** SDK 销毁（`events.release` 的契约
+        // 是「其余项已尽力释放」），但两者都要汇总抛出，由调用方决定是否重试。
+        if (!released.has(raw)) {
+          events.release(viewer);
+          released.add(raw);
+        }
+      } catch (error) {
+        failures.push(error);
+      }
       try {
         sdkCall("Panorama.destroy", () => callRequired(raw, "destroy"));
+        destroyed.add(raw);
       } catch (error) {
-        destroyed.delete(raw);
-        throw error;
+        failures.push(error);
+      } finally {
+        disposing.delete(raw);
+      }
+
+      if (failures.length > 0) {
+        const details = failures
+          .map((failure) => (failure as Error)?.message ?? String(failure))
+          .join("; ");
+        throw new BMapError(
+          "BMAP_SDK_CALL_FAILED",
+          `全景销毁时有 ${failures.length} 项未完成（其余步骤已尽力执行；` +
+            `再次 destroy 只会补做未完成的那一步）: ${details}`,
+          { cause: failures[0], engine: "jsapi-v4" },
+        );
       }
     },
 

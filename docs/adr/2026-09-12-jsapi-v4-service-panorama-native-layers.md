@@ -70,6 +70,12 @@ unsupported policy」这件事。
 `ServiceResult` 的形状不变式（`status` 与 `data` / `error` 的对应关系）由共享契约的
 `assertServiceResultShape` 固定，Fake 与真实环境都跑。
 
+**适配器之外的每一步也必须在受保护范围内**：`convert` 的坐标校验是这条的实例——几何边界会以
+`BMAP_INVALID_POINT` 拒绝非有限数 / 缺分量，若在校验之前就调用 `geometry.toRawPoints(points)`，
+异常会从 `createServiceCall` **之外**逃逸，连 `ServiceCall` 都返回不了（PR #63 复审 P2-4）。
+现行做法：进调用之前先逐项校验（容器 → 成员，缺分量 / 非有限数一律
+`failed + BMAP_INVALID_ARGUMENT`），并把几何转换放进受保护的调用流程作为兜底。
+
 ### 3. 「空结果 vs 失败」靠 JSONP 嗅探，抽到 `normalize/jsonpProbe.ts` 两引擎共用
 
 `webgl-v1/services.ts` 里原有的 `captureJsonpServiceError` 直接**上移到**
@@ -80,6 +86,11 @@ unsupported policy」这件事。
 `_rd` 回调）→ 再 `probe.rescan()` 包装**。JSONP 回包恒为异步，所以 rescan 必定先于回包执行。
 Fake 也把这条时序建模出来（回包走微任务），否则「嗅探没用」会成为一个假的测试结论。
 
+**凡是「失败只回 `null`」的服务都必须接探针**：`geocode` / `reverseGeocode` / `queryBoundary`
+之外，**`locateCity` 也接了**（PR #63 复审 P2-3 指出它漏了——不接就会把「服务失败」归类成
+「查不到城市」，业务既拿不到错误原因也没法判断要不要重试）。`convert` 与 `locate` 自带状态码，
+不走探针。
+
 ### 4. `Geolocation` 的状态码表：数值字面量 + 类型层钉在官方声明上
 
 `Geolocation#getStatus()` 是唯一自带状态的服务。失败状态码 → 可读原因的映射写在 Driver 内部
@@ -87,22 +98,30 @@ Fake 也把这条时序建模出来（回包走微任务），否则「嗅探没
 `const/StatusCodes.d.ts` 的一致性由文件末尾的类型断言钉死（同 `#22` 的锚点常量表口径）。
 `getStatus` 成员缺失或调用失败时返回 `null`，**不把缺成员伪装成状态 0**。
 
-### 5. `Autocomplete`：Driver 挂内部分发器，而不是要求业务自己配对
+### 5. `Autocomplete`：Driver 挂内部分发器 + **按 FIFO 判定回包归属**
 
-`createAutocomplete` 在构造选项里装一个内部分发器：
+`Autocomplete#search()` 不带请求标识，表面上无法把回包对应回某次调用；但一次 `search()`
+**必定**换来恰好一次 `onSearchComplete`（用户在输入框里打字也走同一条路），因此 Driver 维护
+**每个实例一个 pending 结算队列**，回包取**队首**：
 
 ```ts
 onSearchComplete: (results) => {
-  const settle = pendingSuggest.get(raw);      // suggest() 写入的 pending
-  pendingSuggest.set(raw, null);
-  settle?.success(readSuggestions(results)) / settle?.empty();
-  options.onSearchComplete?.(results);         // 原样转发业务自己的监听
+  const settle = pendingSuggest.get(raw)?.shift() ?? null;   // 队首 = 本次回包的归属
+  if (settle) settle.success(readSuggestions(results)) / settle.empty();
+  options.onSearchComplete?.(results);                       // 原样转发业务自己的监听
 }
 ```
 
-两个要点：**不吞掉业务监听**（`BAutoComplete.vue` 一直在用 `onSearchComplete`），以及
-**取消只放弃 pending**——`suggest()` 的 `onCancel` 把 pending 置空，之后的回包仍然转给业务，
-只是不复活本次调用。
+三个要点：
+
+- **不吞掉业务监听**（`BAutoComplete.vue` 一直在用 `onSearchComplete`）；
+- **`cancel()` 不动队列**：被取消的 `search()` 的回包仍会到达（SDK 没有取消入口），它的槽位
+  必须留在原处吸收那个回包；取消本身由适配器的「先到者胜」表达成 `canceled`。若在取消时清空
+  队列，迟到回包就会去结算**下一个**调用（旧结果污染新请求），或者把新调用的槽位一起清掉
+  （新调用无回包可用而超时）——两种错法都在 PR #63 的复审里被复现过（见「外部评审轮次记录」）；
+- **`search()` 同步抛错时回滚槽位**：请求没发出去就不会有回包，留着会永久错位一格；
+  队列另有上界（`MAX_PENDING_SUGGESTS = 16`，超出丢最旧并告警一次）作为 SDK 长期丢回调时的
+  自愈手段。
 
 ### 6. `TrackAnimation` 显式失败，指向 `TrackLine`
 
@@ -148,10 +167,17 @@ v4 的 `createTrackAnimation` 抛出带 `capability: "service.track-animation"` 
 
 - `supported` 实现成每次读取都重新探测 `namespace.Panorama` 的 getter（同 §8 的理由）。
 - `create` / `createService` 走能力守卫 + `namespaceCtor`，实例经 `registry.adopt` 成句柄。
-- `destroy()` 幂等：口径是 **claim → 调 SDK → 失败 `release`**（与 Control / Layer Facet 同源）。
-  先 claim 挡重入（业务在 SDK 的销毁回调里再次 `destroy` 同一个实例）；失败时 release，
-  保证「销毁失败」不会被记账伪装成「已销毁」——真实 4.0 在**未加载场景**的实例上
-  `destroy()` 会抛 `TypeError`（见 smoke 记录），那时必须能重试。
+- `destroy()` 把**三个状态分开记账**（PR #63 复审 P2-2 之后）：`disposing`（清理在飞，重入
+  短路）/ `released`（Driver 侧订阅已释放）/ `destroyed`（SDK 对象已销毁）。用一个布尔同时表达
+  「不要再做任何事」和「已经清干净了」会同时踩两个坑：当重入保护用就得在调 SDK **之前**写，
+  于是失败也被记成「已销毁」、重试入口消失；当完成标记用就得在调 SDK **之后**写，于是清理期间
+  的重入会真的销毁两次。分开之后，重试只补做**尚未完成**的那一步，绝不重复销毁同一个底层对象。
+- **销毁时先释放 Driver 侧的订阅**：`events.release(viewer)`（EventDriver 的 `groups` 是强引用
+  `Map<rawTarget, …>`，不主动释放就会长期持有已销毁的 raw 对象与业务回调）。顺序与 Map Facet
+  一致（业务事件先下线、再销毁 SDK 对象）；解绑失败**不阻断** SDK 销毁（`release` 的契约是
+  「其余项已尽力释放」），但两者都汇总抛出，由调用方决定是否重试。
+- 真实 4.0 在**未加载场景**的实例上 `destroy()` 会抛 `TypeError`（见 smoke 记录）——归一后是
+  `BMAP_SDK_CALL_FAILED`，消息里保留原始错误文本，并说明「再次 destroy 只会补做未完成的那一步」。
 - 检索归一化用 `retrieve()`：`getPanoramaById` / `getPanoramaByLocation` 都是
   「id/point + callback(`PanoramaData | null`)」，查不到是 `empty`（官方口径），不是 `failed`。
   按坐标检索**不给半径时省略该实参**（官方的两个重载不是「可选参数占位」）。
@@ -326,6 +352,31 @@ smoke 顺带确认（并已回写进决策）的运行时事实：
 | 验收标准 1「v4 Driver 覆盖 Cutover 前现有全部功能」 | 部分：LocalSearch / Route 服务类、TrackLine 播放控制、panorama 声明式能力、`layer.traffic` 均有据顺延（各自的 ADR / issue 已登记） |
 | 风险条目「能力探测必须允许加载后就绪」 | 已实现且有用例（§8） |
 | 「DoD」7 条 | typecheck / test:unit / build / 边界与声明门禁 / 能力矩阵 / pack + verify:package 全绿；PR 描述含 SDK 依据、生命周期检查与迁移影响 |
+
+## 外部评审轮次记录（PR #63，基线 `36ca01a`）
+
+评审提出 4 项 P2。逐条在仓库内**先写会红的用例**（同一次运行里 5 条断言红）再修；红/绿之间的
+失败信息就是复现证据：
+
+| 发现 | 复现结果（红） | 处置 |
+| --- | --- | --- |
+| P2-1 `Autocomplete` 的回包归属错位：`pendingSuggest` 只有一个槽位 —— (a) 取消 A 之后 A 的迟到回包会结算 B；(b) 取消 A 把 B 的槽位一起清掉、B 最终超时 | (a) `expected 'AAA' to be 'BBB'`（B 拿到 A 的结果）；(b) `expected 'timeout' to be 'success'` | 改为**每实例一个 FIFO 队列**、回包取队首；`cancel()` 不再动队列（槽位要吸收自己那次 search 的回包）；`search()` 同步抛错时回滚槽位；队列加上界 + 告警。补 3 条用例（锁定 / 取消 / 无 pending 回包） |
+| P2-2 全景销毁没有释放 EventDriver 持有的订阅（`groups` 是强引用） | `expected 1 to be +0`（destroy 之后监听器仍在） | `destroy` 先 `events.release(viewer)` 再销毁 SDK 对象；三个状态分开记账（`disposing` / `released` / `destroyed`），重试只补做未完成的一步；解绑失败不阻断销毁但汇总抛出。Panorama Facet 因此新增 `events` 注入，装配点一并传入 |
+| P2-3 `locateCity` 没接 JSONP 探针：`_rd` 有错误码时仍返回 `empty` | `expected 'empty' to be 'failed'` | 与 Geocoder / Boundary 同源接入 `captureJsonpServiceError` + `settleNull`；补「有错误 ⇒ failed」「无错误 ⇒ 仍是 empty」两条用例；Fake 的 LocalCity 补 `jsonpError` 注入（同步注册 / 异步回包，与 Geocoder 同形） |
+| P2-4 `convert` 的非法坐标绕过结果封装、同步抛 `BMAP_INVALID_POINT` | `'BMapError: Point 非法…' was thrown`（连 `ServiceCall` 都没返回） | 进调用前逐项校验（NaN / Infinity / 缺分量 → `failed + BMAP_INVALID_ARGUMENT`，不触碰 SDK）；几何转换移进受保护流程兜底；补 3 类非法坐标用例 |
+
+评审描述的机制与实测**完全一致**（4/4 确认，没有「机制不同」或「不可复现」项）。这一轮的修复
+落在同一条原则上：**「先记账 / 先清状态」与「完成标记」必须分开**（P2-1 的槽位、P2-2 的三个
+状态），以及**「不支持」不能与「失败」互相冒充**（P2-3 的 `empty` vs `failed`）。
+
+验证：`pnpm test:unit` **91 files / 959 tests**（+7 条回归用例）；typecheck / build / 边界扫描 /
+public-dts / 能力矩阵全绿；真实 AK smoke **25/25**——`destroyError` 现在带上汇总消息且保留原始
+`TypeError` 文本，说明新的「解绑 → 销毁 → 汇总」路径在真机上确实走到了。
+
+**残留风险（显式接受）**：`Autocomplete` 的队列上界是「SDK 长期不回包」时的自愈手段，而不是精确
+归属——SDK 若丢了某个回包，后续回包会错位一格（上界保证不会无限累积，并以告警暴露）。真实
+Autocomplete 每次 `search()` 都有回包，因此这是防御性条款；「连发多次 search 的回包顺序 =
+调用顺序」的真机核对属 M3A.3（#25）。
 
 ## 参考
 

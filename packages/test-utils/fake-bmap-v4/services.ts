@@ -239,15 +239,28 @@ export class FakeV4LocalCity {
     center: { lng: 116.404, lat: 39.915 },
     level: 12,
   }
+  /** 设为非空时，回包前先在 `_rd` 里注册一个带错误码的回调（模拟配额 302 / 非法请求） */
+  jsonpError: { code: number | string; message: string } | null = null
 
-  constructor(options: Record<string, unknown> = {}) {
+  constructor(
+    private readonly jsonp: FakeV4JsonpRegistry,
+    options: Record<string, unknown> = {},
+  ) {
     this.callLog.push(`construct:${JSON.stringify(options)}`)
   }
 
   get(callback: (result: Record<string, unknown> | null) => void): void {
     this.callLog.push('get')
     const value = this.result
-    this.queue.dispatch(() => callback(value))
+    // 与 Geocoder / Boundary 同形：真实 SDK 在**调用内同步**注册 JSONP 回调，
+    // 回包再异步触发它（Facet 的 `probe.rescan()` 落在两步之间才有机会包装）。
+    const errorKey = this.jsonpError
+      ? this.jsonp.registerError(this.jsonpError.code, this.jsonpError.message)
+      : null
+    this.queue.dispatch(() => {
+      if (errorKey) this.jsonp.invoke(errorKey)
+      callback(value)
+    })
   }
 }
 

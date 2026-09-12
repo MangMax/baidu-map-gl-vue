@@ -8,6 +8,7 @@ import { describe, it, expect, beforeEach } from "vitest";
 import { createFakeBMapV4, type FakeBMapV4 } from "../../../../test-utils";
 import { createCapabilityRegistry } from "../capability/registry";
 import type { CapabilityRegistry } from "../capability/registry";
+import { createJsapiV4EventDriver } from "./events";
 import { createJsapiV4GeometryDriver } from "./geometry";
 import { createJsapiV4HandleRegistry } from "./registry";
 import type { JsapiV4HandleRegistry } from "./registry";
@@ -29,11 +30,13 @@ function buildDriver(
     unsupported: "throw",
     overrides,
   });
+  const geometry = createJsapiV4GeometryDriver(fake.namespace);
   return createJsapiV4PanoramaDriver({
     rawSdk: fake.namespace,
-    geometry: createJsapiV4GeometryDriver(fake.namespace),
+    geometry,
     capabilities,
     registry,
+    events: createJsapiV4EventDriver({ registry, geometry }),
   });
 }
 
@@ -158,11 +161,13 @@ describe("v4 Panorama Facet：viewer 生命周期", () => {
   });
 
   it("拒绝其它 Client 的句柄", () => {
+    const geometry = createJsapiV4GeometryDriver(fake.namespace);
     const other = createJsapiV4PanoramaDriver({
       rawSdk: fake.namespace,
-      geometry: createJsapiV4GeometryDriver(fake.namespace),
+      geometry,
       capabilities,
       registry: createJsapiV4HandleRegistry(),
+      events: createJsapiV4EventDriver({ registry: createJsapiV4HandleRegistry(), geometry }),
     });
     const foreign = other.create(document.createElement("div"));
     expect(() => panorama.show(foreign)).toThrowError(

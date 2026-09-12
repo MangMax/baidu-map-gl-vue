@@ -217,12 +217,48 @@ export function createJsapiV4ServiceDriver(
   const warnOnce = createWarnOnce();
 
   /**
-   * `Autocomplete` 的 pending 结算入口。
+   * 同一 `Autocomplete` 实例的 pending 结算**队列**（先进先出）。
    *
-   * 事件式服务没有「一次调用一次回调」的配对关系（用户在输入框里打字也会触发
-   * `onSearchComplete`），因此按实例登记：`suggest()` 写入，回调到达时取出并清空。
+   * `Autocomplete#search()` 不带请求标识，表面上无法把回包对应回某次调用；但一次
+   * `search()` **必定**换来恰好一次 `onSearchComplete`（用户在输入框里打字也走同一条路），
+   * 因此回包归属只能是**数量对齐的先进先出**：第 N 个回包属于第 N 次 `search()`。
+   *
+   * 两个直接推论（PR #63 复审 P2-1，两种错法都真的发生过）：
+   * - **被取消的那次 `search()` 的回包仍会到达**（SDK 没有取消入口），所以 `cancel()` 不能
+   *   从队列里删掉自己的槽位——否则它的迟到回包会去结算**下一个**调用（旧结果污染新请求）；
+   * - 取消后的结算由适配器的「先到者胜」吸收（已结算的 `ServiceCall` 再收到 `success` 是
+   *   no-op），队列只需要保证数量对齐。同理也能容纳「`suggest()` 超时之后才到的回包」。
    */
-  const pendingSuggest = new WeakMap<object, ServiceCallSettle<PlaceSuggestion[]> | null>();
+  const pendingSuggest = new WeakMap<object, ServiceCallSettle<PlaceSuggestion[]>[]>();
+
+  /** `search()` 数量与回包数量长期不匹配时的队列上界（自愈用，不是正常路径）。 */
+  const MAX_PENDING_SUGGESTS = 16;
+
+  const enqueueSuggest = (
+    raw: Record<string, unknown>,
+    settle: ServiceCallSettle<PlaceSuggestion[]>,
+  ): void => {
+    const queue = pendingSuggest.get(raw) ?? [];
+    queue.push(settle);
+    if (queue.length > MAX_PENDING_SUGGESTS) {
+      queue.shift();
+      warnOnce(
+        "suggest:backlog",
+        `ServiceDriver.suggest: 同一个 Autocomplete 的 pending 回包已超过 ${MAX_PENDING_SUGGESTS} 个，` +
+          "丢弃最旧的一个（SDK 回包数量长期少于 search 次数时会走到这里）",
+      );
+    }
+    pendingSuggest.set(raw, queue);
+  };
+
+  /** `search()` 同步抛错时回滚刚入队的槽位（没有请求就没有回包，留着会永久错位）。 */
+  const dequeueSuggest = (
+    raw: Record<string, unknown>,
+    settle: ServiceCallSettle<PlaceSuggestion[]>,
+  ): void => {
+    const queue = pendingSuggest.get(raw);
+    if (queue && queue[queue.length - 1] === settle) queue.pop();
+  };
 
   /** 空结果还是失败：`null` 回包 + JSONP 注册表里的错误码 ⇒ 失败。 */
   const settleNull = <T>(
@@ -318,7 +354,7 @@ export function createJsapiV4ServiceDriver(
           ? geometry.toRawPoint(options.location as Point)
           : options.location;
 
-      // 内部分发器：先结算 pending 的 suggest()，再把同一个回调转给调用方自己的监听。
+      // 内部分发器：先按 FIFO 结算属于自己的那个 pending，再把同一个回调转给调用方自己的监听。
       let raw: Record<string, unknown> | null = null;
       const instance = sdkCall("Autocomplete", () =>
         new Autocomplete({
@@ -326,8 +362,9 @@ export function createJsapiV4ServiceDriver(
           input: options.input,
           types: options.types,
           onSearchComplete: (results: RawAutocompleteResult) => {
-            const settle = raw ? pendingSuggest.get(raw) : null;
-            if (raw) pendingSuggest.set(raw, null);
+            // 取队首（最老的一次 search）：回包与 search 一一对应，因此队首就是本次回包的归属。
+            // 队列为空说明这次回包不属于任何 `suggest()`（用户在输入框里打字），直接转发给业务。
+            const settle = raw ? (pendingSuggest.get(raw)?.shift() ?? null) : null;
             if (settle) {
               const suggestions = readSuggestions(results);
               if (suggestions.length > 0) settle.success(suggestions);
@@ -453,10 +490,27 @@ export function createJsapiV4ServiceDriver(
       if (!Array.isArray(points) || points.length === 0) {
         return invalidCall<Point[]>("Convertor.translate", "points 必须是非空数组");
       }
+      // 坐标合法性**必须在进入调用之前校验**：几何边界会以 `BMAP_INVALID_POINT` 拒绝非有限数
+      // / 缺分量，而它是在 `createServiceCall` 之外执行的——不先拦下来就会同步抛错，
+      // 连 `ServiceCall` 都返回不了（PR #63 复审 P2-4）。**先校验容器，再逐项读分量**：
+      // `points` 里出现 null / 非对象时也不能抛原生 TypeError。
+      for (const point of points) {
+        const candidate = point as { lng?: unknown; lat?: unknown } | null | undefined;
+        const lng = candidate?.lng;
+        const lat = candidate?.lat;
+        if (typeof lng !== "number" || !Number.isFinite(lng) || typeof lat !== "number" || !Number.isFinite(lat)) {
+          return invalidCall<Point[]>(
+            "Convertor.translate",
+            `points 里存在非法坐标（缺失分量或非有限数）: ${JSON.stringify(point) ?? String(point)}`,
+          );
+        }
+      }
       const raw = convertorOf(handle);
-      const rawPoints = geometry.toRawPoints(points);
       return createServiceCall<Point[]>(
         (settle) => {
+          // 放在受保护流程里：几何转换若仍抛出（例如上游加了别的校验），也走 `failed`
+          // 而不是从 `ServiceCall` 之外逃逸。
+          const rawPoints = geometry.toRawPoints(points);
           callRequired(
             raw,
             "translate",
@@ -567,12 +621,16 @@ export function createJsapiV4ServiceDriver(
 
     locateCity(handle) {
       const raw = localCityOf(handle);
+      // 与 Geocoder / Boundary 同源：失败时官方只回 null，服务端错误码只在 JSONP 注册表里，
+      // 不接探针就会把「服务失败」归类成「查不到城市」（PR #63 复审 P2-3）。
+      const probe = captureJsonpServiceError(rawSdk);
       return createServiceCall<LocalCityFix>(
         (settle) => {
           callRequired(raw, "get", (result: RawLocalCityPayload | null) => {
             const name = typeof result?.name === "string" ? result.name : "";
             if (!name) {
-              settle.empty();
+              // 先看错误码：有错误 ⇒ failed（业务才能提示 / 重试），没有 ⇒ 真的查不到
+              settleNull(settle, probe, "LocalCity.get");
               return;
             }
             settle.success({
@@ -581,6 +639,7 @@ export function createJsapiV4ServiceDriver(
               level: typeof result?.level === "number" ? result.level : null,
             });
           });
+          probe.rescan();
         },
         { label: "LocalCity.get" },
       );
@@ -591,16 +650,20 @@ export function createJsapiV4ServiceDriver(
         return invalidCall<PlaceSuggestion[]>("Autocomplete.search", "keyword 必须是非空字符串");
       }
       const raw = resolve<Record<string, unknown>>(handle, "ServiceDriver.suggest");
+      // 刻意**不传 `onCancel`**：取消只影响本次 `ServiceCall` 的结果（由适配器结算成
+      // `canceled`），队列槽位必须留在原处吸收那次 search 的回包——理由见 `pendingSuggest`。
       return createServiceCall<PlaceSuggestion[]>(
         (settle) => {
-          pendingSuggest.set(raw, settle);
-          callRequired(raw, "search", keyword);
+          enqueueSuggest(raw, settle);
+          try {
+            callRequired(raw, "search", keyword);
+          } catch (error) {
+            // 请求没发出去就不会有回包：回滚槽位，否则队列会永久错位一格
+            dequeueSuggest(raw, settle);
+            throw error;
+          }
         },
-        {
-          label: "Autocomplete.search",
-          // SDK 没有取消入口：只放弃 pending（之后到达的回调仍会转给业务自己的监听）。
-          onCancel: () => pendingSuggest.set(raw, null),
-        },
+        { label: "Autocomplete.search" },
       );
     },
   };

@@ -483,7 +483,7 @@ export function createFakeBMapV4(version = '4.0'): FakeBMapV4 {
   }
   class LocalCityClass extends FakeV4LocalCity {
     constructor(options?: Record<string, unknown>) {
-      super(options ?? {})
+      super(jsonp, options ?? {})
       createdLocalCities.push(this)
     }
   }

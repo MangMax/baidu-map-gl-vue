@@ -11,7 +11,7 @@
  * 2. 跨 facet 不变式：原生图层与底图图层共用 `map.layers` 容器但各自记账；
  * 3. 「先摘子资源、再销毁地图」在原生图层上同样成立。
  */
-import { describe, it, expect, beforeEach } from "vitest";
+import { describe, it, expect, beforeEach, vi } from "vitest";
 import { createFakeBMapV4, type FakeBMapV4, type FakeV4Map } from "../../packages/test-utils";
 import {
   runNativeLayerFacetContract,
@@ -130,5 +130,21 @@ describe("v4 装配后的跨 facet 不变式（#23）", () => {
     expect(driver.capabilities.supports("service.geocoder")).toBe(true);
     expect(driver.capabilities.supports("panorama.viewer")).toBe(true);
     expect(driver.capabilities.supports("service.track-animation")).toBe(false);
+  });
+
+  it("销毁全景时释放 EventDriver 持有的订阅（否则 raw 对象与业务回调被长期持有）", () => {
+    const container = document.createElement("div");
+    const viewer = driver.panorama.create(container);
+    const raw = fake.createdPanoramas[0];
+    const listener = vi.fn();
+
+    driver.events.on(viewer, "position_changed", listener);
+    expect(raw.getListenerCount()).toBe(1);
+
+    driver.panorama.destroy(viewer);
+
+    // EventDriver 的 groups 是强引用（Map<rawTarget, …>）：不主动 release，条目会一直持有
+    // 已销毁的 raw 对象与业务回调，反复建/销全景会持续累积
+    expect(raw.getListenerCount(), "destroy 之后 Driver 侧订阅必须已释放").toBe(0);
   });
 });

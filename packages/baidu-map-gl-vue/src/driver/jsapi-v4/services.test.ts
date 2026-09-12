@@ -259,6 +259,35 @@ describe("v4 Service Facet：Convertor / Boundary", () => {
     expect(fake.createdConvertors[0].callLog).toHaveLength(0);
   });
 
+  it("坐标转换：非法坐标走结果通道（failed + BMAP_INVALID_ARGUMENT），不绕过封装同步抛错", async () => {
+    const handle = services.createConvertor();
+    const cases: Array<Record<string, unknown>> = [
+      { lng: Number.NaN, lat: 39.9 },
+      { lng: Number.POSITIVE_INFINITY, lat: 39.9 },
+      { lng: 116.4 },
+    ];
+
+    for (const bad of cases) {
+      const request = {
+        points: [bad] as unknown as [never],
+        from: 1 as const,
+        to: 5 as const,
+      };
+      // 「连 ServiceCall 都没返回」就是本用例要挡的形态：调用必须不抛错
+      let call!: ReturnType<typeof services.convert>;
+      expect(() => {
+        call = services.convert(handle, request);
+      }, `非法坐标 ${JSON.stringify(bad)} 同步抛错了`).not.toThrow();
+
+      const result = await call.result;
+      expect(result.status).toBe("failed");
+      expect(result.error?.code).toBe("BMAP_INVALID_ARGUMENT");
+    }
+
+    // 一次都不该落到 SDK
+    expect(fake.createdConvertors[0].callLog).toHaveLength(0);
+  });
+
   it("行政区边界：点串解析成坐标环", async () => {
     const handle = services.createBoundary();
     const result = await services.queryBoundary(handle, { name: "北京市" }).result;
@@ -329,6 +358,26 @@ describe("v4 Service Facet：Geolocation / LocalCity", () => {
     fake.createdLocalCities[0].result = { name: "" };
     expect((await services.locateCity(handle).result).status).toBe("empty");
   });
+
+  it("IP 定位：null 回包 + JSONP 错误码 ⇒ failed（不是「查不到城市」）", async () => {
+    const handle = services.createLocalCity();
+    const localCity = fake.createdLocalCities[0];
+    localCity.result = null;
+    localCity.jsonpError = { code: 302, message: "当天配额已用完" };
+
+    const result = await services.locateCity(handle).result;
+    expect(result.status).toBe("failed");
+    expect(result.error).toEqual({ code: 302, message: "当天配额已用完" });
+  });
+
+  it("IP 定位：null 回包但没有服务端错误码 ⇒ 仍是 empty", async () => {
+    const handle = services.createLocalCity();
+    fake.createdLocalCities[0].result = null;
+
+    const result = await services.locateCity(handle).result;
+    expect(result.status).toBe("empty");
+    expect(result.error).toBeNull();
+  });
 });
 
 describe("v4 Service Facet：Autocomplete（事件式服务的归一化）", () => {
@@ -373,5 +422,64 @@ describe("v4 Service Facet：Autocomplete（事件式服务的归一化）", () 
 
     expect((await call.result).status).toBe("canceled");
     expect(onSearchComplete).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe("v4 Service Facet：Autocomplete 的回包归属（PR #63 复审 P2-1）", () => {
+  it("取消 A 之后 A 的迟到回包不得结算 B", async () => {
+    const handle = services.createAutocomplete({ input: input() });
+    const autocomplete = fake.createdAutocompletes[0];
+    autocomplete.queue.auto = false;
+
+    autocomplete.pois = [{ business: "AAA", province: "北京市" }];
+    const a = services.suggest(handle, "A");
+    a.cancel();
+
+    autocomplete.pois = [{ business: "BBB", province: "上海市" }];
+    const b = services.suggest(handle, "B");
+
+    // A 与 B 各回一次包，A 的先到（结果里带着 A 的条目 AAA）
+    expect(autocomplete.queue.flush()).toBe(2);
+    const result = await b.result;
+
+    // 归属错了的表现就是「B 拿到了 A 的结果」：断言标题必须是 B 自己的 BBB
+    expect(result.status).toBe("success");
+    expect(result.data?.[0]?.title).toBe("BBB");
+    expect((await a.result).status).toBe("canceled");
+  });
+
+  it("发起 A → 发起 B → 取消 A：B 仍由自己的回包结算，不因取消 A 被清空", async () => {
+    vi.useFakeTimers();
+    const handle = services.createAutocomplete({ input: input() });
+    const autocomplete = fake.createdAutocompletes[0];
+    autocomplete.queue.auto = false;
+
+    autocomplete.pois = [{ business: "AAA", province: "北京市" }];
+    const a = services.suggest(handle, "A");
+    autocomplete.pois = [{ business: "BBB", province: "上海市" }];
+    const b = services.suggest(handle, "B");
+    a.cancel();
+
+    expect(autocomplete.queue.flush()).toBe(2);
+    vi.advanceTimersByTime(15000);
+    const result = await b.result;
+
+    expect(result.status).toBe("success");
+    expect(result.data?.[0]?.title).toBe("BBB");
+  });
+
+  it("没有 pending suggest 的回包（用户在输入框里打字触发）不会误结算任何调用", async () => {
+    const handle = services.createAutocomplete({ input: input() });
+    const autocomplete = fake.createdAutocompletes[0];
+    autocomplete.queue.auto = false;
+
+    // 直接 search（不入 pending 队列）后回包：不应抛错、也不应影响后续的 suggest
+    const raw = autocomplete as unknown as { search(keyword: string): void };
+    raw.search("typed-by-user");
+    autocomplete.queue.flush();
+
+    const call = services.suggest(handle, "天安门");
+    autocomplete.queue.flush();
+    expect((await call.result).status).toBe("success");
   });
 });
