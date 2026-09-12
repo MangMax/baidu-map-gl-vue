@@ -387,7 +387,7 @@ export class FakeV4Autocomplete extends FakeV4EventTarget {
     this.queue = new FakeV4CallbackQueue(diagnostics)
     this.options = options
     this.callLog.push('construct')
-    this.stats.resourceCreated('autocomplete')
+    this.stats.resourceCreated('autocomplete', this)
   }
 
   search(keyword: string): void {
@@ -411,7 +411,8 @@ export class FakeV4Autocomplete extends FakeV4EventTarget {
     }
     // 真实 SDK 的销毁流程可能触发业务回调（本仓库的 Map / Panorama 都已按「可能重入」防护）
     reenter?.()
-    // 只有真的走完 dispose 才销账（失败路径保留账头，见 Panorama#destroy 同口径）
-    this.stats.resourceReleased('autocomplete')
+    // 只有真的走完 dispose 才销账（失败路径保留账头，见 Panorama#destroy 同口径）；
+    // 传实例：`dispose()` 每次都真的打到 SDK，重复 dispose 不能抵消别的实例的泄漏
+    this.stats.resourceReleased('autocomplete', this)
   }
 }

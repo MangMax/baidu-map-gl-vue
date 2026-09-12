@@ -92,8 +92,10 @@ export {
 export type { FakeV4RuntimeInjectedMember } from './runtime-extensions.ts'
 export type {
   FakeV4ActivityCounters,
+  FakeV4AttachmentKind,
   FakeV4DiagnosticsSnapshot,
   FakeV4LeakCounters,
+  FakeV4LifecycleKind,
   FakeV4ResourceKind,
 } from './diagnostics.ts'
 export {

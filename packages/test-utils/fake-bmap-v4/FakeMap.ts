@@ -262,7 +262,8 @@ export class FakeV4Map extends FakeV4EventTarget {
         ? document.getElementById(container) ?? document.createElement('div')
         : container
     this.options = options
-    this.stats.resourceCreated('map')
+    // 生命周期类：传实例，让「同一实例重复销毁」与「另一个实例真的被释放」可区分
+    this.stats.resourceCreated('map', this)
   }
 
   /* ---------------------------------------------------------------- 容器与尺寸 */
@@ -546,7 +547,7 @@ export class FakeV4Map extends FakeV4EventTarget {
     this.clearAllListeners()
     // 只有 Map 自己销账：子资源不会随 destroy 消失（漏摘的覆盖物/控件/图层会留在诊断里，
     // 这正是「先摘子资源再销毁」那条不变式的门禁依据）
-    this.stats.resourceReleased('map')
+    this.stats.resourceReleased('map', this)
   }
 }
 

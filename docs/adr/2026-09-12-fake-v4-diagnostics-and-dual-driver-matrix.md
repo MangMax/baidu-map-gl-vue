@@ -65,10 +65,19 @@
   成功 `dispose()`。
 - **失败路径不销账**（`Panorama#destroy` 抛错、`Autocomplete#dispose` 抛错）：账头留着，
   于是「失败不记账、可以重试」有了可观察依据。
-- **重复挂载按 SDK 事实计数**：`addControl` / `addLayer` 不去重（官方把「同一实例重复添加」
-  列为误用），诊断就记 2——这样「Driver 是否自己记账」不会被假象掩盖。`resourceReleased`
-  对未挂载实例是 no-op 且不会把计数打成负数（`remove` 的幂等是契约要求）。
-- 只有 `Map` 自己销账：`destroy()` 时仍挂着的覆盖物 / 控件 / 图层会留在 `leaks` 里。
+- **两种销账方式**（PR #66 复审 P2-1 之后固定下来）：
+  - `FakeV4LifecycleKind`（`map` / `panorama` / `autocomplete`）**按实例**销账。这些对象的
+    SDK 语义是「一个实例创建一次、销毁一次」，而 Fake 刻意保留「重复 destroy 每次都真的打到
+    SDK」的可观察性（`destroyCalls` / `callLog`）；若诊断只看同类总数，**重复销毁一个实例就会
+    抵消另一个存活实例的泄漏**，门禁静默失效。因此 `resourceCreated` / `resourceReleased` 对这三类
+    **要求传实例**（TS 重载强制），用 `WeakSet` 记「尚未销账」，第二次释放返回 `false` 且不动总数。
+  - `FakeV4AttachmentKind`（`overlay` / `infoWindow` / `contextMenu` / `control` / `layer`）
+    **按次数**销账：SDK 不保证去重、同一实例可以挂多次（官方把「同一实例重复添加」列为误用，
+    本仓库由 Driver 自己记账），「挂两次、摘一次还剩一个」这条不变式不能被实例去重改掉。
+    这些调用点本来就以**容器命中**为前提，身份正确性由容器负责。
+- **重复挂载按 SDK 事实计数**：`addControl` / `addLayer` 不去重，诊断就记 2——这样「Driver 是否
+  自己记账」不会被假象掩盖。`resourceReleased` 对未登记/未挂载的实例是 no-op，且不会把计数打成负数。
+- 只有 `Map` 自己销账：`destroy()` 时仍挂着的覆盖物 / 控件 / 图层会留在 `leaks` 里（漏摘可见）。
 
 ### 3. 异步窗口可控注入：`auto` / `delay` / `flush` + 计数
 
@@ -106,6 +115,12 @@
   自述 `engine`，legacy 只能给裸值）」「挂载计数读哪个容器」「气泡活状态怎么读」这些差异全部
   收进引擎描述。用例只写 `ctx.attached("control")` / `ctx.overlayPositions()` /
   `ctx.openInfoWindows()` / `ctx.assertIdle()`。
+- **legacy 的容器必须按实例分类，不能当领域结果用**（PR #66 复审 P2-2）：BMapGL 把覆盖物、图层
+  （`addDistrictLayer` / `addTileLayer`）、被打开的气泡**混在** `map.overlays` 一个容器里，所以
+  `attached("overlay")` / `attached("layer")` / `overlayPositions()` 都要先按**命名空间构造器**
+  （`instanceof fake.DistrictLayer` / `TileLayer` / `PanoramaCoverageLayer` / `InfoWindow`）过滤。
+  分类依据刻意不是「有没有 `position`」——接口允许没有位置的覆盖物（`CustomOverlay` 只声明
+  `domCreate`），用特征字段识别会把它们误判成图层。
 - `createFakeV4Client()`：用**默认路径**（结构化 Provider → `createBMapClient` → 默认 v4 工厂）
   装出 v4 Client，供 `runMapDriverContract` 使用。
 
@@ -175,8 +190,9 @@ webgl-v1 用 `mapsCreated - mapsDestroyed` 等推导。**两边的实现不同�
    导入 `captureJsonpServiceError`（该模块在 `#26` 会被删除）。双跑证明它在两个引擎上都能结算，
    但这条路径越过 Driver 的归一化调用面，属 M7（`#38` ServiceSpec / AsyncTaskController）的欠账；
    `#26` 删码时必须先把这个导入迁到 `driver/normalize`。
-3. **BMapGL 的假账本把覆盖物与图层混在 `map.overlays`**：组件层 100 次门禁因此只用「控件桶」
-   做「确实挂上了」的前置证明，逐族证据由 v4 侧的 `activity` 提供（两处都在测试里写明了理由）。
+3. **BMapGL 的假账本把覆盖物 / 图层 / 气泡混在 `map.overlays`**：读数必须按命名空间构造器分类
+   （见决策 4）。分类逻辑住在 legacy 引擎描述里，随 `#26` 删除旧 Driver 一起消失；
+   v4 侧的诊断天然分族，不需要这层归一。
 4. **`BMap` 组件在 v4 上仍会打印两条告警**（`restrictCenter` 无对应构造项、
    `setTraffic` 需经 Layer Facet）。它们是既有行为，不是本次改动引入；`setTraffic` 的接线属
    M7（`#40` LayerSpec）。
@@ -213,6 +229,20 @@ webgl-v1 用 `mapsCreated - mapsDestroyed` 等推导。**两边的实现不同�
 | 验收「双 Driver 测试证明组件未依赖旧 raw SDK」这句话立不住：`useBMapGeocoder` 仍直读 `raw.getPoint` 并从将删的 `webgl-v1/services` 导入嗅探 | 不扩大结论：PR 里把结论限定为「组件层不再依赖 webgl-v1 命名空间（Provider 分派 + 矩阵证明）」，并在「已知限制」2 记录欠账（→ #38 / #26） |
 | 测试要求「100 次 mount/unmount 后 diagnostics **全归零**」，实现只让 `leaks` 归零 | **已补**：组件层用例补 `pendingAsync()` 归零断言；driver 层用例本就断言了两个在飞值。`activity` 不归零是决策 1 的刻意设计 |
 | ADR + README 索引不在「预计变更区域」 | 保留：`docs/adr/README.md` 的约定要求「涉及公共 API 契约 / 架构的改动必须先有 ADR」，本 PR 引入了新的测试基建约定 |
+
+## 外部评审轮次记录（PR #66，基线 `697488e`）
+
+一轮外部评审给出 2 个 P2，**两条都先在仓库里复现成失败测试**（红），再修（绿）：
+
+| 发现 | 复现（修复前的实测输出） | 根因 | 处置 |
+| --- | --- | --- | --- |
+| **P2-1** `resourceReleased()` 只看同类总数，重复销毁同一实例会抵消另一个实例的泄漏 | `两个 Panorama：重复销毁 A 一次，B 的泄漏必须还在` → `expected +0 to be 1`（`leaks.panoramas`）；Autocomplete 同形 | 生命周期类资源按**池化计数**销账，没有实例身份；而 `Panorama#destroy` / `Autocomplete#dispose` 刻意保留「重复调用都真的打到 SDK」（`destroyCalls` / `callLog` 可观察） | 记账方式分两类：`FakeV4LifecycleKind`（map / panorama / autocomplete）**按实例**销账（TS 重载强制传实例 + `WeakSet` 记未销账），`FakeV4AttachmentKind` 仍按次数销账（保留「挂两次摘一次还剩一个」）。新增 3 条反证用例 |
+| **P2-2** legacy 引擎把 `overlay` / `layer` 都读成同一个 `map.overlays`，位置投影也不排除图层，混挂场景产生**虚假的领域差异** | `Marker + Layer 混挂的领域结果：webgl-v1 与 jsapi-v4 在这些字段上不一致: ['$.overlays', '$.layers', …]`（v4 读 1/1，legacy 读 2/2） | 引擎描述把 raw 容器当成了归一化的领域结果 | legacy 引擎按**命名空间构造器**（`instanceof`）分类覆盖物 / 图层 / 气泡后再投影；新增「Marker + Layer 混挂」双跑用例，并把 100 次门禁的逐族断言收紧到三个族 |
+
+该轮还顺手发现一个**静默覆盖**陷阱：修复 P2-1 时新增了带重载的 `resourceReleased`，而文件里
+旧的同名实现没删掉——JS 里后者覆盖前者，测试继续以旧行为通过（第一次「修复」后仍是红）。
+教训记在这里：**给方法加重载时先确认没有同名旧实现幸存**（本仓库没有 lint 门禁会报
+`no-dupe-class-members`；`oxlint` 已装但未接入 CI）。
 
 ## 参考
 

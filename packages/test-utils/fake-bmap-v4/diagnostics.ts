@@ -21,6 +21,10 @@
  * | `autocompletes` | `Autocomplete` 构造 / 成功 `dispose()` | `autocomplete.dispose()` |
  * | `listeners` | `addEventListener` − `removeEventListener`（外加 `map.destroy()` 时清掉的残留监听器） | `removeEventListener` / `map.destroy()` 的清理 |
  *
+ * 记账方式同样分两类（见 `FakeV4LifecycleKind` / `FakeV4AttachmentKind`）：`maps` / `panoramas` /
+ * `autocompletes` 按**实例**销账（同一实例重复销毁只销一次），`overlays` / `infoWindows` /
+ * `contextMenus` / `controls` / `layers` 按**次数**销账（SDK 不去重，挂两次就要摘两次）。
+ *
  * 两类刻意**不**进泄漏门禁，理由写在对应字段上：
  * - 无销毁入口的服务实例（`Geocoder` / `Convertor` / `Boundary` / `Geolocation` / `LocalCity`）——
  *   官方 4.0 就没有 destroy/dispose，它们随 Client 被 GC 回收；
@@ -32,16 +36,33 @@
  * 「测试辅助」，避免与官方行为混淆（issue #24 验收标准）。
  */
 
-/** 参与泄漏门禁的资源种类。 */
-export type FakeV4ResourceKind =
-  | "map"
+/**
+ * 参与泄漏门禁的资源种类，按**记账方式**分两类：
+ *
+ * - `FakeV4LifecycleKind`（生命周期类）：一个实例只创建一次、只销毁一次。诊断必须按**实例**
+ *   去重，否则「同一个实例重复销毁」会继续扣减总数，把**另一个**存活实例的泄漏抵消掉
+ *   （PR #66 复审 P2-1）。
+ * - `FakeV4AttachmentKind`（挂载类）：SDK 不保证去重、同一实例可以挂多次（官方把「同一实例
+ *   重复添加」列为误用，本仓库由 Driver 自己记账），因此按**次数**销账——「挂两次、摘一次
+ *   还剩一个」这条不变式不能被实例去重改掉。
+ */
+export type FakeV4LifecycleKind = "map" | "panorama" | "autocomplete";
+
+export type FakeV4AttachmentKind =
   | "overlay"
   | "infoWindow"
   | "contextMenu"
   | "control"
-  | "layer"
-  | "panorama"
-  | "autocomplete";
+  | "layer";
+
+export type FakeV4ResourceKind = FakeV4LifecycleKind | FakeV4AttachmentKind;
+
+/** 生命周期类集合（`resourceCreated` / `resourceReleased` 用它决定是否按实例去重）。 */
+const LIFECYCLE_KINDS: ReadonlySet<FakeV4ResourceKind> = new Set<FakeV4LifecycleKind>([
+  "map",
+  "panorama",
+  "autocomplete",
+]);
 
 /** 泄漏门禁口径：当前未释放的资源数（全 0 = 无泄漏）。 */
 export interface FakeV4LeakCounters {
@@ -155,30 +176,71 @@ export class FakeV4Diagnostics {
 
   /* ------------------------------------------------ 测试辅助：异步窗口（非官方语义） */
 
+  /**
+   * 生命周期类的「尚未销账」实例集合，按 kind 分桶。
+   *
+   * 用 `WeakSet`/`Map` 而不是强引用集合：Fake 会被跑上千轮挂载卸载，诊断不该成为让实例
+   * 无法回收的那一方。`reset()` 直接换掉整张表。
+   */
+  private aliveInstances = new Map<FakeV4LifecycleKind, WeakSet<object>>();
+
   private servicesCreated = 0;
   private timersScheduled = 0;
   private timersFired = 0;
   private callbacksQueued = 0;
   private callbacksSettled = 0;
 
+  private aliveOf(kind: FakeV4LifecycleKind): WeakSet<object> {
+    let set = this.aliveInstances.get(kind);
+    if (!set) {
+      set = new WeakSet<object>();
+      this.aliveInstances.set(kind, set);
+    }
+    return set;
+  }
+
   /* ------------------------------------------------------------ 记账入口（Fake 内部用） */
 
-  /** 资源进入「已挂载 / 已创建」状态（构造或挂载成功之后调用）。 */
-  resourceCreated(kind: FakeV4ResourceKind): void {
+  /**
+   * 资源进入「已创建 / 已挂载」状态（构造或挂载成功之后调用）。
+   *
+   * 生命周期类**必须**传实例：只有拿到实例身份，`resourceReleased` 才能区分「同一个实例被
+   * 重复销毁」与「另一个实例真的被释放了」。
+   */
+  resourceCreated(kind: FakeV4LifecycleKind, instance: object): void;
+  resourceCreated(kind: FakeV4AttachmentKind): void;
+  resourceCreated(kind: FakeV4ResourceKind, instance?: object): void {
     this.created[kind] += 1;
     this.live[kind] += 1;
+    if (instance && LIFECYCLE_KINDS.has(kind)) {
+      this.aliveOf(kind as FakeV4LifecycleKind).add(instance);
+    }
   }
 
   /**
-   * 资源走完释放路径。
+   * 资源走完释放路径；返回是否真的销了账。
    *
-   * 对未挂载的实例是 no-op（真实的 `removeControl` / `removeOverlay` 对没挂过的资源也是 no-op），
-   * 且**不会**把计数打成负数——「重复 remove」是契约里明确要求幂等的操作。
+   * - **生命周期类按实例去重**：`FakeV4Panorama#destroy` / `FakeV4Autocomplete#dispose` 刻意保留
+   *   「每次调用都真的打到 SDK」的语义（`destroyCalls` / `callLog` 可观察），因此重复销毁同一个
+   *   实例时，诊断这里必须拒绝第二次销账——否则它会继续扣减同类总数，把**另一个**存活实例的
+   *   泄漏抵消掉，门禁静默失效（PR #66 复审 P2-1）。
+   * - **挂载类按次数销账**（不传实例）：同一实例挂 N 次就有 N 份资源，M 次 remove 之后剩 N−M。
+   *   这些调用点（`map.removeOverlay` / `removeControl` / `removeLayer` / `removeContextMenu`）
+   *   本来就以**容器命中**为前提，身份正确性由容器负责。
+   * - 两种情况都**不会**把计数打成负数，也不会对未登记的资源销账。
    */
-  resourceReleased(kind: FakeV4ResourceKind): void {
-    if (this.live[kind] <= 0) return;
+  resourceReleased(kind: FakeV4LifecycleKind, instance: object): boolean;
+  resourceReleased(kind: FakeV4AttachmentKind): boolean;
+  resourceReleased(kind: FakeV4ResourceKind, instance?: object): boolean {
+    if (instance && LIFECYCLE_KINDS.has(kind)) {
+      const alive = this.aliveInstances.get(kind as FakeV4LifecycleKind);
+      if (!alive || !alive.has(instance)) return false;
+      alive.delete(instance);
+    }
+    if (this.live[kind] <= 0) return false;
     this.released[kind] += 1;
     this.live[kind] -= 1;
+    return true;
   }
 
   /** 无销毁入口的基础服务实例（只进活动口径）。 */
@@ -273,7 +335,7 @@ export class FakeV4Diagnostics {
     return leaks;
   }
 
-  /** 清零全部计数（活动口径与泄漏口径一起）。 */
+  /** 清零全部计数（活动口径与泄漏口径一起，含生命周期类的实例登记表）。 */
   reset(): void {
     this.listenCalls = 0;
     this.unlistenCalls = 0;
@@ -283,6 +345,8 @@ export class FakeV4Diagnostics {
       this.created[kind] = 0;
       this.released[kind] = 0;
     }
+    // 整表换掉：WeakSet 没有 clear()，而且旧实例本来也不该再影响新基线
+    this.aliveInstances = new Map<FakeV4LifecycleKind, WeakSet<object>>();
     this.servicesCreated = 0;
     this.timersScheduled = 0;
     this.timersFired = 0;

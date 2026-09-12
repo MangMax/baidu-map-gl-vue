@@ -45,7 +45,7 @@ export class FakeV4Panorama extends FakeV4EventTarget {
     super(stats)
     this.container = container
     this.options = options
-    this.stats.resourceCreated('panorama')
+    this.stats.resourceCreated('panorama', this)
   }
 
   setPosition(position: { lng: number; lat: number }): void {
@@ -119,8 +119,10 @@ export class FakeV4Panorama extends FakeV4EventTarget {
       throw error
     }
     this.destroyCalls += 1
-    // 失败路径**不**销账：诊断因此能表达「销毁没成功、账还挂着、可以重试」
-    this.stats.resourceReleased('panorama')
+    // 失败路径**不**销账：诊断因此能表达「销毁没成功、账还挂着、可以重试」。
+    // 传实例：本 Fake 刻意保留「重复 destroy 每次都真的打到 SDK」的语义（`destroyCalls` 记数），
+    // 诊断必须按实例去重，否则重复销毁一个实例会抵消另一个实例的泄漏（PR #66 复审 P2-1）。
+    this.stats.resourceReleased('panorama', this)
   }
 }
 

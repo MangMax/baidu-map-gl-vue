@@ -271,6 +271,27 @@ export function createJsapiV4MatrixEngine(fake: FakeBMapV4 = createFakeBMapV4())
 export function createLegacyMatrixEngine(): DriverMatrixEngine {
   const fake = getFakeBMapGl();
   const lastMap = () => lastCreatedMap(fake.createdMaps, "webgl-v1 matrix");
+  /**
+   * BMapGL 的假账本把三类东西**混在** `map.overlays` 里：覆盖物、图层
+   * （`DistrictLayer` / `TileLayer` / `PanoramaCoverageLayer` 走 `addDistrictLayer` /
+   * `addTileLayer`）、以及被打开的气泡。因此读数必须**按实例分类**，不能把 raw 容器直接
+   * 当成归一化的领域结果——否则「同一张图同时挂一个 Marker 和一个 DistrictLayer」会让
+   * `attached("overlay")` 变成 2、位置投影多出一个 `null`，被 `expectSameDomainResult()`
+   * 判成「两个引擎行为不一致」（PR #66 复审 P2-2）。
+   *
+   * 分类依据是**命名空间构造器**（`instanceof`），不是「有没有 `position`」——接口允许
+   * 没有位置的覆盖物（例如 `CustomOverlay` 只声明 `domCreate`），用特征字段识别会把它们
+   * 误判成图层。
+   */
+  const isLayer = (value: unknown): boolean =>
+    value instanceof fake.DistrictLayer ||
+    value instanceof fake.TileLayer ||
+    value instanceof fake.PanoramaCoverageLayer;
+  const isInfoWindow = (value: unknown): boolean => value instanceof fake.InfoWindow;
+  /** 归一化后的覆盖物（排除图层与气泡）。 */
+  const mountedOverlays = (): unknown[] =>
+    [...lastMap().overlays].filter((value) => !isLayer(value) && !isInfoWindow(value));
+  const mountedLayers = (): unknown[] => [...lastMap().overlays].filter(isLayer);
   return {
     engine: "webgl-v1",
     provider: () => ({
@@ -303,13 +324,11 @@ export function createLegacyMatrixEngine(): DriverMatrixEngine {
       }
     },
     attached: (kind) => {
-      const map = lastMap();
-      // BMapGL 没有 4.0 的统一 `addLayer`：DistrictLayer / TileLayer 走
-      // `addDistrictLayer` / `addTileLayer`，落进 `overlays` 容器（同 v3-driver-contract 的读法）
-      if (kind === "control") return map.controls.size;
-      return map.overlays.size;
+      if (kind === "control") return lastMap().controls.size;
+      if (kind === "layer") return mountedLayers().length;
+      return mountedOverlays().length;
     },
-    overlayPositions: () => toPositions(lastMap().overlays),
+    overlayPositions: () => toPositions(mountedOverlays()),
     openInfoWindows: () =>
       // 注意不能读 `map.openInfoWindows.size`：旧 Driver 的 close 走 SDK 的 `hide()`
       // （见 `driver/webgl-v1/overlays.ts`），FakeMap 里的那个 Set 是「曾经打开过」而不是

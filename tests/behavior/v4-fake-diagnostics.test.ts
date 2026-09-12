@@ -201,3 +201,80 @@ describe("Fake v4 diagnostics：服务与全景的资源口径", () => {
     });
   });
 });
+
+describe("Fake v4 diagnostics：重复销毁不能抵消别的实例的泄漏（PR #66 复审 P2-1）", () => {
+  fake = createFakeBMapV4();
+
+  it("两个 Panorama：重复销毁 A 一次，B 的泄漏必须还在", () => {
+    const d = fake.diagnostics;
+    d.reset();
+    const a = new fake.namespace.Panorama(container());
+    const b = new fake.namespace.Panorama(container());
+    expect(d.snapshot().leaks.panoramas).toBe(2);
+
+    // 调用方错误：同一个实例销毁两次。Fake 刻意保留「每次都真的打到 SDK」的语义
+    // （`destroyCalls` 记 2、`callLog` 记两条），因此诊断必须自己按**实例**去重。
+    a.destroy();
+    a.destroy();
+    expect(a.destroyCalls).toBe(2);
+    expect(b.destroyCalls).toBe(0);
+
+    expect(d.snapshot().leaks.panoramas, "B 从未销毁，泄漏不能被 A 的重复销毁抵消").toBe(1);
+    expect(d.snapshot().activity.panoramasDestroyed, "实例只销一次账").toBe(1);
+    expect(() => d.assertNoLeaks()).toThrow(/panoramas=1/);
+
+    b.destroy();
+    d.assertNoLeaks();
+  });
+
+  it("两个 Autocomplete：重复 dispose A 一次，B 的泄漏必须还在", () => {
+    const d = fake.diagnostics;
+    d.reset();
+    document.body.innerHTML = "";
+    const input = () => {
+      const el = document.createElement("input");
+      el.readOnly = true;
+      document.body.appendChild(el);
+      return el;
+    };
+    const a = new fake.namespace.Autocomplete({ input: input() });
+    const b = new fake.namespace.Autocomplete({ input: input() });
+    expect(d.snapshot().leaks.autocompletes).toBe(2);
+
+    a.dispose();
+    a.dispose();
+    expect(a.callLog.filter((entry) => entry === "dispose"), "SDK 侧确实被调了两次").toHaveLength(2);
+
+    expect(d.snapshot().leaks.autocompletes, "B 从未 dispose，泄漏不能被 A 的重复 dispose 抵消").toBe(1);
+    expect(d.snapshot().activity.autocompletesDisposed).toBe(1);
+
+    b.dispose();
+    d.assertNoLeaks();
+  });
+
+  it("反证：同一实例的重复销毁不会让总数变成负数（attachment 类仍按次数销账）", () => {
+    const d = fake.diagnostics;
+    d.reset();
+    const map = new fake.namespace.Map(container());
+    const control = new fake.namespace.ZoomControl();
+
+    map.addControl(control);
+    map.removeControl(control);
+    expect(d.snapshot().leaks.controls).toBe(0);
+    // 未挂载实例的重复 remove 是 no-op（SDK 侧同样是 no-op），不会把计数打成负数
+    map.removeControl(control);
+    expect(d.snapshot().leaks.controls).toBe(0);
+
+    // 而「同一实例挂两次」按 SDK 事实记账：两次 remove 才归零（这项语义不能被上面的实例去重改掉）
+    map.addControl(control);
+    map.addControl(control);
+    expect(d.snapshot().leaks.controls).toBe(2);
+    map.removeControl(control);
+    expect(d.snapshot().leaks.controls).toBe(1);
+    map.removeControl(control);
+    expect(d.snapshot().leaks.controls).toBe(0);
+
+    map.destroy();
+    d.assertNoLeaks();
+  });
+});

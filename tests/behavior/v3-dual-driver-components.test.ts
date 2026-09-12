@@ -244,6 +244,35 @@ describe("迁移期双 Driver：组件领域行为", () => {
     }
   });
 
+  it("Marker 与 Layer 混挂在同一张地图：两类读数与位置投影都按族划分（PR #66 复审 P2-2）", async () => {
+    const results = await runDriverMatrix(engines, async (ctx) => {
+      const wrapper = await mountMapTree(ctx, () => [
+        h(BMarker, { position: POSITION }),
+        h(BDistrictLayer, { name: "北京市" }),
+      ]);
+      const domain = {
+        overlays: ctx.attached("overlay"),
+        layers: ctx.attached("layer"),
+        positions: ctx.overlayPositions(),
+      };
+
+      await unmountAndSettle(wrapper);
+      ctx.assertIdle();
+      return domain;
+    });
+
+    expectSameDomainResult(results, engines, "Marker + Layer 混挂的领域结果");
+    for (const engine of engines) {
+      // 实际挂载行为相同 → 两类读数与位置投影必须相同（legacy 的假账本把三者混在一个容器里，
+      // 归一化由引擎描述负责，不能把 raw 容器当成领域结果）
+      expect(results[engine.engine]).toEqual({
+        overlays: 1,
+        layers: 1,
+        positions: [POSITION],
+      });
+    }
+  });
+
   it("基础服务：useBMapGeocoder 在两个引擎上都把 SDK 回包归一成 Point", async () => {
     const results = await runDriverMatrix(engines, async (ctx) => {
       const outcome: { status: "resolved" | "failed"; finite: boolean } = {
@@ -295,10 +324,12 @@ describe("迁移期双 Driver：生命周期门禁（组件层）", () => {
           h(BControl, {}, () => h("span", "c")),
           h(BDistrictLayer, { name: "北京市" }),
         ]);
-        // 每一轮都必须真的挂上（否则「归零」可能是「从来没挂过」）。
-        // 用控件桶做这件事：它在两个 Fake 里都是独立的容器，而 BMapGL 把覆盖物与图层
-        // 混在 `map.overlays` 里，用那个桶判断会算进图层（见 engine 描述的读法说明）。
+        // 每一轮都必须真的挂上（否则「归零」可能是「从来没挂过」）。三个族都断言：
+        // legacy 的假账本把覆盖物/图层/气泡混在 `map.overlays` 里，归一化由引擎描述按**构造器身份**
+        // 完成（PR #66 复审 P2-2），因此这里可以逐族断言而不是只挑一个干净的桶。
+        expect(ctx.attached("overlay")).toBe(1);
         expect(ctx.attached("control")).toBe(1);
+        expect(ctx.attached("layer")).toBe(1);
         await unmountAndSettle(wrapper);
       }
       // 卸载之后 SDK 侧不能有任何未释放资源（各引擎用自己的诊断实现）
