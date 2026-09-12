@@ -1,0 +1,64 @@
+name: Nightly JSAPI 4.0 Smoke
+
+# 真实 SDK 的 smoke 只在 nightly / 手动跑：它依赖 AK、外网、LBS 服务配额与浏览器 WebGL，
+# 这些都不是库能控制的。PR 门禁跑的是同一份 harness 的 fixture 档（无网络、结论确定），
+# 所以「基础加载失败」不会等到 nightly 才发现（issue #25 的非目标之一）。
+on:
+  schedule:
+    # GitHub 的 cron 是 UTC：18:00 UTC = 次日 02:00 (UTC+8)
+    - cron: '0 18 * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  live-smoke:
+    # fork / 镜像上没有 secret，跑了只会天天红；只在正式仓库跑。
+    # 注意这里必须写完整的 `owner/repo`：仓库迁到 Mang-X 组织后
+    # `github.repository_owner` 已不是个人账号，用 owner 判断会让本 job 被永久跳过。
+    if: github.repository == 'Mang-X/bmap-vue'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: pnpm/action-setup@v6
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: '24'
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      # AK 缺失时给出可执行的信息，而不是让运行器以「MISSING_AK」这种像是代码问题的形态失败
+      - name: Require BAIDU_MAP_AK secret
+        env:
+          BAIDU_MAP_AK: ${{ secrets.BAIDU_MAP_AK }}
+        run: |
+          if [ -z "$BAIDU_MAP_AK" ]; then
+            echo "::error::缺少 secrets.BAIDU_MAP_AK。请在本仓库 Settings → Secrets and variables → Actions 添加该 secret（AK 的 Referer 白名单需允许 localhost）。"
+            exit 1
+          fi
+
+      # 真实 v4：默认入口加载 `v=4.0`、读取 globalThis.BMap，并验证 Map/覆盖物/控件/图层/
+      # 气泡/服务/tilesloaded/多地图/重挂载/retry/资源销毁。失败原因码里 `SERVICE_*` 与
+      # `TILES_TIMEOUT` 提示配额/网络波动，`BMAP_*` / `BLOCKED` / `DOM_RESIDUE` 提示库回归。
+      - name: Real JSAPI 4.0 browser smoke
+        env:
+          BAIDU_MAP_AK: ${{ secrets.BAIDU_MAP_AK }}
+        run: |
+          node --experimental-strip-types tests/browser/jsapi-v4/run.mts \
+            --mode=live --log="$RUNNER_TEMP/v4-smoke.log"
+
+      # 报告落成 artifact，便于区分「外部波动」与「库回归」（报告里带原因码与观察值）
+      - name: Upload smoke report
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: v4-smoke-report
+          path: ${{ runner.temp }}/v4-smoke.log
+          if-no-files-found: warn
+          retention-days: 14

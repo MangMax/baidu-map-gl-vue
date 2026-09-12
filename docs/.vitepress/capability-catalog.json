@@ -441,7 +441,7 @@
         "jsapi-v4"
       ],
       "rawMembers": [],
-      "description": "MapVGL 渲染叠加层；迁移结论待定（M8），本阶段明确不支持"
+      "description": "MapVGL 渲染叠加层；在 JSAPI 4.0 上未验证（结论与后续动作见 M8 / #43），本阶段明确不支持"
     },
     {
       "id": "layer.tile",
@@ -837,7 +837,7 @@
         "jsapi-v4"
       ],
       "rawMembers": [],
-      "description": "轨迹动画（BMapGLLib 插件）；迁移结论待定（M8），本阶段明确不支持"
+      "description": "轨迹动画（BMapGLLib 插件）；真实 4.0 上脚本加载成功后运行时抛错 → 不兼容（待复核），结论与后续动作见 M8 / #43"
     },
     {
       "id": "panorama.viewer",

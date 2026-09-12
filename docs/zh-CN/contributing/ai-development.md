@@ -9,7 +9,7 @@
 | 维度 | 含义 | 当前取值 |
 | --- | --- | --- |
 | 组件库版本 | `baidu-map-gl-vue` 包版本 | `3.0.0-beta.x` |
-| SDK engine | 项目内部驱动引擎枚举（`webgl-v1` / `jsapi-v3` / `jsapi-v4`） | 迁移期并存，Stable 目标 `jsapi-v4` |
+| SDK engine | 项目内部驱动引擎枚举（`webgl-v1` / `jsapi-v3` / `jsapi-v4`） | **默认 `jsapi-v4`**（#25 起）；`webgl-v1` 是迁移期残留，随 #26 删除 |
 | SDK version | 百度地图 JSAPI 运行时版本 | Stable 目标 `4.0`（`v=4.0`） |
 | 官方类型包版本 | `@baidumap/jsapi-v4-types` | `4.0.4`（精确锁定） |
 
@@ -127,8 +127,14 @@ error TS2552: Cannot find name 'DisplayOptions'.   // Map.d.ts / MapOptions.d.ts
 | `pnpm check:raw-sdk` | 扫描禁区目录（`components` / `composables` / `core/runtime`） |
 | `pnpm check:raw-sdk:tree` | 以白名单扫描整棵 `src`，白名单外的任何 raw SDK 引用都会失败 |
 | `pnpm check:public-dts` | 校验 `dist/**/*.d.ts` 无 `BMap.*` / `BMapGL` / 官方类型包引用，且类型边界文件未被发布 |
+| `pnpm smoke:v4:fixture` | 真实浏览器 smoke（Fake v4，无 AK/无网络）——PR 门禁 |
+| `pnpm smoke:v4` | 真实浏览器 smoke（真实 `v=4.0` + AK）——nightly / 手动，见[专门页面](./v4-browser-smoke) |
 
 `pnpm check:public-dts` 需在 `pnpm build:v3` 之后运行；CI 的两个 job 都会在构建后执行。
+
+> 顺序坑：`pnpm typecheck:v3`（`vue-tsc -p tsconfig.build.json`）**会写 `dist/dts/**`**。因此
+> 「build → typecheck → check:public-dts」会因为 typecheck 的产物而假失败；正确顺序是
+> **typecheck 只跑一次、放在 build 之前**，或 typecheck 之后重新 build 再跑声明门禁。
 
 ## Capability Catalog
 

@@ -76,10 +76,22 @@ const INTERACTION_METHODS: Record<MapInteraction, { enable: string; disable: str
 };
 
 /**
- * 语义地图类型 → `BMap.MapTypeId` 静态常量名。
+ * 语义地图类型 → 常量名（`BMAP_*_MAP`）。
  *
- * 常量从 **SDK 命名空间**读取（`MapTypeId` 的静态成员，官方类型包已声明），不读全局
- * `BMAP_*_MAP`：Driver 边界只认 `rawSdk` 传入的命名空间，避免访问未经 Provider 校验的全局值。
+ * 读取落点有**两个**，按优先级：
+ *
+ * 1. **命名空间自身的同名成员** `BMap.BMAP_NORMAL_MAP`。官方类型包在 `MapTypeId` 的注释里
+ *    写明「`@since 4.0` 推荐直接使用 `BMAP_*_MAP` 全局常量」，真实 4.0 运行时也**确实**把
+ *    这些常量挂在了命名空间（=`window.BMap`）上；
+ * 2. 退到 `BMap.MapTypeId.<常量名>`——官方类型包声明的形状，也是 Fake v4 提供的形状。
+ *
+ * **为什么不读 `MapTypeId` 的短键**（真实运行时上的 `MapTypeId` 实际是
+ * `{ NORMAL, EARTH, SATELLITE }`，见 ADR 2026-09-12 的实测读数）：`MapTypeId.SATELLITE` 的
+ * 取值是 `"B_STREET_MAP"`，与 `BMAP_HYBRID_MAP` 同值而不是 `BMAP_SATELLITE_MAP`
+ * （`"B_SATELLITE_MAP"`）。按短键映射会把「卫星图」静默换成「混合图」，属于取值语义不可信的
+ * 形状，因此只用它上面与官方声明同名的成员。两个落点都读不到时**显式失败**，不猜默认值。
+ *
+ * 两个落点都只经 `rawSdk`（命名空间对象）访问，不直接读 `window`，与 Driver 边界约定一致。
  */
 const MAP_TYPE_CONSTANTS: Record<MapType, string> = {
   normal: "BMAP_NORMAL_MAP",
@@ -520,15 +532,17 @@ export function createJsapiV4MapDriver(input: CreateJsapiV4MapDriverInput): MapD
         engine: "jsapi-v4",
       });
     }
-    const value = readNamespaceMember(mapTypeId, constantName);
-    if (value == null) {
-      throw new BMapError(
-        "BMAP_SDK_CALL_FAILED",
-        `BMap.MapTypeId.${constantName} is not available`,
-        { engine: "jsapi-v4" },
-      );
-    }
-    return value;
+    // 落点 1：命名空间自身的 `BMAP_*_MAP`（官方推荐入口；真实 4.0 运行时存在）
+    const direct = readNamespaceMember(namespace, constantName);
+    if (direct != null) return direct;
+    // 落点 2：`MapTypeId` 上的同名静态成员（官方类型声明形状；Fake v4 提供这一形状）
+    const viaMapTypeId = readNamespaceMember(mapTypeId, constantName);
+    if (viaMapTypeId != null) return viaMapTypeId;
+    throw new BMapError(
+      "BMAP_SDK_CALL_FAILED",
+      `BMap.${constantName} / BMap.MapTypeId.${constantName} is not available`,
+      { engine: "jsapi-v4" },
+    );
   };
 
   /**

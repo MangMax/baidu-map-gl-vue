@@ -23,12 +23,29 @@ export const JSAPI_V4_REQUIRED_MEMBERS = ["Map", "Point", "Marker"] as const;
  *
  * 官方 `@baidumap/jsapi-v4-types@4.0.4` 未声明版本常量，因此这里是**尽力探测**：
  * 探测不到时回退到基线声明值，并由 `versionSource: "declared"` 如实标注。
+ *
+ * **实测（2026-09-12，`v=4.0` 真实入口）**：这两个键上放的是 `version: "gl"`、`VERSION` 缺失——
+ * 也就是说真实入口把「SDK 家族」而不是「版本号」放在这里。因此返回值只是**候选令牌**，
+ * 是否构成版本证据由 `resolveExistingJsapiV4Version` 判定（非版本令牌不参与 4.x 校验）。
  */
 export const JSAPI_V4_VERSION_PROBE_KEYS = ["VERSION", "version"] as const;
 
 /** 读取 v4 全局命名空间；未就绪返回 `undefined`。 */
 export function readJsapiV4Global(): unknown {
   return (globalThis as { BMap?: unknown }).BMap;
+}
+
+/**
+ * 全局 v4 命名空间是否**已就绪**（存在且结构完整）。
+ *
+ * 默认入口的「存量全局」回退用它：默认 engine 是 `jsapi-v4`，因此这里只认 `BMap`——
+ * 看到 `BMapGL` 不代表 v4 就绪（4.0 入口自己会把 `BMapGL` 作为别名挂上，但那是**同一
+ * 对象的别名**，不是「另一个引擎可用」）。迁移期 legacy 的宽松探测仍是
+ * `core/loader/Provider.ts` 的 `hasExistingGlobalSdk()`，只在显式 legacy 路径使用。
+ */
+export function hasExistingJsapiV4Global(): boolean {
+  const present = readJsapiV4Global();
+  return present !== undefined && present !== null && isJsapiV4Namespace(present);
 }
 
 /**
@@ -181,10 +198,24 @@ export function assertJsapiV4Version(version: string, providerId: string): strin
 }
 
 /**
+ * 该取值是否**构成版本证据**（看起来像版本号）。
+ *
+ * 真实 4.0 运行时在命名空间上自述的是 `version: "gl"`（见 ADR
+ * 2026-09-11-jsapi-v4-overlay-facet 与 ADR 2026-09-12 的实测读数）——它不是版本号，
+ * 既不是「4.x 的证据」，也不是「别的版本的证据」。因此只对**看起来像版本号**的取值做
+ * 4.x 校验：像版本号但不是 4.x（例如 `"3.0"`）仍然显式失败，而不是被当成噪声吞掉。
+ */
+function looksLikeVersionToken(value: string): boolean {
+  return /^\d/.test(value);
+}
+
+/**
  * 解析「已存在全局」的版本来源。
  *
- * - 探测到版本 → 校验必须是 `4.x`，来源标注 `global`；
- * - 完全探测不到 → 回退调用方声明值（再退基线 `4.0`），标注 `declared`。
+ * - 探测到形如 `4.x` 的版本 → 校验通过，来源标注 `global`；
+ * - 探测到形如版本号但**不是** 4.x 的取值 → 显式失败（不静默把 v3 全局当 v4 用）；
+ * - 探测不到，或探测到非版本令牌（真实 4.0 的 `"gl"`）→ 回退调用方声明值
+ *   （再退基线 `4.0`），标注 `declared`，**不**据此断言版本。
  */
 export function resolveExistingJsapiV4Version(
   namespace: unknown,
@@ -193,5 +224,8 @@ export function resolveExistingJsapiV4Version(
 ): { version: string; source: JsapiV4VersionSource } {
   const probed = probeJsapiV4Version(namespace);
   if (!probed) return { version: declaredVersion ?? DEFAULT_VERSION, source: "declared" };
+  if (!looksLikeVersionToken(probed)) {
+    return { version: declaredVersion ?? DEFAULT_VERSION, source: "declared" };
+  }
   return { version: assertJsapiV4Version(probed, providerId), source: "global" };
 }

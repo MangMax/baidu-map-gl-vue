@@ -61,7 +61,7 @@
 | overlay | `overlay.prism` | experimental | — | ✓ | — | ✓ | Prism | — | 3D 棱柱（Prism） |
 | overlay | `overlay.bezier-curve` | experimental | — | ✓ | — | ✓ | BezierCurve | — | 贝塞尔曲线（BezierCurve） |
 | overlay | `overlay.marker-3d` | experimental | ✓ | — | — | ✓ | Marker3D | — | 3D 标记（Marker3D）；官方 4.0.4 文档引用但未声明类型 |
-| overlay | `overlay.mapvgl` | unsupported | ✓ | ✓ | ✓ | ✓ | — | — | MapVGL 渲染叠加层；迁移结论待定（M8），本阶段明确不支持 |
+| overlay | `overlay.mapvgl` | unsupported | ✓ | ✓ | ✓ | ✓ | — | — | MapVGL 渲染叠加层；在 JSAPI 4.0 上未验证（结论与后续动作见 M8 / #43），本阶段明确不支持 |
 | layer | `layer.tile` | native | — | ✓ | ✓ | ✓ | TileLayer | — | 瓦片图层（TileLayer） |
 | layer | `layer.traffic` | native | — | ✓ | ✓ | ✓ | TrafficLayer | — | 实时路况图层（TrafficLayer） |
 | layer | `layer.geojson` | native | — | ✓ | — | ✓ | GeoJSONLayer | — | GeoJSON 图层（GeoJSONLayer） |
@@ -89,7 +89,7 @@
 | service | `service.local-city` | native | — | ✓ | ✓ | ✓ | LocalCity | — | IP 定位城市（LocalCity） |
 | service | `service.boundary` | native | — | ✓ | ✓ | ✓ | Boundary | — | 行政区边界（Boundary） |
 | service | `service.convertor` | native | — | ✓ | ✓ | ✓ | Convertor | — | 坐标转换（Convertor） |
-| service | `service.track-animation` | unsupported | ✓ | ✓ | ✓ | ✓ | — | — | 轨迹动画（BMapGLLib 插件）；迁移结论待定（M8），本阶段明确不支持 |
+| service | `service.track-animation` | unsupported | ✓ | ✓ | ✓ | ✓ | — | — | 轨迹动画（BMapGLLib 插件）；真实 4.0 上脚本加载成功后运行时抛错 → 不兼容（待复核），结论与后续动作见 M8 / #43 |
 | panorama | `panorama.viewer` | native | — | ✓ | — | ✓ | Panorama | — | 全景查看器（Panorama） |
 | panorama | `panorama.service` | native | — | ✓ | — | ✓ | PanoramaService | — | 全景服务（PanoramaService） |
 | panorama | `panorama.label` | experimental | — | — | — | ✓ | PanoramaLabel | — | 全景标注（PanoramaLabel） |

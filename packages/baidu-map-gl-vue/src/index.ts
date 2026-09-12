@@ -20,6 +20,13 @@ export {
   BUILTIN_PLUGIN_URLS,
 } from "./plugins/builtins";
 // Provider(公开 factory)
+// JSAPI 4.0 家族（Stable 基线）：M3A3-CUTOVER / #25 起是**默认**入口使用的 Provider
+export {
+  baiduJsapiV4Provider,
+  customScriptV4Provider,
+  existingGlobalV4Provider,
+} from "./core/loader/providers";
+// 迁移期 legacy 家族（webgl-v1），随 #26 删除；新代码请用上面的 v4 家族
 export {
   baiduCdnProvider,
   customScriptProvider,

@@ -75,8 +75,8 @@ function resolveDefaultClientContext(): BMapClientContext | undefined {
     const cached = defaultContextCache.get(key);
     if (cached) return cached;
     const created = createClientContext({
-      // 迁移期组件默认路径:按加载结果的 engine 分派 Driver(见 client/migration.ts),
-      // 默认 cutover 属 #25。
+      // 旧 bmapConfig 兼容路径:按加载结果的 engine 分派 Driver(见 client/migration.ts);
+      // 默认 Provider 已是 JSAPI 4.0(#25)。
       definition: withMigrationDriver({
         provider: appConfig.provider,
         loadOptions: appConfig.defaults,

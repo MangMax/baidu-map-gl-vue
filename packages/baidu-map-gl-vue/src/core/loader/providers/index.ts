@@ -24,6 +24,7 @@ export {
   assertJsapiV4Namespace,
   assertJsapiV4Version,
   findMissingJsapiV4Members,
+  hasExistingJsapiV4Global,
   isJsapiV4Namespace,
   isRejectedJsapiV4Global,
   markRejectedJsapiV4Global,

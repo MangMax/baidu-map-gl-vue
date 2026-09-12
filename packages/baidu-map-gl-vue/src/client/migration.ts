@@ -5,19 +5,20 @@
  * `createBMapClient()` 缺省注入 `createJsapiV4Driver`，并要求 Provider 返回结构化的
  * `LoadedSdk`。迁移期仍有三类调用方需要 `webgl-v1`：
  *
- * 1. 组件默认路径（`<BMap>` / `<BMapProvider>` / `createBMapPlugin`）——默认 cutover
- *    属 M3A.3（#25），本 Issue 不做；
- * 2. v2 / v3-beta 的宽松 `{ load }` Provider（返回裸全局对象）；
+ * 1. v2 / v3-beta 的宽松 `{ load }` Provider（返回裸全局对象）；
+ * 2. 显式传入 legacy Provider 的调用方（`baiduCdnProvider()` 等）；
  * 3. fake SDK 测试基建。
+ *
+ * **组件默认路径已不再是其中之一**：`#25` 起默认 Provider 就是 JSAPI 4.0 的 CDN 家族。
+ * 这里的分派现在只服务「调用方显式给了 legacy Provider」这一种情况。
  *
  * 因此这里提供三个**显式**入口，全部不是 `createBMapClient()` 的默认值：
  * - `normalizeMigrationProvider`：结构化结果原样通过，裸值按 `webgl-v1` 包装；
  * - `legacyDriverFactory` / `createLegacyBMapClient`：只接受 `webgl-v1`；
- * - `migrationDriverFactory` / `withMigrationDriver`：组件默认路径按**加载结果的
- *   engine** 分派实现——这样 `createBMapPlugin({ provider: baiduJsapiV4Provider() })`
- *   不会因为「默认注入 legacy」而被破坏。
+ * - `migrationDriverFactory` / `withMigrationDriver`：按**加载结果的 engine** 分派实现——
+ *   这样「显式传了 legacy Provider」仍能工作，而默认（v4）路径不受影响。
  *
- * M3A.3（#25/#26）完成默认切换并删除 webgl-v1 后，本文件一并删除。
+ * M3A.3（#26）删除 webgl-v1 后，本文件一并删除。
  */
 import {
   assertLoadedSdk,

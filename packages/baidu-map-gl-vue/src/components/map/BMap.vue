@@ -26,11 +26,7 @@ import { BMapError } from "../../core/errors/BMapError";
 import { logger } from "../../core/logger";
 import type { BMapLoadOptions } from "../../core/loader/url";
 import { DEFAULT_VERSION } from "../../core/loader/url";
-import {
-  baiduCdnProvider,
-  existingGlobalProvider,
-  hasExistingGlobalSdk,
-} from "../../core/loader/Provider";
+import { baiduJsapiV4Provider, existingGlobalV4Provider, hasExistingJsapiV4Global } from "../../core/loader/providers";
 import type { AnyBMapProviderLike, BMapClient, CreateBMapClientOptions } from "../../client/types";
 import { withMigrationDriver } from "../../client/migration";
 import { normalizeMapMouseEvent } from "../../driver/normalize";
@@ -108,14 +104,15 @@ if (props.client) {
   clientContext = createClientContext({ definition: props.definition });
   ownClientContext = true;
 } else if (props.provider || props.ak || props.apiUrl) {
-  const provider = (props.provider as BMapClientContext extends never ? never : AnyBMapProviderLike) ?? appConfig?.provider ?? baiduCdnProvider();
+  const provider = (props.provider as BMapClientContext extends never ? never : AnyBMapProviderLike) ?? appConfig?.provider ?? baiduJsapiV4Provider();
   const loadOptions: BMapLoadOptions = {
     ak: props.ak ?? appConfig?.defaults?.ak,
     apiUrl: props.apiUrl ?? appConfig?.defaults?.apiUrl,
     version: appConfig?.defaults?.version ?? DEFAULT_VERSION,
   };
-  // M3A1-CLIENT(#18): 组件默认路径走迁移归一（按加载 engine 分派 Driver，默认 cutover
-  // 属 #25）；createBMapClient 自身的默认已收口到 jsapi-v4。
+  // M3A3-CUTOVER(#25): 显式 provider/ak 的兜底默认是 v4 CDN Provider；definition 的
+  // Driver 分派仍由 Client Context 收口（未显式声明 driver 时按加载结果的 engine 分派，
+  // 迁移期能力随 #26 收敛）。
   clientContext = createClientContext({
     definition: withMigrationDriver({
       provider: provider as AnyBMapProviderLike,
@@ -126,7 +123,7 @@ if (props.client) {
 } else if (parentClientContext) {
   clientContext = parentClientContext;
 } else if (defaultDefinition) {
-  // 迁移期归一在 Client Context 收口（见 core/context/client.ts），此处直接透传
+  // 归一在 Client Context 收口（见 core/context/client.ts），此处直接透传
   clientContext = createClientContext({ definition: defaultDefinition });
   ownClientContext = true;
 } else if (appConfig?.provider) {
@@ -139,14 +136,14 @@ if (props.client) {
   ownClientContext = true;
 } else if (props.allowExistingGlobal) {
   clientContext = createClientContext({
-    definition: { provider: existingGlobalProvider(), loadOptions: {} },
+    definition: { provider: existingGlobalV4Provider(), loadOptions: {} },
   });
   ownClientContext = true;
-} else if (hasExistingGlobalSdk()) {
-  // 向后兼容:默认不静默读取全局 SDK,仅在已存在时经 Loader 边界回退并 warn
-  logger.warn("BMap resolved existing global SDK fallback; prefer <BMapProvider> or app.use(createBMapPlugin(...))");
+} else if (hasExistingJsapiV4Global()) {
+  // 向后兼容:默认不静默读取全局 SDK,仅在**已就绪的 JSAPI 4.0 全局**存在时经 Loader 边界回退并 warn
+  logger.warn("BMap resolved existing global JSAPI 4.0 namespace fallback; prefer <BMapProvider> or app.use(createBMapPlugin(...))");
   clientContext = createClientContext({
-    definition: { provider: existingGlobalProvider(), loadOptions: {} },
+    definition: { provider: existingGlobalV4Provider(), loadOptions: {} },
   });
   ownClientContext = true;
 } else {

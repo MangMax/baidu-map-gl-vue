@@ -129,3 +129,86 @@ describe("v4 Map facet 生命周期", () => {
     expect(registry.resolve(map)).toBe(map.raw);
   });
 });
+
+/**
+ * `setMapType` 的常量落点（M3A3-CUTOVER / #25 的真实 smoke 回归）
+ *
+ * 修前只读 `BMap.MapTypeId.<BMAP_*_MAP>`，而**真实** 4.0 运行时的 `MapTypeId` 是
+ * `{ NORMAL, EARTH, SATELLITE }`（实测 2026-09-12），于是取值为 `undefined` →
+ * `<BMap>` 在 `applyMapType` 抛错、永远到不了 ready。Fake v4 因为镜像了官方**类型声明**
+ * 的 `BMAP_*` 静态成员，恰好掩盖了这条差异——所以这里刻意用「真实形状」的命名空间来测。
+ */
+describe("v4 Map setMapType 的常量落点", () => {
+  /**
+   * 真实 4.0 形状：命名空间上有 `BMAP_*_MAP`；`MapTypeId` 只有短键，且
+   * `SATELLITE` 的取值是 `B_STREET_MAP`（= `BMAP_HYBRID_MAP`，**不是**卫星图的 token）。
+   */
+  function realShapeNamespace(overrides: Record<string, unknown> = {}): Record<string, unknown> {
+    return {
+      ...(fake.namespace as unknown as Record<string, unknown>),
+      BMAP_NORMAL_MAP: "B_NORMAL_MAP",
+      BMAP_SATELLITE_MAP: "B_SATELLITE_MAP",
+      BMAP_EARTH_MAP: "B_EARTH_MAP",
+      MapTypeId: { NORMAL: "B_NORMAL_MAP", EARTH: "B_EARTH_MAP", SATELLITE: "B_STREET_MAP" },
+      ...overrides,
+    };
+  }
+
+  function driverFor(namespace: Record<string, unknown>): ReturnType<typeof createJsapiV4MapDriver> {
+    const geometry = createJsapiV4GeometryDriver(namespace);
+    const events = createJsapiV4EventDriver({ registry, geometry });
+    const capabilities = createCapabilityRegistry({
+      engine: "jsapi-v4",
+      version: "4.0",
+      rawSdk: namespace,
+      // 这一组用例只关心常量解析，不引入能力策略的干扰
+      unsupported: "warn",
+    });
+    return createJsapiV4MapDriver({ rawSdk: namespace, geometry, capabilities, registry, events });
+  }
+
+  it("优先用命名空间上的 BMAP_*_MAP（真实 4.0 唯一语义正确的落点）", () => {
+    const mapDriver = driverFor(realShapeNamespace());
+    const map = mapDriver.create(sizedContainer());
+    mapDriver.setMapType(map, "normal");
+    mapDriver.setMapType(map, "satellite");
+
+    expect(fake.createdMaps[0].callLog).toContain("setMapType:B_NORMAL_MAP");
+    expect(fake.createdMaps[0].callLog).toContain("setMapType:B_SATELLITE_MAP");
+    expect(fake.createdMaps[0].mapType).toBe("B_SATELLITE_MAP");
+  });
+
+  it("命名空间没有常量时退到 MapTypeId 上的同名成员（官方声明 / Fake v4 形状）", () => {
+    const mapDriver = driverFor(
+      realShapeNamespace({
+        BMAP_NORMAL_MAP: undefined,
+        BMAP_SATELLITE_MAP: undefined,
+        BMAP_EARTH_MAP: undefined,
+        // 官方类型包 / Fake v4 的 `MapTypeId` 形状
+        MapTypeId: fake.namespace.MapTypeId,
+      }),
+    );
+    const map = mapDriver.create(sizedContainer());
+    mapDriver.setMapType(map, "normal");
+
+    // Fake 的 `FakeV4MapTypeId.BMAP_NORMAL_MAP` 取值就是常量名本身
+    expect(fake.createdMaps[0].mapType).toBe("BMAP_NORMAL_MAP");
+  });
+
+  it("不读 MapTypeId 的短键：只有短键时显式失败，而不是把卫星图静默换成混合图", () => {
+    const mapDriver = driverFor(
+      realShapeNamespace({
+        BMAP_NORMAL_MAP: undefined,
+        BMAP_SATELLITE_MAP: undefined,
+        BMAP_EARTH_MAP: undefined,
+      }),
+    );
+    const map = mapDriver.create(sizedContainer());
+
+    expect(() => mapDriver.setMapType(map, "satellite")).toThrowError(
+      expect.objectContaining({ code: "BMAP_SDK_CALL_FAILED" }),
+    );
+    // 短键里的 SATELLITE 是 "B_STREET_MAP"，按它映射就会把「卫星图」变成「混合图」
+    expect(fake.createdMaps[0].callLog).not.toContain("setMapType:B_STREET_MAP");
+  });
+});

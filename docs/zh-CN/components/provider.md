@@ -24,10 +24,10 @@ import { BMapProvider } from 'baidu-map-gl-vue'
 </template>
 
 <script setup lang="ts">
-import { BMapProvider, baiduCdnProvider } from 'baidu-map-gl-vue'
+import { BMapProvider, baiduJsapiV4Provider } from 'baidu-map-gl-vue'
 
 const definition = {
-  provider: baiduCdnProvider(),
+  provider: baiduJsapiV4Provider(),
   loadOptions: { ak: '百度地图ak' }
 }
 function onReady() {}
@@ -48,8 +48,9 @@ function onError() {}
 
 无 `definition` 时，Provider 复用 `app.use(createBMapPlugin(...))` 的默认定义或最近父 Provider 的上下文。
 
-`definition` / `provider` 会先经迁移期归一（`withMigrationDriver`）：按**加载结果的 engine** 分派
-Driver，未显式声明 `driver` 时注入迁移期工厂；需要固定某个 Driver 实现时直接传带 `driver` 的 `definition`。
+`definition` / `provider` 会先经归一：未显式声明 `driver` 时按**加载结果的 engine** 分派 Driver。
+默认（不传 `provider`）走 JSAPI 4.0 的 CDN Provider；需要固定某个 Driver 实现时直接传带 `driver` 的
+`definition`。
 
 ## 插槽
 

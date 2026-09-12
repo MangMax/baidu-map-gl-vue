@@ -384,7 +384,7 @@ export const CAPABILITY_CATALOG: Record<Capability, CapabilityDescriptor> = {
   "overlay.mapvgl": {
     id: "overlay.mapvgl",
     family: "overlay",
-    description: "MapVGL 渲染叠加层；迁移结论待定（M8），本阶段明确不支持",
+    description: "MapVGL 渲染叠加层；在 JSAPI 4.0 上未验证（结论与后续动作见 M8 / #43），本阶段明确不支持",
     engines: ALL,
     status: "unsupported",
     runtimeOnly: true,
@@ -647,7 +647,7 @@ export const CAPABILITY_CATALOG: Record<Capability, CapabilityDescriptor> = {
   "service.track-animation": {
     id: "service.track-animation",
     family: "service",
-    description: "轨迹动画（BMapGLLib 插件）；迁移结论待定（M8），本阶段明确不支持",
+    description: "轨迹动画（BMapGLLib 插件）；真实 4.0 上脚本加载成功后运行时抛错 → 不兼容（待复核），结论与后续动作见 M8 / #43",
     engines: ALL,
     status: "unsupported",
     runtimeOnly: true,

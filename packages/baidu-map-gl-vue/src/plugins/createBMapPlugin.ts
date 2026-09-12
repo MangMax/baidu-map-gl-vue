@@ -10,16 +10,22 @@
  * - 默认版本改用 `DEFAULT_VERSION`（JSAPI 4.0 基线），不再硬编码 `1.0`；插件自身报告的
  *   库版本改用 `LIBRARY_VERSION`，与 `package.json` 单一事实源对齐；
  * - 默认 Client definition 经迁移期归一（`withMigrationDriver`）：按**加载结果的
- *   engine** 分派 Driver，因此 `provider: baiduJsapiV4Provider()` 不会被破坏；默认
- *   cutover（默认 Provider 换成 v4 家族）属 M3A.3（#25）；
+ *   engine** 分派 Driver，因此 `provider: baiduJsapiV4Provider()` 不会被破坏；
  * - 旧 `globalProperties` 映射保留，但只作为迁移期兼容并给出明确的 beta 警告。
+ *
+ * M3A3-CUTOVER（issue #25）的调整：**默认 Provider 换成 JSAPI 4.0 CDN 家族**
+ * （`baiduJsapiV4Provider()`），因此「不传 provider 的默认入口」现在加载
+ * `https://api.map.baidu.com/api?v=4.0&ak=...` 并读取 `globalThis.BMap`。
+ * `allowExistingGlobal` 也随之指向 `existingGlobalV4Provider()`（不再探测迁移期 `BMapGL`）。
+ * 注意「默认」指的是**未显式传 provider**这条路径；显式传入的 Provider 仍按加载结果的
+ * engine 分派（legacy 能力与 Fake 双跑随 #26 一并删除）。
  */
 import type { App, Component } from "vue";
-import { baiduCdnProvider } from "../core/loader/Provider";
 import { DEFAULT_VERSION, type BMapLoadOptions } from "../core/loader/url";
 import { logger } from "../core/logger";
 import { bmapConfigKey, type BMapPluginConfig } from "../core/context/pluginConfig";
 import { defaultClientDefinitionKey } from "../core/context/client";
+import { baiduJsapiV4Provider, existingGlobalV4Provider } from "../core/loader/providers";
 import { withMigrationDriver } from "../client/migration";
 import type { AnyBMapProviderLike, CreateBMapClientOptions } from "../client/types";
 import { LIBRARY_VERSION } from "../version";
@@ -27,12 +33,12 @@ import * as manifestComponents from "../components/index";
 
 export interface CreateBMapPluginOptions {
   /**
-   * 默认 SDK Provider。
+   * 默认 SDK Provider。缺省是 JSAPI 4.0 的 CDN Provider（`baiduJsapiV4Provider()`）。
    *
-   * 类型是**跨引擎**的 `AnyBMapProviderLike`：JSAPI 4.0 的 Provider 家族
+   * 类型是**跨引擎**的 `AnyBMapProviderLike`：默认的 v4 家族
    * （`baiduJsapiV4Provider()` / `existingGlobalV4Provider()` / `customScriptV4Provider()`）
-   * 返回 `LoadedJsapiV4`，迁移期 legacy Provider 返回 `LoadedLegacySdk`，两者都合法。
-   * 具体用哪个 Driver 由 `withMigrationDriver` 按加载结果的 engine 分派。
+   * 返回 `LoadedJsapiV4`；迁移期 legacy Provider 返回 `LoadedLegacySdk`，两者都合法
+   * （具体用哪个 Driver 由 `withMigrationDriver` 按加载结果的 engine 分派，随 #26 收敛）。
    */
   provider?: AnyBMapProviderLike;
   ak?: string;
@@ -40,7 +46,10 @@ export interface CreateBMapPluginOptions {
   version?: string;
   plugins?: string[];
   defaults?: Partial<BMapLoadOptions>;
-  /** 显式 opt-in 才允许读取 window 上的既有全局 SDK(默认走 CDN);向后兼容保留 */
+  /**
+   * 显式 opt-in 才允许复用页面里**已经存在**的 JSAPI 4.0 全局（`globalThis.BMap`）。
+   * 只在未显式传 `provider` 时生效；缺省仍走 CDN。
+   */
   allowExistingGlobal?: boolean;
   client?: CreateBMapClientOptions;
 }
@@ -50,7 +59,7 @@ export type { BMapPluginConfig } from "../core/context/pluginConfig";
 export { defaultClientDefinitionKey } from "../core/context/client";
 
 export function createBMapPlugin(options: CreateBMapPluginOptions = {}) {
-  const provider = options.provider ?? baiduCdnProvider();
+  const provider = options.provider ?? defaultV4Provider(options.allowExistingGlobal);
   const defaults: BMapLoadOptions = {
     ak: options.ak,
     apiUrl: options.apiUrl,
@@ -58,8 +67,8 @@ export function createBMapPlugin(options: CreateBMapPluginOptions = {}) {
     ...options.defaults,
   };
   const config: BMapPluginConfig = { provider, defaults };
-  // 迁移期默认路径：显式 `client` 也要归一（否则「只有默认 definition 被包装、显式
-  // client 没被包装」会让同一份配置在 <BMap> 与 <BMapProvider> 上表现不一致）。
+  // 显式 `client` 也要归一（否则「只有默认 definition 被包装、显式 client 没被包装」会让
+  // 同一份配置在 <BMap> 与 <BMapProvider> 上表现不一致）。
   // `withMigrationDriver` 幂等：已声明 driver 时保留，宽松 Provider 归一为结构化结果。
   const clientDefinition: CreateBMapClientOptions = withMigrationDriver(
     options.client ?? {
@@ -89,6 +98,20 @@ export function createBMapPlugin(options: CreateBMapPluginOptions = {}) {
     /** 供按需导入使用 */
     config,
   };
+}
+
+/**
+ * 默认 Provider（M3A3-CUTOVER / #25）：JSAPI 4.0 CDN 家族。
+ *
+ * - 普通情况：`baiduJsapiV4Provider()`——入口固定 `v=4.0`，就绪信号是 JSONP `callback`，
+ *   读取并校验 `globalThis.BMap`；
+ * - `allowExistingGlobal: true`：`existingGlobalV4Provider()`——只**复用**页面里已经就绪的
+ *   `globalThis.BMap`（结构不完整即失败，不做降级）。
+ *
+ * 两者都返回结构化的 `LoadedJsapiV4`，因此组件默认路径会落到 v4 Driver 工厂。
+ */
+function defaultV4Provider(allowExistingGlobal?: boolean): AnyBMapProviderLike {
+  return allowExistingGlobal ? existingGlobalV4Provider() : baiduJsapiV4Provider();
 }
 
 /**

@@ -1,12 +1,15 @@
 /**
  * Playground:多场景演示(方案 §15.2 / M7-05)
  *
- * 覆盖 v3 组件全家族,基于 mock provider(无外网/AK),
- * 本地/CI 可直接 `vite build`。
+ * 两种模式（M3A3-CUTOVER / #25）：
+ * - `?mode=fake`（默认）：Fake BMap **v4** 命名空间 + `existingGlobalV4Provider()`，无外网/AK，
+ *   本地/CI 可直接 `vite build`；
+ * - `?mode=real&ak=...`（或 `VITE_BMAP_AK` 环境变量）：默认 Provider 的真实 `v=4.0` CDN 入口。
+ *
+ * 组件不显式传 provider：走 `app.use(createBMapPlugin(...))` 的**默认定义**，也就是线上默认路径。
  */
 import { createApp, h, ref, shallowRef, defineComponent, computed } from 'vue'
 import {
-  createBMapPlugin,
   BMap,
   BMarker,
   BMarker3d,
@@ -34,15 +37,18 @@ import {
   BPanoramaCoverageLayer,
   BAutoComplete,
 } from 'baidu-map-gl-vue'
-import { mockProvider } from './mock-provider'
+import { createPlaygroundSetup, type PlaygroundMode } from './providers'
 
-const plugin = createBMapPlugin({ provider: mockProvider() as any })
-const provider = (plugin as any).config.provider
+const params = new URLSearchParams(location.search)
+const setup = createPlaygroundSetup({
+  mode: (params.get('mode') === 'real' ? 'real' : 'fake') satisfies PlaygroundMode,
+  ak: params.get('ak') ?? (import.meta.env.VITE_BMAP_AK as string | undefined),
+})
+const plugin = setup.plugin
 const center = { lng: 116.404, lat: 39.915 }
 const centerRef = ref(center)
 
 const baseMapProps = (extra: Record<string, unknown> = {}) => ({
-  provider,
   center: centerRef.value,
   zoom: 14,
   style: { width: '100%', height: '440px' },
@@ -156,11 +162,13 @@ function autocompleteScene(): () => unknown {
 
 const scenes: SceneDef[] = [
   { id: 'basic', title: '基础', render: basicScene },
-  { id: 'marker3d', title: 'Marker3d', render: marker3dScene },
+  // `Marker3D` / `MapMask` 在 JSAPI 4.0 上没有运行时入口（见 Capability Catalog 的 unsupported），
+  // 换到 v4 后这两个场景必然报错——标题里写清楚，避免被当成「演示正常」。
+  { id: 'marker3d', title: 'Marker3d（v4 无此构造器）', render: marker3dScene },
   { id: 'bulk', title: '大数据', render: bulkScene },
   { id: 'controls', title: 'Controls', render: controlsScene },
   { id: 'layers', title: 'Layers', render: layersScene },
-  { id: 'special', title: '特殊覆盖物', render: specialScene },
+  { id: 'special', title: '特殊覆盖物（含 v4 不支持的 Mask）', render: specialScene },
   { id: 'autocomplete', title: '搜索', render: autocompleteScene },
 ]
 
@@ -170,7 +178,16 @@ const App = defineComponent({
     const current = computed(() => scenes.find((s) => s.id === active.value)!)
     return () => [
       h('div', { style: 'font-family:system-ui;padding:12px;background:#f5f5f5;border-bottom:1px solid #ddd' }, [
-        h('h3', { style: 'margin:0 0 8px' }, 'baidu-map-gl-vue v3 playground'),
+        h('h3', { style: 'margin:0 0 4px' }, 'baidu-map-gl-vue v3 playground · JSAPI 4.0'),
+        h(
+          'div',
+          { style: 'font-size:12px;color:#666;margin:0 0 8px' },
+          setup.mode === 'real'
+            ? setup.missingAk
+              ? '真实模式缺少 AK：请在 URL 上加 &ak=<百度地图 AK> 或设置 VITE_BMAP_AK'
+              : '真实 v4 模式：默认 Provider 加载 https://api.map.baidu.com/api?v=4.0'
+            : 'Fake v4 模式：globalThis.BMap 由 Fake 命名空间提供，不访问外网（切换真实模式请加 ?mode=real&ak=...）',
+        ),
         h('div', { style: 'display:flex;gap:8px;flex-wrap:wrap' }, [
           ...scenes.map((s) =>
             h('button', {

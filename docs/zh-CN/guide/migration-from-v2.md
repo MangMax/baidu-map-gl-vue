@@ -19,16 +19,21 @@ app.use(Vue3BaiduMapGl, { ak: 'YOUR_AK' })
 ### v3
 ```ts
 import { createBMapPlugin } from 'baidu-map-gl-vue'
-// ak 给 createBMapPlugin（或 definition.loadOptions）；baiduCdnProvider() 本身不收 ak 参数
+// ak 给 createBMapPlugin（或 definition.loadOptions）；Provider 工厂本身不收 ak 参数
 app.use(createBMapPlugin({
   ak: import.meta.env.VITE_BAIDU_MAP_AK,
-  version: '1.0',
 }))
+// 默认入口是 JSAPI 4.0：入口 https://api.map.baidu.com/api?v=4.0 ，全局命名空间 `BMap`。
+// `version` 只接受 4.x（v2 时代的 version: '1.0' 会直接失败，不是静默降级）
 ```
 
 > 不兼容：v2 的默认导出 `app.use(Vue3BaiduMapGl, { ak })` 在 v3 已移除，
-> 请改用具名 `createBMapPlugin`。`baiduCdnProvider()` 工厂不接受 ak/version 参数，
+> 请改用具名 `createBMapPlugin`。Provider 工厂不接受 ak/version 参数，
 > 它们属于 Client 定义的 `loadOptions`。
+>
+> v2 跑在 GL 版（`type=webgl` + 全局 `BMapGL`），v3 的默认入口是 JSAPI 4.0
+> （`v=4.0` + 全局 `BMap`）。迁移时请先确认自己的代码没有直接读 `window.BMapGL`，
+> 与全局命名空间打交道的部分应改为经 Provider/Driver 边界。
 
 ---
 
@@ -46,7 +51,7 @@ app.use(createBMapPlugin({
 | `v-model:show`(InfoWindow) | 保留 | 无需改动 |
 | `modelValue`(InfoWindow) | beta 期保留 + warning | 改为 `open`/`v-model:open` |
 | `usePubSub` | 已移除 | 改用 context/whenReady（`useBMap()` + `whenReady()`） |
-| `getScriptAsync` | 已移除，改走 Provider/loader | 改用 `baiduCdnProvider` / `customScriptProvider` |
+| `getScriptAsync` | 已移除，改走 Provider/loader | 在线用默认 Provider（`baiduJsapiV4Provider`），自建入口用 `customScriptV4Provider` |
 | 任意 `package/*` 深路径 | 不再保证;提供明确 exports | 改用子路径 |
 
 ---

@@ -11,6 +11,7 @@ import {
   assertJsapiV4Version,
   assertSupportedJsapiV4Version,
   findMissingJsapiV4Members,
+  hasExistingJsapiV4Global,
   isJsapiV4Namespace,
   probeJsapiV4Version,
   readJsapiV4Global,
@@ -126,6 +127,44 @@ describe("版本来源", () => {
     expect(() => assertJsapiV4Version("1.0", "p")).toThrow(/not JSAPI 4\.0/);
     expect(() => resolveExistingJsapiV4Version({ VERSION: "3.0" }, "p")).toThrow(BMapError);
     expect(assertJsapiV4Version("4.0.4", "p")).toBe("4.0.4");
+  });
+
+  it("非版本令牌（真实 4.0 的 version=\"gl\"）不构成版本证据，回退声明值", () => {
+    // 实测（#25 真实 AK smoke）：v=4.0 的全局自述 `version: "gl"`、`VERSION` 缺失。
+    // 它既不是 4.x 的证据，也不是「别的版本」的证据——修前这里会抛
+    // `SDK version "gl" is not JSAPI 4.0`，导致 existingGlobalV4Provider 对正常的
+    // 4.0 全局直接失败。
+    expect(resolveExistingJsapiV4Version({ version: "gl" }, "p")).toEqual({
+      version: DEFAULT_VERSION,
+      source: "declared",
+    });
+    expect(resolveExistingJsapiV4Version({ version: "gl" }, "p", "4.0.4")).toEqual({
+      version: "4.0.4",
+      source: "declared",
+    });
+  });
+});
+
+describe("存量全局探测（默认 v4 回退）", () => {
+  const previousBMap = (globalThis as { BMap?: unknown }).BMap;
+
+  afterEach(() => {
+    (globalThis as { BMap?: unknown }).BMap = previousBMap;
+  });
+
+  it("结构完整的 BMap 才算就绪", () => {
+    (globalThis as { BMap?: unknown }).BMap = { Map: 1, Point: 1, Marker: 1 };
+    expect(hasExistingJsapiV4Global()).toBe(true);
+  });
+
+  it("缺成员的 BMap 不算就绪（不降级使用残缺命名空间）", () => {
+    (globalThis as { BMap?: unknown }).BMap = { Map: 1 };
+    expect(hasExistingJsapiV4Global()).toBe(false);
+  });
+
+  it("没有 BMap 时不算就绪", () => {
+    (globalThis as { BMap?: unknown }).BMap = undefined;
+    expect(hasExistingJsapiV4Global()).toBe(false);
   });
 });
 
