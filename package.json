@@ -66,7 +66,7 @@
   "author": "MangMax",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/MangMax/baidu-map-gl-vue.git"
+    "url": "git+https://github.com/Mang-X/bmap-vue.git"
   },
   "devDependencies": {
     "vitest": "^5.0.0",
