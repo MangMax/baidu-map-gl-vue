@@ -75,6 +75,16 @@ pnpm --filter baidu-map-gl-vue pack --pack-destination .artifacts
 pnpm verify:package
 ```
 
+改动官方包（`@baidumap/jsapi-loader` / `@baidumap/jsapi-ui-kit`）的接入方式时，另跑一次真实 v4 原生探针
+（需要真实 AK 与网络，因此**不进 CI**；`blocked` 不等于通过）：
+
+```bash
+BAIDU_MAP_AK=<你的 ak> pnpm probe:official -- --out=/tmp/official-probe.json
+```
+
+契约与结论记录在 `docs/zh-CN/contributing/official-packages.md`，
+不依赖网络的契约锁跑在 `pnpm test:unit` 里（`tests/behavior/official-packages-*.test.ts`）。
+
 已知情况：`pnpm typecheck:v3` 目前在 Linux 上无法通过，原因在上游包
 `@baidumap/jsapi-v4-types@4.0.4` 的路径大小写缺陷（见 issue #50），因此它**暂未**进入 CI 门禁。
 如果你要动公共类型，请留意这一点。
