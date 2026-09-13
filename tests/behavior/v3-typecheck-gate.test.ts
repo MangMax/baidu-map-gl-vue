@@ -95,7 +95,9 @@ function isRunLine(line: string, command: string): boolean {
 
 /** step 级的「架空」开关（`if` / `continue-on-error`；行内注释 `# if: ...` 不会命中）。 */
 function isBlockingKey(line: string): boolean {
-  return /^\s*(if|continue-on-error)\s*:/.test(line);
+  // `(?:-\s+)?` 放过列表项前缀：step 的首行可以写成 `- if: false`（官方文档里的步骤示例就有
+  // `- if:` 开头的写法），只匹配「空白后直接是字段名」会漏检整整一个字段位置。
+  return /^\s*(?:-\s+)?(if|continue-on-error)\s*:/.test(line);
 }
 
 interface GateProbe {
@@ -255,6 +257,37 @@ describe("门禁判定自测（合成 workflow 负例）", () => {
     expect(found.some((line) => line.includes("架空")), `期望报出「被架空」，实际：${found}`).toBe(
       true,
     );
+  });
+
+  // step 的**首行**可以带 YAML 列表项前缀：`- if: false` 是合法写法（官方文档的步骤示例就有
+  // `- if:` 开头的），不能只匹配「空白后直接是字段名」。两种字段 × 两种换行各一个负例。
+  for (const blocking of ["if: false", "continue-on-error: true"]) {
+    for (const [label, encode] of [
+      ["LF", (text: string) => text],
+      ["CRLF", toCrlf],
+    ] as const) {
+      it(`step 首行写成 \`- ${blocking}\`（${label}）要报「被架空」`, () => {
+        const steps = [
+          `      - ${blocking}`,
+          "        name: Type-check v3 package",
+          `        run: ${TYPECHECK_COMMAND}`,
+          ...BUILD_STEP,
+        ].join("\n");
+        const found = problems(probeQualityGate(encode(fixture(steps))));
+        expect(
+          found.some((line) => line.includes("架空")),
+          `期望报出「被架空」，实际：${found}`,
+        ).toBe(true);
+      });
+    }
+  }
+
+  it("flow-style 步骤（`- {if: false, run: ...}`）要报错，不能被静默放过", () => {
+    const steps = [`      - {if: false, run: ${TYPECHECK_COMMAND}}`, ...BUILD_STEP].join("\n");
+    const found = problems(probeQualityGate(fixture(steps)));
+    // 本判定只支持块式 YAML：flow-style 下连 `run:` 都认不出来，于是报「没有 step」。方向是
+    // 「报错」而不是「静默放行」——这是不为一条 CI 形状门禁引入 YAML 解析依赖的刻意取舍。
+    expect(found, "flow-style 必须报错，不能静默通过").not.toEqual([]);
   });
 
   it("typecheck 排在 build 之后要报顺序问题", () => {
